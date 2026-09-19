@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt 设计中的“防御性编程”思维</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <!-- Background Soft Glow -->
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title & Meta -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>防御性架构思维</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Prompt 设计中的“防御性编程”思维
+            </h1>
+            
+            <p class="text-base md:text-xl font-medium text-slate-600 max-w-4xl leading-relaxed">
+                把传统软件工程的 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2">前置断言</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2">后置校验</span> 与 <span class="text-emerald-700 font-semibold underline decoration-emerald-300 decoration-2">降级机制</span> 映射入 Prompt 契约，彻底遏制非确定性系统崩溃
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-3 gap-5">
+            
+            <!-- Pillar 1: Pre-conditions -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-xs font-semibold">
+                            Principle 01
+                        </span>
+                        <i class="fa-solid fa-filter text-blue-500 text-lg"></i>
+                    </div>
+                    
+                    <h3 class="text-base font-bold text-slate-900 mb-2">
+                        前置条件校验 (Pre-conditions)
+                    </h3>
+                    
+                    <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+                        要求模型在推理前显式断言上下文完整度。当输入缺乏关键代码、环境变量或类型定义时，拒绝盲目推演。
+                    </p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[11px] space-y-1">
+                        <div class="text-blue-400">// Prompt 前置逻辑</div>
+                        <div>IF context.code_snippet IS EMPTY:</div>
+                        <div class="text-amber-400 pl-2">RETURN "ERROR_MISSING_INPUT"</div>
+                    </div>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>拦截垃圾输入与提示词注入
+                </div>
+            </div>
+
+            <!-- Pillar 2: Post-conditions & Schema -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-xs font-semibold">
+                            Principle 02
+                        </span>
+                        <i class="fa-solid fa-file-contract text-purple-500 text-lg"></i>
+                    </div>
+                    
+                    <h3 class="text-base font-bold text-slate-900 mb-2">
+                        后置条件与强 Schema 契约
+                    </h3>
+                    
+                    <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+                        通过语法与结构约束（JSON Schema / Pydantic）强制验证模型输出。违规输出直接被 Guardrail 拦截重试。
+                    </p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[11px] space-y-1">
+                        <div class="text-purple-400">// 输出强类型契约</div>
+                        <div>Must match: CodeReviewSchema</div>
+                        <div class="text-emerald-400">Strict mode: JSON syntax validate</div>
+                    </div>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>防止返回客套话与非法格式
+                </div>
+            </div>
+
+            <!-- Pillar 3: Fallback Degradation -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-xs font-semibold">
+                            Principle 03
+                        </span>
+                        <i class="fa-solid fa-life-ring text-emerald-600 text-lg"></i>
+                    </div>
+                    
+                    <h3 class="text-base font-bold text-slate-900 mb-2">
+                        降级容错机制 (Fallback Rules)
+                    </h3>
+                    
+                    <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+                        为概率模型定义“安全出口”。当置信度低或无法确定答案时，返回统一规范的标准 Error Code 而非凭空“瞎编”。
+                    </p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[11px] space-y-1">
+                        <div class="text-emerald-400">// 安全降级逻辑</div>
+                        <div>IF confidence < 0.8:</div>
+                        <div class="text-rose-400 pl-2">RETURN {"status": "UNSURE", ...}</div>
+                    </div>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500">
+                    <i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>消除幻觉给下游系统带来的毒化
+                </div>
+            </div>
+
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 p-4 font-mono text-xs text-slate-200 shadow-xl">
+            <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800 text-[11px]">
+                <span class="text-blue-400 font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-code"></i>
+                    <span>Industrial Defensive Prompt Pattern / 工业级防御提示词范例</span>
+                </span>
+                <span class="text-slate-400">System Contract Block</span>
+            </div>
+            
+            <div class="space-y-1.5 text-[11px] leading-relaxed">
+                <p class="text-emerald-400">&lt;defensive_rules&gt;</p>
+                <p class="text-slate-300 pl-4">1. <span class="text-amber-300">[Pre-condition]</span> 检查 &lt;input_code&gt; 是否包含完整函数定义。若不完整，直接抛出 ERR_INCOMPLETE_CODE。</p>
+                <p class="text-slate-300 pl-4">2. <span class="text-purple-300">[Constraint]</span> 严禁擅自修改类名或新增第三方未引用的 package。</p>
+                <p class="text-slate-300 pl-4">3. <span class="text-rose-300">[Fallback]</span> 如果涉及你不确定的 API（如私有 SDK），设置 confidence_score &lt; 0.7 并列出疑似依赖。</p>
+                <p class="text-emerald-400">&lt;/defensive_rules&gt;</p>
+            </div>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-3">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Takeaway / 架构小结</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        永远不要假设 LLM 会“默契地理解”极端情况。防御性 Prompt 的核心要求是：<strong>显式声明边界、明确拦截异常、规范降级输出</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <!-- Slide Progress Indicator -->
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">6</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[15%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (5.html <- 6.html -> 7.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Prompt 设计中的“防御性编程”思维</span>
+            <a href="7.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <!-- Shortcuts Hint with Clickable Arrow Links -->
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="5.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="7.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 概念类比教学：</span>
+                    “向学员强调：防御性编程（Defensive Programming）是软件工程的核心理念（如空指针检查、参数 Assert）。在 Prompt 工程中，大模型同样是脆弱的，必须用同样的思想去对待。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 解决工业级痛点：</span>
+                    “在真实开发中，最怕模型遇到不懂的问题时胡乱回答。通过显式约定降级输出 `status: UNSURE`，下游解析引擎就能触发人工介入（Human-in-the-loop）或启动兜底逻辑。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (5.html <- 6.html -> 7.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

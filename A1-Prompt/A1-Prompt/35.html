@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - 实战：设计一个代码重构与迁移 Agent 的 System Prompt</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>模块四实战演练 / Module 4: Hands-on Prompt Engineering</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                实战：设计一个代码重构与迁移 Agent 的 System Prompt
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                解构工业级重构 Agent 提示词架构：剖析 <span class="text-indigo-600 font-semibold">角色与作用域绑定</span>、<span class="text-purple-600 font-semibold">TDD 驱动四步工作流</span>、<span class="text-rose-600 font-semibold">API 向后兼容负向约束</span> 与 <span class="text-emerald-600 font-semibold">Tool-Call 强类型输出契约</span>
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: System Prompt Code Template vs Anatomy Breakdown Cards) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Production System Prompt Code Box -->
+            <div class="lg:col-span-7 rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-indigo-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>Production Migration Agent System Prompt Template</span>
+                        </span>
+                        <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">XML Tag Protocol</span>
+                    </div>
+
+                    <div class="space-y-1 text-slate-300 leading-relaxed overflow-x-auto">
+                        <div class="text-indigo-400">&lt;system_prompt&gt;</div>
+                        <div class="pl-2 text-slate-400">&lt;role&gt;<span class="text-slate-200">You are an Autonomous Code Migration & Refactoring Specialist. Your sole objective is to modernize legacy codebase while guaranteeing ZERO breaking changes.</span>&lt;/role&gt;</div>
+                        <br>
+                        <div class="pl-2 text-emerald-400">&lt;execution_workflow&gt;</div>
+                        <div class="pl-4 text-emerald-300">Step 1 [Analyze]: Run AST parser tool to build class dependency graph and public API signatures.</div>
+                        <div class="pl-4 text-emerald-300">Step 2 [TDD Guard]: Write a regression test suite covering all public methods before changing any code.</div>
+                        <div class="pl-4 text-emerald-300">Step 3 [Refactor]: Apply minimal patch (e.g. Convert to DTO/Record, Async I/O, Dependency Injection).</div>
+                        <div class="pl-4 text-emerald-300">Step 4 [Verify]: Execute sandbox test suite. If failed, analyze stacktrace and self-correct.</div>
+                        <div class="pl-2 text-emerald-400">&lt;/execution_workflow&gt;</div>
+                        <br>
+                        <div class="pl-2 text-rose-300">&lt;negative_constraints&gt;</div>
+                        <div class="pl-4 text-rose-200">1. NEVER change public method parameter types or return types without explicit approval.</div>
+                        <div class="pl-4 text-rose-200">2. NEVER import unapproved 3rd-party libraries. Stick to target stack specs.</div>
+                        <div class="pl-4 text-rose-200">3. Limit single patch modifications to &lt; 150 lines per turn.</div>
+                        <div class="pl-2 text-rose-300">&lt;/negative_constraints&gt;</div>
+                        <br>
+                        <div class="pl-2 text-amber-300">&lt;output_format_rules&gt;</div>
+                        <div class="pl-4 text-amber-200">Emit tool call inside <span class="text-amber-400">&lt;action&gt;</span> tag matching JSON Schema: {"tool": "apply_patch", "params": {...}}</div>
+                        <div class="pl-2 text-amber-300">&lt;/output_format_rules&gt;</div>
+                        <div class="text-indigo-400">&lt;/system_prompt&gt;</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-cat text-indigo-400 mr-1"></i>显式隔离 Role、Workflow、Negative Rules 与 Output Contract</span>
+                    <span class="text-amber-300">生产重构事故降至 0%</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Key Anatomical Elements Cards -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <!-- Element 1: Precise Role & Objective Binding -->
+                <div class="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-gear text-indigo-600"></i>
+                            <span>1. 角色职责与边界强锁定</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">Role Scope</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        不仅指定“你是重构专家”，更要明确目标（如将 Java 8 遗留单体转换为 Spring Boot 3 + Java 17 Record），消除漫无目的的自由发挥。
+                    </p>
+                </div>
+
+                <!-- Element 2: TDD Execution Loop -->
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-vial-circle-check text-emerald-600"></i>
+                            <span>2. TDD 强约束执行流水线</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">TDD Workflow</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        强制 Agent 在重构前先用工具生成回归单测（Red Phase），只有在沙箱中确认单测成功覆盖后才允许动主干代码。
+                    </p>
+                </div>
+
+                <!-- Element 3: Negative Constraints & Line Limits -->
+                <div class="rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ban text-rose-600"></i>
+                            <span>3. 强否定约束与单次 Diff 行数限制</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded">Patch Limit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        禁止篡改公共 API 签名、禁止引入未报备的第三方 Maven/NPM 包，并限制单 Turn 改动不超过 150 行，防止巨型 Patch 引发崩溃。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">向后兼容性 (Zero Breaking API)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        重构 Agent 的灵魂原则：内部逻辑可以颠覆性重构，但对外露出的 DTO / API 签名必须 100% 保持二向兼容。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">依赖图谱 AST 优先识别</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        要求模型首先通过 Tree-sitter / AST 工具输出 Class Dependency Graph，掌握全局上下文后再改写具体函数。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">结构化工具调用 (Tool Contracts)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        使用 Pydantic 或 JSON Schema 锁定工具入参（如 `patch_diff`），配合沙箱编译器实现无人值守自愈重构。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-base shrink-0">
+                    <i class="fa-solid fa-code-merge"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Refactoring Rule / 工业级提示词法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        重构 Agent 的 System Prompt 绝不是散乱的对话请求，而是<strong>“包含角色边界、TDD 步骤指引、否定负向规则与强类型工具契约”的完整软件工程控制流规范</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">实战：设计一个代码重构 Agent 的 System Prompt</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 实战带练 System Prompt 拆解：</span>
+                    “向学员强调：编写重构 Agent 的系统提示词时，最忌讳只写‘请帮我把这段代码重构好’。必须把重构拆解为四大固定板块：角色定位与目标、TDD 执行顺序、强否定约束（禁止篡改 API 签名）、以及工具调用的 JSON 格式规范。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 强调 TDD 保护与 Patch 限制：</span>
+                    “提醒学员：必须在规则里规定‘单次 Patch 行数不可超过 150 行’，并强迫 Agent 在修改主干代码前先写测试用例。这能将生产环境重构事故率直接降低 90% 以上。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (34.html <- 35.html -> 36.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

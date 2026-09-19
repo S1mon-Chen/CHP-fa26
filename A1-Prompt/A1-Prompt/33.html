@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 33 - 现代 AI 编程辅助工具（Cursor, Copilot, Cline）背后的 Prompt 架构</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Tool Architectures</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                现代 AI 编程辅助工具（Cursor, Copilot, Cline）背后的 Prompt 架构
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                揭秘顶级 AI 编程辅助工具的上下文构建框架：从 <span class="text-blue-600 font-semibold">GitHub Copilot FIM (Fill-In-the-Middle)</span>、<span class="text-purple-600 font-semibold">Cursor 语义索引与规则注入 (.cursorrules)</span> 到 <span class="text-emerald-600 font-semibold">Cline (Claude Dev) 自主工具循环与系统提权</span>
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: Tool Architecture Comparative Analysis vs Design Principles) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Detailed Architectural Breakdown Box -->
+            <div class="lg:col-span-7 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group"></i>
+                            <span>AI Coding Tool Context & Prompt Construction Paradigms</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">IDE Architecture</span>
+                    </div>
+
+                    <!-- 3 Tools Architecture Comparison -->
+                    <div class="space-y-2 text-slate-300 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Tool 1: GitHub Copilot (FIM) -->
+                        <div class="p-2 rounded-xl bg-slate-800/90 border border-slate-700">
+                            <div class="flex justify-between items-center text-blue-300 font-bold mb-1">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-brands fa-github text-blue-400"></i>
+                                    <span>1. GitHub Copilot: FIM (Fill-In-the-Middle) & Local Neighbor Attention</span>
+                                </span>
+                                <span class="text-[9px] bg-blue-950 text-blue-300 px-1.5 py-0.5 rounded">Completion &lt; 100ms</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-1.5 rounded border border-slate-800 text-[10px] space-y-0.5">
+                                <div class="text-amber-300 font-bold">&lt;PRE&gt; Prefix Code ... &lt;SUF&gt; Suffix Code ... &lt;MID&gt; [Predicted Infill Code]</div>
+                                <div class="text-slate-400">利用 IDE 打开的受关照 Tab 页（Neighbor Tabs）加权组装 Prefix/Suffix，极度追求推理延迟与光标精准推演。</div>
+                            </div>
+                        </div>
+
+                        <!-- Tool 2: Cursor (Semantic RAG & .cursorrules) -->
+                        <div class="p-2 rounded-xl bg-slate-800/90 border border-slate-700">
+                            <div class="flex justify-between items-center text-purple-300 font-bold mb-1">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-purple-400"></i>
+                                    <span>2. Cursor: Repo-wide RAG + AST Merkle Tree + `.cursorrules`</span>
+                                </span>
+                                <span class="text-[9px] bg-purple-950 text-purple-300 px-1.5 py-0.5 rounded">Context Engine</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-1.5 rounded border border-slate-800 text-[10px] space-y-0.5">
+                                <div class="text-purple-300 font-bold">Injects Project System Rules + Multi-file AST Skeleton + Active Diff Spec</div>
+                                <div class="text-slate-400">结合全项目向量索引与文件依赖关系，将 `.cursorrules` 作为强制 System Prompt 指令压入，支持全局多文件 Agent 重构。</div>
+                            </div>
+                        </div>
+
+                        <!-- Tool 3: Cline / Roo Code (Autonomous ReAct) -->
+                        <div class="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/50">
+                            <div class="flex justify-between items-center text-emerald-300 font-bold mb-1">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-terminal text-emerald-400"></i>
+                                    <span>3. Cline (Claude Dev): Full System Tools + ReAct Loop + HITL Gate</span>
+                                </span>
+                                <span class="text-[9px] bg-emerald-900 text-emerald-200 px-1.5 py-0.5 rounded">Autonomous Agent ★</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-900/50 text-[10px] space-y-0.5">
+                                <div class="text-emerald-200 font-bold">Tools: execute_command(), write_to_file(), read_file(), ask_followup()</div>
+                                <div class="text-slate-300">完全暴露 Bash 与终端权限，结合显式工具调用与人类确认卡扣（Human-in-the-loop Gate），支持独立跑单测与修复。</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-microchip text-blue-400 mr-1"></i>从“光标单行补全”演进为“全局系统级自主 Agent”</span>
+                    <span class="text-emerald-300">Prompt 复杂度升维 100x</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Core Structural Components Cards -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <!-- Component 1: Fill-In-the-Middle (FIM) -->
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-scissors text-blue-600"></i>
+                            <span>FIM (Fill-In-the-Middle) 填空模式</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Copilot Core</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        训练模型识别 `<PRE>` (Prefix) 与 `<SUF>` (Suffix)，强制模型在光标所在位置吐出 `<MID>` 中间插入代码，确保生成与下文语法绝对缝合。
+                    </p>
+                </div>
+
+                <!-- Component 2: System Rules Injection -->
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gears text-purple-600"></i>
+                            <span>项目定制规则 (.cursorrules Injection)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Cursor Feature</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        将仓库根目录下的 `.cursorrules` 文件解析并强制作为最高优先级 System Instructions，锁定特定框架（如 Tailwind/Next.js App Router）规范。
+                    </p>
+                </div>
+
+                <!-- Component 3: HITL Safety & Shell Sandbox -->
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-shield text-emerald-600"></i>
+                            <span>HITL 终端命令安全卡扣 (Cline Pattern)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Cline Safety</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        在运行 Bash 命令（如 `npm run test` 或 `rm -rf`）时，Agent 强制挂起并向开发者展示可视化 Approval 弹窗，防止终端提权误操作。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">相邻 Tab 缓存切片 (Neighbor Tabs)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Copilot 等工具会优先装载同项目下最近打开的 3~5 个文件，充当微型本地上下文（Working Memory）。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">AST 剪枝 + Diff 图匹配</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Cursor 不把全量代码灌入 Prompt，而是通过 Tree-sitter 提取 AST 接口骨架，只对 Git Diff 区域放大上下文。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">Terminal 执行即 Observation</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Cline 等工具把终端跑单测抛出的 stderr 直接装入 `Observation` 标签，驱动 Agent 在内部完成闭环 Self-Correction。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-laptop-code"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Tool Prompting Rule / 工具架构演进法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        现代 AI 编程辅助工具的竞争本质是<strong>“上下文工程（Context Engineering）与系统提权沙箱（HITL Control Loop）的竞争”</strong>；掌握这三大 Prompt 架构，才能构建出真正理解复杂企业级 Codebase 的智能 Copilot。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">33</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[82.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (32.html <- 33.html -> 34.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="32.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">现代 AI 编程辅助工具背后的 Prompt 架构</span>
+            <a href="34.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="32.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="34.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲授主流 AI 编程工具的 3 阶段演进：</span>
+                    “向学员剖析：AI 编程工具经历了三个时代：第一代以 GitHub Copilot 为代表，主打 **FIM (Fill-In-the-Middle)** 快速单行代码补全；第二代以 Cursor 为代表，引入全项目向量索引、AST 剪枝与项目规则文件 (`.cursorrules`)；第三代以 Cline (Claude Dev) / Roo Code 为代表，赋予 Agent 终端与文件读写系统权限，进入完全自主的 ReAct Agent 闭环。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 强调安全卡扣与 HITL (Human-in-the-Loop)：</span>
+                    “提示学员：当工具具备直接改写文件系统和运行终端 Shell 命令时，必须在 Prompt 和 IDE 交互层设计 **Human-in-the-Loop 授权卡扣**，防止模型在不经意间执行 `rm -rf` 或修改安全配置。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (32.html <- 33.html -> 34.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '32.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '34.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

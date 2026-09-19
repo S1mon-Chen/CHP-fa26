@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 上下文（Context）的物理结构与注意力陷阱</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <!-- Background Soft Glow -->
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title & Meta -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-memory"></i>
+                <span>上下文物理架构与注意力瓶颈</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                LLM 上下文（Context）的物理结构与注意力陷阱
+            </h1>
+            
+            <p class="text-base md:text-xl font-medium text-slate-600 max-w-4xl leading-relaxed">
+                剖析 Context Window 的内存物理排布，警惕 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2">“Lost in the Middle (中间迷失)”</span> 注意力衰减曲线
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+            
+            <!-- Context Window Memory Layout (Left 5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-slate-200 bg-white p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group text-blue-600"></i>
+                            <span>Context Window 物理内存栈</span>
+                        </h3>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600">
+                            Sequential Tokens
+                        </span>
+                    </div>
+
+                    <div class="space-y-2 font-mono text-xs">
+                        <!-- System Prompt Block -->
+                        <div class="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                                <span class="font-bold">1. System Prompt</span>
+                            </div>
+                            <span class="text-[10px] text-blue-600">高注意力区 (0-10%)</span>
+                        </div>
+
+                        <!-- User RAG Context / Documents -->
+                        <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                <span>2. RAG Code / Doc Chunks</span>
+                            </div>
+                            <span class="text-[10px] text-amber-700 font-semibold">注意力盲区 (30-70%)</span>
+                        </div>
+
+                        <!-- Few-Shot Examples -->
+                        <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                                <span>3. Few-Shot Demonstration</span>
+                            </div>
+                            <span class="text-[10px] text-slate-500">衰减过渡区</span>
+                        </div>
+
+                        <!-- Current Task / Tail Rules -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                <span class="font-bold">4. User Query + Tail Re-statement</span>
+                            </div>
+                            <span class="text-[10px] text-emerald-600">高注意力区 (90-100%)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-500"></i>
+                    <span>头尾双侧重（Recency & Primacy Effect）驱动生成质量。</span>
+                </div>
+            </div>
+
+            <!-- Lost in the Middle Curve & Experiment (Right 7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-rose-500"></i>
+                            <span>“Lost in the Middle” U型注意力衰减曲线</span>
+                        </h3>
+                        <span class="text-[10px] font-mono text-rose-600 font-semibold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            Liu et al. (Stanford)
+                        </span>
+                    </div>
+
+                    <!-- SVG Curve Representation -->
+                    <div class="bg-slate-900 rounded-xl p-4 mb-4 text-white">
+                        <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
+                            <span>Token Position 0% (Head)</span>
+                            <span>50% (Middle)</span>
+                            <span>100% (Tail)</span>
+                        </div>
+                        
+                        <div class="relative h-20 w-full flex items-end">
+                            <!-- Visual U-curve using SVG path -->
+                            <svg class="w-full h-full overflow-visible" viewBox="0 0 300 70" preserveAspectRatio="none">
+                                <path d="M 0 10 Q 150 65 300 10" fill="none" stroke="#e11d48" stroke-width="3"/>
+                                <!-- Highlight middle drop area -->
+                                <circle cx="150" cy="52" r="5" fill="#f43f5e" />
+                            </svg>
+                            <div class="absolute top-12 left-1/2 -translate-x-1/2 text-center">
+                                <span class="bg-rose-900/80 text-rose-200 text-[10px] font-mono px-2 py-0.5 rounded border border-rose-700">
+                                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>信息检索准确率降至最低 (&lt;40%)
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Practical Experiment Comparison -->
+                    <div class="grid grid-cols-2 gap-3 font-mono text-[11px]">
+                        <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900">
+                            <div class="font-bold mb-1 text-rose-700 flex items-center gap-1">
+                                <i class="fa-solid fa-xmark"></i> 错误策略 (Middle Placement)
+                            </div>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                将关键 API 阻断约束隐藏在 10k Token 的长文档中部（第 5000 位置）。<br>
+                                <strong class="text-rose-700">结果：模型忽略约束，产生非法调用。</strong>
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                            <div class="font-bold mb-1 text-emerald-700 flex items-center gap-1">
+                                <i class="fa-solid fa-check"></i> 架构策略 (Tail Pinning)
+                            </div>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                System Prompt 声明规则 + User Query 尾部重申核心约束。<br>
+                                <strong class="text-emerald-700">结果：规则遵循率从 38% 提升至 99%。</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500">
+                    <i class="fa-solid fa-lightbulb text-amber-500 mr-1"></i>
+                    <strong>架构规则：</strong>严禁把“必须强制执行的负向约束”夹杂在巨量检索文档中间！
+                </div>
+            </div>
+
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 text-lg shrink-0">
+                    <i class="fa-solid fa-anchor"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Takeaway / 架构小结</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        长上下文窗口不等于“无限注意力”。在设计工程系统时，必须使用 <strong>“尾部锚定 (Tail Pinning)”</strong> 机制，将核心指令拉回至 Token 序列末尾。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <!-- Slide Progress Indicator -->
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">4</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[10%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">LLM 上下文的物理结构与注意力陷阱</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <!-- Shortcuts Hint with Clickable Arrow Links -->
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 现象解释 (Lost in the Middle)：</span>
+                    “Stanford 的 Liu 等人研究发现，大模型在长文本处理中呈现典型的 U 型注意力曲线：对序列开头（Primacy）和结尾（Recency）的注意程度最高，中间 30%~70% 的信息非常容易被遗忘。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 架构对抗方案：</span>
+                    “在构建 Agent 或 RAG 上下文时，不要以为把所有接口文档一股脑装进上下文就万事大吉了。如果有一个极度重要的校验规约，一定要采用**‘首尾双重锚定 (System + Tail Re-statement)’**的模式重新植入到 Prompt 底部。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (3.html <- 4.html -> 5.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

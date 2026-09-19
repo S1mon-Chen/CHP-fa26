@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实战：使用 Pydantic 定义代码审查结构化契约</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-file-signature"></i>
+                <span>模块二：结构化上下文与确定性输出</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                实战：使用 Pydantic 定义代码审查结构化契约
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                从 <span class="text-blue-600 font-semibold">Pydantic 契约模型</span> 到 <span class="text-purple-600 font-semibold">ValidationError 自动重试闭环</span>，实现直接注入 GitHub PR / GitLab CI/CD 的生产级代码审查器
+            </p>
+        </div>
+
+        <!-- Main Grid Layout -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Production Pydantic Contract Code -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-emerald-400 font-bold flex items-center gap-2">
+                            <i class="fa-brands fa-python"></i>
+                            <span>Production-Grade Pydantic DTO Schema</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">Field Validation Active</span>
+                    </div>
+
+                    <div class="space-y-1 text-slate-300 leading-relaxed overflow-x-auto">
+                        <div class="text-purple-400">from enum import Enum</div>
+                        <div class="text-purple-400">from pydantic import BaseModel, Field, field_validator</div>
+                        <div class="text-purple-400">from typing import List, Optional</div>
+                        <br>
+                        <div class="text-blue-400">class SeverityLevel(str, Enum):</div>
+                        <div class="pl-4 text-emerald-300">CRITICAL = "CRITICAL"  <span class="text-slate-500"># 严重问题，卡死 Build</span></div>
+                        <div class="pl-4 text-emerald-300">WARNING = "WARNING"    <span class="text-slate-500"># 性能或规范警告</span></div>
+                        <div class="pl-4 text-emerald-300">INFO = "INFO"          <span class="text-slate-500"># 建议优化项</span></div>
+                        <br>
+                        <div class="text-blue-400">class CodeIssue(BaseModel):</div>
+                        <div class="pl-4 text-slate-300">file_path: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"相对项目根目录的文件路径"</span>)</div>
+                        <div class="pl-4 text-slate-300">line_number: <span class="text-emerald-300">int</span> = Field(description=<span class="text-amber-200">"产生 Bug 或不规范的代码精确行号"</span>)</div>
+                        <div class="pl-4 text-slate-300">severity: <span class="text-emerald-300">SeverityLevel</span></div>
+                        <div class="pl-4 text-slate-300">rule_id: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"违背的规则编号, 如 SEC-001"</span>)</div>
+                        <div class="pl-4 text-slate-300">suggestion: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"具体且可落地的修复指导"</span>)</div>
+                        <div class="pl-4 text-slate-300">diff_patch: <span class="text-emerald-300">Optional[str]</span> = Field(default=None, description=<span class="text-amber-200">"建议修改的 Unified Diff 片段"</span>)</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i>Field description 作为语义锚点给 LLM 提示</span>
+                    <span class="text-amber-300">原生支持 Json Schema 导出</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Execution Pipeline & Self-Correction Loop -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-3">
+                
+                <!-- Pipeline Card 1: Automatic Re-try Loop -->
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate text-blue-600"></i>
+                            <span>ValidationError 自动容错重试机制</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Instructor / Retry</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed mb-2">
+                        当 LLM 返回非预期格式（例如 `line_number` 填了字符串 `"42"`），Pydantic 校验抛出异常，捕获堆栈并自动发起 2nd-turn 修复：
+                    </p>
+                    <div class="bg-slate-900 text-slate-200 rounded-lg p-2 font-mono text-[10px] space-y-0.5">
+                        <div class="text-rose-400">// Exception Caught -> Auto Prompt Injection</div>
+                        <div class="text-slate-400">"Validation Error in `line_number`: value is not a valid integer. Please fix this field and return JSON again."</div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Card 2: GitHub PR Action Integration -->
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-brands fa-github text-emerald-700"></i>
+                            <span>GitHub / GitLab Inline Comment 直连</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Zero Parser Logic</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed mb-1">
+                        反序列化后的 `CodeReviewReport` 实例拥有 100% 类型保护，可直接映射为 GitHub REST API 属性，零正则表达式解析：
+                    </p>
+                    <div class="bg-slate-900 text-emerald-300 rounded-lg p-2 font-mono text-[10px]">
+                        <div>gh_api.create_review_comment(</div>
+                        <div class="pl-3 text-slate-300">path=issue.file_path, line=issue.line_number,</div>
+                        <div class="pl-3 text-slate-300">body=f"<span class="text-amber-300">[{issue.severity}]</span> {issue.suggestion}"</div>
+                        <div>)</div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Card 3: Metrics & Quality Gate -->
+                <div class="rounded-2xl border border-slate-200 bg-white p-3.5 soft-shadow flex items-center justify-between">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-bold shrink-0">
+                            <i class="fa-solid fa-gauge-high"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-slate-900">工程吞吐表现</div>
+                            <div class="text-[10px] text-slate-500">解析崩溃率: 0.00% | 1 次重试修补率: 99.4%</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-800 text-lg shrink-0">
+                    <i class="fa-solid fa-network-wired"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Takeaway / 架构师原则</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        Pydantic 模型不仅是 Python 的验证类，更是<strong>将大模型转变为标准强类型 RPC 微服务的核心契约文件</strong>。所有输入与输出字段都必须拥有显式的 `Field(description=...)` 描述以引导 Sampling。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">12</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[30%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (11.html <- 12.html -> 13.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">实战：使用 Pydantic 定义代码审查结构化契约</span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="11.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="13.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 强调 `Field(description=...)` 的双重作用：</span>
+                    “向学员说明：Pydantic 的 `description` 属性不仅是代码注释，在生成 JSON Schema 传递给 LLM 时，它会作为 API Schema 的文档直接注入 Prompt，是引导 LLM 正确理解数据语义的最佳位置。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 讲解自动重试闭环（Retry Loop）：</span>
+                    “在生产工程中，即使偶发格式报错也不要紧。使用 Instructor 或 Pydantic 校验捕获 `ValidationError`，把报错的 Traceback 拼接入第 2 轮对话重新请求，模型 100% 能够在第 2 轮修正过来。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (11.html <- 12.html -> 13.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 文本生成底层原理：自回归与注意力机制简析</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <!-- Background Soft Ambient Glow -->
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Top Meta Badge & Title -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-calculator"></i>
+                <span>LLM 底层计算机制与特性</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                LLM 文本生成底层原理：自回归与注意力机制简析
+            </h1>
+            
+            <p class="text-base md:text-xl font-medium text-slate-600 max-w-4xl leading-relaxed">
+                理解 Token 概率预测模型如何推演代码，以及为何 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2">“前文的微小偏差”</span> 会导致 <span class="text-rose-700 font-bold underline decoration-rose-400 decoration-2">“灾难性代码漂移 (Error Cascading)”</span>
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-3 gap-5">
+            
+            <!-- Principle 1: Autoregressive Generation -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-mono text-xs font-semibold">
+                            原理 01
+                        </span>
+                        <i class="fa-solid fa-arrow-right-long text-blue-500"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-repeat text-blue-600"></i>
+                        <span>自回归生成 (Autoregression)</span>
+                    </h3>
+                    <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+                        LLM 本质是一个逐 Token 的条件概率预测器，依据历史所有 Token 推算下一位置的概率分布：
+                    </p>
+                    
+                    <!-- Formula Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-xs mb-4 shadow-inner">
+                        <div class="text-blue-400 text-[10px] mb-1">// Token 条件概率公式</div>
+                        <p class="font-bold">P(w<sub>t</sub> | w<sub>1</sub>, w<sub>2</sub>, ..., w<sub>t-1</sub>)</p>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-600">
+                        <div class="p-2 rounded bg-slate-50 border border-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-bolt text-amber-500 shrink-0"></i>
+                            <span>单向推演：无原生“事后重写”机制。</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-50 border border-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-code text-slate-500 shrink-0"></i>
+                            <span>代码逐行生成，后文强依赖前文语法。</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Principle 2: Self-Attention Mechanism -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-mono text-xs font-semibold">
+                            原理 02
+                        </span>
+                        <i class="fa-solid fa-network-wired text-purple-500"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-bullseye text-purple-600"></i>
+                        <span>自注意力权值 (Self-Attention)</span>
+                    </h3>
+                    <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+                        计算当前生成 Token 与上下文已有 Token 之间的关联度（$QK^T$ 点积注意力）：
+                    </p>
+
+                    <!-- Formula Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-xs mb-4 shadow-inner">
+                        <div class="text-purple-400 text-[10px] mb-1">// Scaled Dot-Product Attention</div>
+                        <p class="font-bold">Attention(Q,K,V) = softmax(QK<sup>T</sup> / √d<sub>k</sub>)V</p>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-600">
+                        <div class="p-2 rounded bg-slate-50 border border-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-brain text-purple-500 shrink-0"></i>
+                            <span>上下文关联：建立变量声明与调用的映射。</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-50 border border-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-eye-slash text-slate-500 shrink-0"></i>
+                            <span>注意力衰减：长距离导致关键接口被忽略。</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Principle 3: Error Cascading Effect -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/40 p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-mono text-xs font-semibold">
+                            架构风险
+                        </span>
+                        <i class="fa-solid fa-triangle-exclamation text-rose-500"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-slate-900 mb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-person-falling-burst text-rose-600"></i>
+                        <span>错误级联效应 (Error Cascading)</span>
+                    </h3>
+                    <p class="text-xs text-slate-700 mb-4 leading-relaxed">
+                        当 prompt 或生成早期产生了一个微小错误（如错别字或虚构方法名），模型将该错误加入 Context 后：
+                    </p>
+
+                    <!-- Error Propagation Diagram -->
+                    <div class="bg-white border border-rose-200 rounded-xl p-3 text-xs space-y-1.5 mb-4 shadow-sm font-mono">
+                        <div class="flex items-center text-rose-600 font-semibold text-[11px]">
+                            <span>1. 初始提示模糊 / 误导</span>
+                        </div>
+                        <div class="text-slate-400 text-[10px] pl-3">↓ 自回归把错误作为已知条件</div>
+                        <div class="flex items-center text-rose-700 font-semibold text-[11px]">
+                            <span>2. 产生幻觉 API / 错误类型定义</span>
+                        </div>
+                        <div class="text-slate-400 text-[10px] pl-3">↓ 强行自我圆谎 (Self-Consistency Failure)</div>
+                        <div class="flex items-center text-rose-900 font-bold text-[11px] bg-rose-100 p-1 rounded">
+                            <span>3. 灾难性代码崩塌 / 彻底无法编译</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-rose-800 font-medium">
+                        这就是为什么需要在输入端做强类型与 XML 隔断的本质原因！
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Insight / 架构师洞察</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        LLM 缺乏编译器的“前瞻词法分析”与“回溯修改”能力。因此，指令工程的核心任务是**在初始上下文（Step 0）建立绝对清晰的约束**，截断错误级联链条。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <!-- Slide Progress Indicator -->
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">2</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (Explicit Links: prev -> 1.html, next -> 3.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="1.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">LLM 文本生成底层原理</span>
+            <a href="3.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <!-- Shortcuts Hint with Clickable Arrow Links -->
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="1.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="3.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿与原理解析</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 授课切入点：</span>
+                    “请大家注意，人类写代码时会不断按 Backspace 键回删重写，但 **LLM 原生生成过程是单向自回归的**。它产生每一个 Token 都是基于之前已经生成的序列。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 解释 Error Cascading (错误级联)：</span>
+                    “假设 Prompt 里给了一个拼写错误的接口名 `getUserInfomation()`（多了个 m），模型在后面的几百行代码中，为了保持条件概率的自洽，会被迫一直使用并推演这个错误的接口，甚至虚构出配套的错误 DTO 类。这就是错误级联效应。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">📌 引出下一页：</span>
+                    “理解了自回归的单向性与注意力的衰减，我们就能明白为什么结构化 Prompt、类型约束与 XML 隔离是唯一的解法。接下来我们看什么是结构化指令工程。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        // Toggle Speaker Notes Drawer
+        function toggleSpeakerNotes() {
+            const drawer = document.getElementById('speakerNotesDrawer');
+            drawer.classList.toggle('hidden');
+        }
+
+        // Toggle Fullscreen
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // Keyboard Shortcuts for Page Turning (1.html <- 2.html -> 3.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '1.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

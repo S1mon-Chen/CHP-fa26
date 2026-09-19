@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - ReAct (Reasoning + Acting) 范式深度解析</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-gears"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Skill & Function Calling</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                ReAct (Reasoning + Acting) 范式深度解析
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Yao et al. (2022) 经典范式：将 <span class="text-blue-600 font-semibold">思考 (Thought)</span>、<span class="text-amber-600 font-semibold">行动 (Action)</span> 与 <span class="text-emerald-600 font-semibold">观察 (Observation)</span> 交织轮替，构建具备物理世界自我感知与动态矫正能力的 Agent 决策闭环
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: Interleaved ReAct Trace vs Architectural Principles) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Interactive ReAct Execution Loop Diagram -->
+            <div class="lg:col-span-7 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-rotate-right"></i>
+                            <span>ReAct Interleaved Execution Engine Trace</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">Yao et al. 2022</span>
+                    </div>
+
+                    <!-- ReAct Steps Sequence -->
+                    <div class="space-y-2 text-slate-300 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Task Input -->
+                        <div class="p-2 rounded-xl bg-slate-800/80 border border-slate-700">
+                            <span class="text-indigo-300 font-bold">[Task Query]:</span> "排查 `auth_service.py` 登录失败抛出 KeyError 的根因并修复"
+                        </div>
+
+                        <!-- Turn 1: Thought 1 -> Action 1 -> Obs 1 -->
+                        <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-700 space-y-1">
+                            <div class="text-blue-300 font-bold"><i class="fa-solid fa-brain mr-1"></i>Thought 1:</div>
+                            <div class="text-slate-300 pl-3">"我需要首先找到 `auth_service.py` 文件中关于密钥解包的位置"</div>
+                            
+                            <div class="text-amber-300 font-bold"><i class="fa-solid fa-bolt mr-1"></i>Action 1:</div>
+                            <div class="text-amber-200 pl-3">file_search(pattern="auth_service.py")</div>
+                            
+                            <div class="text-emerald-300 font-bold"><i class="fa-solid fa-eye mr-1"></i>Observation 1:</div>
+                            <div class="text-emerald-200/90 pl-3">Found: `./src/services/auth_service.py` (Line 42: `payload['user_id']`)</div>
+                        </div>
+
+                        <!-- Turn 2: Thought 2 -> Action 2 -> Obs 2 -->
+                        <div class="p-2.5 rounded-xl bg-slate-800/40 border border-slate-700 space-y-1">
+                            <div class="text-blue-300 font-bold"><i class="fa-solid fa-brain mr-1"></i>Thought 2:</div>
+                            <div class="text-slate-300 pl-3">"源码直接从 JWT payload 拿 `user_id`，但最新 OAuth2 规范返回的是 `sub`。让我跑单测确认"</div>
+                            
+                            <div class="text-amber-300 font-bold"><i class="fa-solid fa-bolt mr-1"></i>Action 2:</div>
+                            <div class="text-amber-200 pl-3">execute_pytest(test_path="tests/test_auth.py")</div>
+                            
+                            <div class="text-rose-300 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Observation 2 (Error Grounding):</div>
+                            <div class="text-rose-200/90 pl-3">FAILED: `KeyError: 'user_id'` in `payload.get('sub')` scenario.</div>
+                        </div>
+
+                        <!-- Turn 3: Final Solution -->
+                        <div class="p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500">
+                            <div class="text-emerald-300 font-bold flex items-center justify-between mb-0.5">
+                                <span>Thought 3 & Final Action: 自动发起修补</span>
+                                <span class="text-[9px] bg-emerald-900 text-emerald-200 px-1.5 py-0.5 rounded">Fixed & Pass ★</span>
+                            </div>
+                            <div class="text-emerald-200 pl-3">Replaced `payload['user_id']` with `payload.get('user_id') or payload.get('sub')`. Tests passed!</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-arrows-spin text-blue-400 mr-1"></i>交织闭环: Thought $\to$ Action $\to$ Observation $\to$ Thought</span>
+                    <span class="text-amber-300">Grounding 现实锚定</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Core Mechanisms & Why ReAct Outperforms -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-link text-blue-600"></i>
+                            <span>推理与动作的协同协同 (Synergy)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Core Value</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        Thought 负责规划方向并维护长期目标上下文，Action 将意图转化为系统调用，Observation 则从物理世界拉取绝对事实，防止 Thought 无根脑补。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                            <span>实时消杀幻觉 (Error Grounding)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Fact Checking</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        在单纯思维链中，错误的中间猜测会自我强化；而在 ReAct 循环中，Bash 命令或 Pytest 的失败堆栈 (Observation) 会立刻刺破推理幻觉，强制触发修补。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-terminal text-purple-600"></i>
+                            <span>状态可观测与追踪 (Traceability)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Observability</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        显式输出的 `Thought` 为开发者与可观测性平台（如 LangSmith / OpenTelemetry）提供了清淅的 Agent 心理轨迹，极易进行单步 Debug 与 Audit。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">强结构化解析契约</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        要求 LLM 使用固定的 XML 标签（如 `<thought>`, `<action>`）或原生的 Function Calling 格式，确保解析器可靠提取工具入参。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">最大步骤限制 (Max Steps = 10~15)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        必须设置硬性终止计数器与死循环熔断器，防止 Agent 在重复的无效 Action/Observation 中耗尽 API 预算。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">过渡至 Skill & Tool Schema</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        ReAct 范式中的 Action 触发，正是模块四核心技术——Function Calling 与 Skill Schema 暴定义的基础。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural ReAct Rule / 闭环决策法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        ReAct 范式是构建自主 AI Agent 的第一基石：通过将<strong>“内部大脑推理 (Thought)”与“外部物理工具执行 (Action & Observation)”同步交织</strong>，彻底破解模型的封闭黑盒与盲目猜测。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReAct (Reasoning + Acting) 范式深度解析</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 ReAct 核心灵感 (Yao et al. 2022)：</span>
+                    “向学员强调：人类工程师在排查线上 Bug 时，绝不是干坐在椅子上心算完所有的代码。我们总是看一眼日志（Observation），推测可能是哪个方法有 Bug（Thought），然后用 grep 检索源码或跑一次单测（Action），再根据输出进行调优。ReAct 范式就是将这种人类调试闭环形式化到了 Prompt 与系统调用里。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 衔接后文 (Function Calling 与 Skill Schema)：</span>
+                    “向学员引出：在 ReAct 范式中，Agent 输出的 `Action: file_search(...)`，在早期是用正则提取文本，而今天在工业界，这已经升级为原生的 **Function Calling / Skill Calling API**。下一页我们将正式解操企业级 Skill 的定义与 Schema 设计。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (26.html <- 27.html -> 28.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

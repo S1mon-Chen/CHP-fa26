@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - ReAct 的常见失效模式与恢复机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Runtime Fault Tolerance</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                ReAct 的常见失效模式与恢复机制
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Agent 运行时的 4 大经典崩塌陷阱：解构 <span class="text-rose-600 font-semibold">死循环 (Infinite Action Loop)</span>、<span class="text-amber-600 font-semibold">语法/Schema 解析崩溃</span>、<span class="text-purple-600 font-semibold">Observation 上下文爆表</span> 与 <span class="text-blue-600 font-semibold">环境状态不对齐</span>，并建立自愈型架构控制流
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: 4 Failure Modes vs Self-Healing Architecture) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 6 Cols: 4 Classic ReAct Failure Modes -->
+            <div class="lg:col-span-6 space-y-2.5 flex flex-col justify-between">
+                
+                <!-- Failure Mode 1: Infinite Action Loop -->
+                <div class="rounded-2xl border border-rose-200 bg-rose-50/30 p-3 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-spin text-rose-600"></i>
+                            <span>1. 动作死循环 (Infinite Action Loop)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded">Repeated Action</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        LLM 陷入固定概率陷阱，重复调用完全相同参数的工具（例如反复执行 <code class="bg-rose-100 text-rose-800 px-1 rounded">ls -la</code>），导致 Agent 耗尽 Token 预算而无法向目标推进。
+                    </p>
+                </div>
+
+                <!-- Failure Mode 2: Tool Schema & JSON Syntax Errors -->
+                <div class="rounded-2xl border border-amber-200 bg-amber-50/30 p-3 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bug text-amber-600"></i>
+                            <span>2. 语法/Schema 解析崩溃 (Syntax/Schema Failure)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Parse Error</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        吐出的 JSON 缺少双引号、包含未转义的多行字符串或遗漏必填参数字段。若 Controller 抛出异常直接中断主进程，Agent 任务便提前夭折。
+                    </p>
+                </div>
+
+                <!-- Failure Mode 3: Observation Log Overflow -->
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-purple-600"></i>
+                            <span>3. Observation 日志过长 (Context Window Overflow)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Context Bloat</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        工具（如 <code class="bg-purple-100 text-purple-800 px-1 rounded">npm install</code> 或全量 Maven Build）抛出数万行原始日志，瞬间挤爆上下文窗口，导致之前积累的 System Instructions 与中间推理全盘丢弃。
+                    </p>
+                </div>
+
+                <!-- Failure Mode 4: Environmental State Desync -->
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ghost text-blue-600"></i>
+                            <span>4. 环境物理状态不对齐 (State Desync / Zombie Process)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Zombie State</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        前一次 Action 在沙箱中占用了端口或残留了后台锁（如未关闭的子进程），后续 Step 误以为环境清洁，持续报端口冲突引发无法解释的连锁故障。
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Right 6 Cols: Production Recovery Mechanisms Code & Architecture Box -->
+            <div class="lg:col-span-6 rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-emerald-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-kit-medical"></i>
+                            <span>Self-Healing Agent Controller Architecture</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">Runtime Safeguards</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-slate-300 leading-relaxed overflow-x-auto">
+                        <!-- Solution 1: Action Hash Deduplication -->
+                        <div class="p-2 rounded-xl bg-slate-800/90 border border-slate-700">
+                            <div class="text-blue-300 font-bold text-[10px] mb-0.5">[Fix 1] Hash Deduplication Guard</div>
+                            <div class="text-slate-300 text-[10px]">
+                                Controller 维护 `seen_actions` 哈希集合。若相同参数连踩 2 次，自动插入系统警告：
+                                <span class="text-rose-300 font-bold">"Warning: You performed this EXACT action twice with same output. Change your strategy!"</span>
+                            </div>
+                        </div>
+
+                        <!-- Solution 2: Error Feedback Injection -->
+                        <div class="p-2 rounded-xl bg-slate-800/90 border border-slate-700">
+                            <div class="text-amber-300 font-bold text-[10px] mb-0.5">[Fix 2] Syntax Error Feedback Reprompt</div>
+                            <div class="text-slate-300 text-[10px]">
+                                JSON 解析失败时不 Crash，而是包装为特殊 Observation 回写：
+                                <span class="text-amber-200">`Observation: ValidationError in param 'filepath': field required. Please fix JSON.`</span>
+                            </div>
+                        </div>
+
+                        <!-- Solution 3: Smart Log Pruning -->
+                        <div class="p-2 rounded-xl bg-slate-800/90 border border-slate-700">
+                            <div class="text-purple-300 font-bold text-[10px] mb-0.5">[Fix 3] AST / Tail Log Pruning</div>
+                            <div class="text-slate-300 text-[10px]">
+                                日志若超过 2000 Tokens，使用正则提取 <span class="text-purple-200">`ERROR` / `FAILED` 关键行 + 尾部 50 行</span>，其余用 `/* ... [14,200 lines truncated] ... */` 替换。
+                            </div>
+                        </div>
+
+                        <!-- Solution 4: Sandbox State Reset -->
+                        <div class="p-2 rounded-xl bg-emerald-950/50 border border-emerald-500">
+                            <div class="text-emerald-300 font-bold text-[10px] mb-0.5">[Fix 4] Container Snapshot & Cleandown</div>
+                            <div class="text-emerald-200 text-[10px]">
+                                关键 Step 后自动触发清理脚本（如 <code class="bg-emerald-900 px-1 rounded">pkill -f node</code> 与 <code class="bg-emerald-900 px-1 rounded">git checkout .</code>），隔离物理有状态干扰。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i>从“一错就崩”提升至“容错自愈”</span>
+                    <span class="text-emerald-300">Robustness +95% ★</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">`Hash(Action)` 去重熔断</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        在 Controller 中维护历史 Action 指纹，检测到无意义重复操作时强行向 LLM 注入方向纠偏指令。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">错误堆栈即 Feedback</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        将工具执行失败、解析失败的 Traceback 转化为 `Observation` 喂回模型，让 LLM 在下一 Turn 自我修补。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">智能日志截断 (Log Pruning)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        严禁海量 Shell 日志直接灌入上下文，必须保留堆栈报错上下文与控制末尾，防止 Context 溢出。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 text-base shrink-0">
+                    <i class="fa-solid fa-heart-pulse"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Self-Healing Rule / 运行时自愈法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        生产级 Agent 控制器的灵魂在于<strong>“把异常当作正常 Feedback 处理，而非直接崩溃中断”</strong>；结合硬计数熔断、语法反写与沙箱状态重置，才能打造坚不可摧的 Agent 运行时。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[80%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReAct 的常见失效模式与恢复机制</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 剖析 ReAct 生产级防崩要点：</span>
+                    “向学员强调：Demo 级别的 ReAct 只要跑通一次 happy path 就行，但工业级的 Agent 框架 90% 的代码量都在写**容错与自愈**。必须假设工具会报语法错误、Shell 输出会有几万行、甚至模型会在同一个动作上死循环。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 强调‘Error As Feedback’哲学：</span>
+                    “告诉学员：当代码发生 JSON 解析失败时，千万不要在 Controller 里 `raise Exception` 直接停掉程序！正确的做法是捕获报错信息，把它装进一个 `Observation: [Error Traceback]` 投递给大模型，模型在下一个 Turn 往往就能自己把缺少引号或必填项补全。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (31.html <- 32.html -> 33.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

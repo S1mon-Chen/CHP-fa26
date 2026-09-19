@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 21 - Self-Consistency（自洽性采样）提升代码正确率</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>模块三：推理范式精讲 / Module 3</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                Self-Consistency（自洽性采样）提升代码正确率
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Wang et al. (2022) 范式：打破单路径贪溯采样的随机偶然性，在 <span class="text-purple-600 font-semibold">$T > 0$ 多样化采样</span> 下并行生成多条思维链，配合 <span class="text-blue-600 font-semibold">多数投票 (Majority Vote)</span> 与 <span class="text-emerald-600 font-semibold">单元测试 Harness 校验</span> 过滤概率幻觉
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: Sampling Architecture vs Math & Verification) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 6 Cols: Sampling Pipeline Visual Diagram -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-fork text-purple-600"></i> Self-Consistency Sampling Pipeline
+                        </span>
+                        <span class="text-[10px] font-mono text-purple-700 bg-white px-2 py-0.5 rounded border border-purple-200 font-bold">T = 0.7 (N=5 Paths)</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1.5">
+                        多路 CoT 思考链条的边缘化聚合 (Marginalization)
+                    </h3>
+
+                    <!-- Visual Pipeline Boxes -->
+                    <div class="space-y-1.5 font-mono text-[10px] mb-2">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-200 border border-slate-800">
+                            <span class="text-blue-400 font-bold">[Input Task]</span> "设计高效带 TTL 的双向链表 LRU Cache"
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-1.5 text-center">
+                            <div class="p-2 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300">
+                                <div class="font-bold text-[9px] text-emerald-400">Path A (Correct)</div>
+                                <div class="text-[9px] text-slate-400">Thought -> Pass Test</div>
+                            </div>
+                            <div class="p-2 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300">
+                                <div class="font-bold text-[9px] text-emerald-400">Path B (Correct)</div>
+                                <div class="text-[9px] text-slate-400">Thought -> Pass Test</div>
+                            </div>
+                            <div class="p-2 rounded-lg bg-rose-950 border border-rose-800 text-rose-300">
+                                <div class="font-bold text-[9px] text-rose-400">Path C (Hallucinated)</div>
+                                <div class="text-[9px] text-slate-400">Error -> Fail Test</div>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-blue-900/40 border border-blue-700 text-blue-100 flex items-center justify-between">
+                            <span><i class="fa-solid fa-filter text-amber-400 mr-1"></i>Evaluator / Unit Test Harness:</span>
+                            <span class="text-amber-300 font-bold">2/3 Majority Vote Success</span>
+                        </div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>容错极强：屏蔽单次采样因温度波动产生的偶然性逻辑溃败</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>无缝衔接 Harness：代码生成场景天然支持单元测试做绝对校验</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-purple-100 text-[10px] text-purple-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-network-wired mr-1"></i>从单点赌博提升至群体共识</span>
+                    <span>Pass@5 准确率提升 &gt;35%</span>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Mathematical & Engineering Principles -->
+            <div class="lg:col-span-6 rounded-2xl border border-blue-200 bg-blue-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-calculator text-blue-600"></i> 数学公式与工程校验 Harness
+                        </span>
+                        <span class="text-[10px] font-mono text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">Wang et al. 2022</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1">
+                        边缘化推理路径概率分布公式
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        传统贪婪采样（Greedy Decoding $T=0$）取极值 $\arg\max$，容易陷入局部最优陷阱。Self-Consistency 通过对中间思考过程 $r$ 边缘化（Marginalization），求解最佳输出 $y$：
+                    </p>
+
+                    <!-- Formula Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-1 mb-2">
+                        <div class="text-purple-300 font-bold">// Self-Consistency 数学推导目标</div>
+                        <div class="text-emerald-300">y* = argmax_y ∑_{r} P(y, r | x)</div>
+                        <div class="text-slate-400 pt-1">// x: 提示词输入, r: 第 i 条推理链, y: 最终生成的代码</div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="p-2 rounded-xl bg-white border border-blue-200 text-[11px]">
+                            <span class="font-bold text-slate-900 block mb-0.5">方式 1: 纯文本 Token 多数投票 (Majority Voting)</span>
+                            <span class="text-slate-600">对多个路径生成的最终 AST / 代码结果做标准化 Token 比较与聚类表决。</span>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px]">
+                            <span class="font-bold text-emerald-900 block mb-0.5">方式 2: 代码专属 Unit Test Harness 过滤 (Recommended)</span>
+                            <span class="text-slate-700">将多路代码放入 Docker 沙箱跑 Pytest/JUnit，直接淘汰未通过测试的代码路径。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-blue-100 text-[10px] text-blue-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-vial-circle-check mr-1"></i>最适合高确定性代码生成场景</span>
+                    <span>工程开销: N倍 Token</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 font-bold shrink-0 text-xs">
+                    <i class="fa-solid fa-temperature-half"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">温度调优 (T=0.5~0.8)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        若使用 $T=0$ 则多路生成完全一致；必须设置适度 Temperature 以激发出算法解法的多样性。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    <i class="fa-solid fa-coins"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">算力开销折中 (N=3~5)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        生成 $N$ 条链会导致 Token 成本呈 $N$ 倍上升。工程实践中 $N=3$ 到 $N=5$ 即能达到性价比临界点。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">与 ReAct / Code Agent 叠加</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        在生成重构与核心算法补丁时，多路并行推理后用静态分析器（SonarQube/Checkstyle）二次裁决。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Design Rule / 架构师采样准则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        自洽性采样 (Self-Consistency) 是用<strong>推理预算（Test-Time Compute）换取代码概率鲁棒性</strong>的经典范式；结合沙箱单元测试 Harness 校验，可直接将算法生成 Pass@1 提升至 90%+。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">21</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[52.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (20.html <- 21.html -> 22.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="20.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Self-Consistency 提升代码正确率</span>
+            <a href="22.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="20.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="22.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 讲授 Self-Consistency 的核心灵感：</span>
+                    “向学员强调：单个 CoT 路径可能会因为开头的 Token 采样偏差而‘一条路走到黑’。Self-Consistency 的核心直觉是：**对于一个复杂的算法或重构任务，正确的思维路径往往拥有更高的共识性，而错误的路径千奇百怪**。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 强调代码场景的独特优势（Unit Test Harness）：</span>
+                    “提示学员：在自然语言问答中，Self-Consistency 依赖 LLM 做文本语义聚类投票；但在代码工程中，我们拥有绝佳的客观评测器——单元测试（Unit Test）。生成 $N$ 个解法后放入沙箱跑 Pytest，能 100% 裁决出哪个才是正确答案。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (20.html <- 21.html -> 22.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '20.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '22.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

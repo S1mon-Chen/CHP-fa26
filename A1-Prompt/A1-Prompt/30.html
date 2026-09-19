@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - ReAct 提示词模板剖析</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-file-code"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Prompt Architecture</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                ReAct 提示词模板剖析
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                拆解生产级 Agent 系统提示词 (System Prompt)：解构 <span class="text-blue-600 font-semibold">Tool Schema 注入</span>、<span class="text-amber-600 font-semibold">Thought-Action-Observation 强闭环契约</span> 与 <span class="text-purple-600 font-semibold">解析器异常自愈机制</span>
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: System Prompt Code Structure vs Component Breakdown) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Production ReAct System Prompt Code Box -->
+            <div class="lg:col-span-7 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-code"></i>
+                            <span>Production ReAct System Prompt Contract Template</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">XML Tag Protocol</span>
+                    </div>
+
+                    <div class="space-y-1 text-slate-300 leading-relaxed overflow-x-auto">
+                        <div class="text-blue-400">&lt;system_prompt&gt;</div>
+                        <div class="pl-2 text-slate-400">You are an autonomous Code Repair Agent. You must solve tasks by strictly alternating between Thought, Action, and Observation.</div>
+                        <br>
+                        <div class="pl-2 text-emerald-400">&lt;available_tools&gt;</div>
+                        <div class="pl-4 text-emerald-300">- file_search(query: string, path?: string): Searches codebase files.</div>
+                        <div class="pl-4 text-emerald-300">- run_test(test_class: string): Runs unit tests in an isolated sandbox.</div>
+                        <div class="pl-4 text-emerald-300">- apply_patch(file_path: string, patch_diff: string): Modifies source code.</div>
+                        <div class="pl-2 text-emerald-400">&lt;/available_tools&gt;</div>
+                        <br>
+                        <div class="pl-2 text-amber-300">&lt;response_format_rules&gt;</div>
+                        <div class="pl-4 text-amber-200">1. Every response MUST begin with <span class="text-blue-300">&lt;thought&gt;</span> reasoning.</div>
+                        <div class="pl-4 text-amber-200">2. Execute exactly ONE action per turn inside <span class="text-amber-400">&lt;action&gt;{"name": "...", "params": {...}}&lt;/action&gt;</span>.</div>
+                        <div class="pl-4 text-amber-200">3. Wait for system to inject <span class="text-emerald-300">&lt;observation&gt;</span> before continuing. Never fake Observations!</div>
+                        <div class="pl-4 text-amber-200">4. When task is complete, output <span class="text-purple-300">&lt;final_answer&gt;</span> and stop.</div>
+                        <div class="pl-2 text-amber-300">&lt;/response_format_rules&gt;</div>
+                        <div class="text-blue-400">&lt;/system_prompt&gt;</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-circle-check text-blue-400 mr-1"></i>严格使用 XML 标签隔断 Thought 与 JSON Action</span>
+                    <span class="text-amber-300">语法可被正则 / AST 100% 提取</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Structural Breakdown & Guardrail Cards -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-screwdriver-wrench text-blue-600"></i>
+                            <span>工具 Schema 声明注入 (Tool Schema)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Part 1</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        在 Prompt 开头清楚标注工具的函数签名、入参数据类型（Types）与返回值说明。明确告之模型哪些操作可在当前物理环境下执行。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-lock text-amber-600"></i>
+                            <span>单步单动作锁定 (One Action per Turn)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Part 2</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        必须强行禁止模型在单个 Token 响应里“自行伪造 Observation”。必须强制模型吐出 Action 后暂停生成，等待外层 Controller 将物理结果写回上下文。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-flag-checkered text-purple-600"></i>
+                            <span>终态终止信号 (Final Answer Token)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Part 3</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        声明明确的成功退出标签（如 `<final_answer>`）。Controller 识别到该标签时停止 ReAct 状态机循环，向用户返回最终修复总结报告。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">思考与动作标签解耦</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        使用 `<thought>` 存放自然语言分析，用 `<action>` 存放结构化 JSON，避免思考词污染工具参数解析器。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">解析失败自动纠错注入</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        若模型吐出的 JSON 参数无法解析，Controller 将报错堆栈拼装为 `<observation>SyntaxError</observation>` 反写回 Prompt 触发自愈。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">升级至 Function Calling</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        在现代 API（如 OpenAI / DeepSeek）中，`<tools>` 与 `<action>` 文本已无缝替换为 API 原生 `tools` 参数与 Logit 采样掩码。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-sliders"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Template Rule / 提示词架构法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        生产级 ReAct 提示词模板的核心目标在于<strong>“规范化思考输出 + 锁定单次工具调用 + 强约束物理结果回传”</strong>，利用明确的 XML 闭环契约构建坚固的 Agent 交互逻辑。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReAct 提示词模板剖析</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲授 ReAct System Prompt 结构重难点：</span>
+                    “向学员强调：不要用一大段散乱的自然语言去写 ReAct 系统提示词。生产环境中推荐使用显式的 **XML 标签**（如 `<available_tools>`、`<response_format_rules>`）进行规则强隔离。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调“禁止伪造 Observation”法则：</span>
+                    “提示学员：很多初学者写 ReAct 提示词时，模型会自动把 Thought、Action 和它自己脑补的 Observation 一股脑全都输出了！必须在规则里明确规定‘每轮只允许输出一次 Action，输出后立即暂停等待系统填入 Observation’。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (29.html <- 30.html -> 31.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

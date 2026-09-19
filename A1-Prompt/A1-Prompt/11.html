@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>确定性 JSON 输出：从 Prompt 约束到 JSON Schema / Pydantic</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-brackets-curly"></i>
+                <span>模块二：结构化上下文与确定性输出</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                确定性 JSON 输出：从 Prompt 约束到 JSON Schema / Pydantic
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析结构化输出的三代技术演进：从 <span class="text-rose-600 font-semibold">自然语言弱提示</span> 到 <span class="text-purple-600 font-semibold">JSON Schema 注入</span>，最终走向 <span class="text-emerald-600 font-semibold">语法约束采样 (Constrained Decoding) 与 Pydantic 强类型契约</span>
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <!-- Level 1: Weak Prompt Convention -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 font-mono text-xs font-bold">
+                            Level 1: 提示词约定
+                        </span>
+                        <i class="fa-solid fa-comment-slash text-rose-500 text-base"></i>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">
+                        自然语言弱提示约定
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        在 Prompt 末尾硬编码：“请只返回纯 JSON 格式，不要包含任何 Markdown 三重反引号或解释性文字”。
+                    </p>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-1 mb-2">
+                        <div class="text-rose-400">// 高概率失败输出</div>
+                        <div class="text-slate-400">"好的，这是为您分析的结果：</div>
+                        <div class="text-amber-300">```json</div>
+                        <div class="text-slate-300">{"status": "ok"}</div>
+                        <div class="text-amber-300">```"</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-600 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-500 shrink-0"></i>
+                            <span>解析崩溃率 &gt; 30%，产生 Markdown 包裹或客套话</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-500 shrink-0"></i>
+                            <span>缺失字段类型校验与必填断言</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-rose-100 text-[10px] text-rose-700 font-mono flex items-center justify-between">
+                    <span><i class="fa-solid fa-triangle-exclamation mr-1"></i>绝不可用于生产环境</span>
+                    <span class="font-bold">可控度: 40%</span>
+                </div>
+            </div>
+
+            <!-- Level 2: Few-Shot + JSON Schema Injected -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 font-mono text-xs font-bold">
+                            Level 2: Schema 拼接注入
+                        </span>
+                        <i class="fa-solid fa-file-code text-purple-600 text-base"></i>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">
+                        Few-Shot + Standard JSON Schema
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        将系统的 JSON Schema 定义或标准 Few-Shot 范例直接拼接入 Prompt 上下文，指导模型推演。
+                    </p>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-0.5 mb-2">
+                        <div class="text-purple-400">&lt;output_schema&gt;</div>
+                        <div class="text-slate-300 pl-2">{"type": "object", "properties": {...}}</div>
+                        <div class="text-purple-400">&lt;/output_schema&gt;</div>
+                        <div class="text-emerald-400">&lt;example&gt;{"status": "SUCCESS"}&lt;/example&gt;</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-600 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 shrink-0"></i>
+                            <span>显著降低格式错误率，提供范例参考</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-minus text-amber-500 shrink-0"></i>
+                            <span>占用大量 Context Token；高并发下仍偶发乱序</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-purple-100 text-[10px] text-purple-800 font-mono flex items-center justify-between">
+                    <span><i class="fa-solid fa-sliders mr-1"></i>适用于无原生 Tool Call 模型</span>
+                    <span class="font-bold">可控度: 85%</span>
+                </div>
+            </div>
+
+            <!-- Level 3: Constrained Decoding & Pydantic -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono text-xs font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-shield-halved text-emerald-600"></i> Level 3: 语法约束采样
+                        </span>
+                        <i class="fa-solid fa-microchip text-emerald-600 text-base"></i>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">
+                        Pydantic + Grammar-Based Decoding
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        在 Logit 采样阶段使用文法树（GBNF / JSON Grammar）进行物理卡死，非法 Token 概率直接降为 0。
+                    </p>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-0.5 mb-2">
+                        <div class="text-emerald-400">class CodeReviewResult(BaseModel):</div>
+                        <div class="text-blue-300 pl-3">passed: bool</div>
+                        <div class="text-blue-300 pl-3">issues: List[IssueItem]</div>
+                        <div class="text-amber-300">client.beta.chat.completions.parse(...)</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 shrink-0"></i>
+                            <span><strong>100% 语法确定性：</strong>绝对物理零格式解析报错</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 shrink-0"></i>
+                            <span>代码原生结合：自动反序列化为强类型 DTO</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-emerald-200 text-[10px] text-emerald-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>工业级 Agent 标准采纳方案</span>
+                    <span>可控度: 100%</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 p-3.5 text-slate-100 soft-shadow font-mono text-[11px]">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                <span class="text-blue-400 font-bold flex items-center gap-2">
+                    <i class="fa-brands fa-python"></i>
+                    <span>Production Pydantic + Constrained JSON Integration Pattern</span>
+                </span>
+                <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">100% Type-Safe API</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div class="lg:col-span-6 space-y-1 text-slate-300">
+                    <div class="text-purple-400">from pydantic import BaseModel, Field</div>
+                    <div class="text-purple-400">from typing import List, Literal</div>
+                    <br>
+                    <div class="text-blue-400">class CodeIssue(BaseModel):</div>
+                    <div class="pl-4 text-slate-300">file_path: <span class="text-emerald-300">str</span></div>
+                    <div class="pl-4 text-slate-300">severity: <span class="text-emerald-300">Literal["CRITICAL", "WARNING", "INFO"]</span></div>
+                    <div class="pl-4 text-slate-300">suggestion: <span class="text-emerald-300">str = Field(description="具体的修复建议")</span></div>
+                </div>
+
+                <div class="lg:col-span-6 space-y-1 border-l border-slate-800 pl-4 text-slate-300">
+                    <div class="text-blue-400">class CodeReviewReport(BaseModel):</div>
+                    <div class="pl-4 text-slate-300">summary: <span class="text-emerald-300">str</span></div>
+                    <div class="pl-4 text-slate-300">issues: <span class="text-emerald-300">List[CodeIssue]</span></div>
+                    <br>
+                    <div class="text-amber-300"># 关键：通过 Structured Outputs API 或 Instructor 进行约束采样</div>
+                    <div class="text-slate-300">response = client.beta.chat.completions.parse(</div>
+                    <div class="pl-4 text-slate-300">model=<span class="text-emerald-300">"gpt-4o"</span>, response_format=<span class="text-blue-300">CodeReviewReport</span></div>
+                    <div class="text-slate-300">)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-code-branch"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Shift / 架构师原则</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        在生产级 AI 系统中，<strong>永远不要相信模型“会自律地返回纯 JSON”</strong>。必须通过底层 Logit Masking（约束采样）或 Pydantic + Instructor 构建零幻觉数据反序列化管道。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">11</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[27.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (10.html <- 11.html -> 12.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">确定性 JSON 输出：从 Prompt 约束到 JSON Schema / Pydantic</span>
+            <a href="12.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="10.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="12.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员理解 Level 1 到 Level 3 的本质差别：</span>
+                    “向学员强调：Level 1 是靠 LLM 的‘自觉性’，Level 2 是靠 LLM 的‘范本学习’，而 Level 3（如 OpenAI Structured Outputs 或 GBNF 语法树）是在 **Logit Sampling 阶段直接修改非法 Token 的概率为 0**，属于物理层面的绝对卡死。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 工业实战推荐（Pydantic + Instructor）：</span>
+                    “在 Python/TypeScript 代码库中，建议全员使用 Pydantic 模型定义传输契约。使用 Instructor 库或 API 原生 `response_format` 绑定，可以在 HTTP 请求返回瞬间自动反序列化并自动对报错字段触发 1 次 Retries 修正。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (10.html <- 11.html -> 12.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

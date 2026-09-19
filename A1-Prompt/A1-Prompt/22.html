@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - Least-to-Most Prompting：由简入繁的任务分解</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-diagram-successor"></i>
+                <span>模块三：推理范式精讲 / Module 3</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                Least-to-Most Prompting：由简入繁的任务分解
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Zhou et al. (2022) 范式：解决传统 CoT 在超长算法链条中的 <span class="text-rose-600 font-semibold">注意力漂移 (Attention Drift)</span>，通过 <span class="text-indigo-600 font-semibold">解构（Decompose）</span> 与 <span class="text-emerald-600 font-semibold">拓扑求解（Sequential Solving）</span> 实现大块代码无痛生成
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: Two-Stage Execution Pipeline vs Architectural Advantages) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Two-Stage Execution Pipeline Code & Prompt Visual -->
+            <div class="lg:col-span-7 rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-indigo-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group"></i>
+                            <span>Least-to-Most Execution Pipeline (Zhou et al.)</span>
+                        </span>
+                        <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800">2-Stage Subproblem Loop</span>
+                    </div>
+
+                    <div class="space-y-2 text-slate-300 leading-relaxed overflow-x-auto">
+                        <!-- Stage 1: Decomposition -->
+                        <div class="p-2 rounded-xl bg-slate-800/80 border border-indigo-500/40">
+                            <div class="text-indigo-300 font-bold mb-1 flex items-center justify-between">
+                                <span>STAGE 1: Task Decomposition Prompt</span>
+                                <span class="text-[9px] text-indigo-400 bg-indigo-950 px-1.5 py-0.5 rounded">Prompt 1</span>
+                            </div>
+                            <div class="text-slate-400">// Task: 实现带 TTL 过期与读写锁的高并发 LRU Cache</div>
+                            <div class="text-amber-300 pl-2">Decomposed Subtasks:</div>
+                            <div class="text-slate-300 pl-4">1. 设计 Node 双向链表与 Expiry Timestamp 属性</div>
+                            <div class="text-slate-300 pl-4">2. 实现并发安全读写锁 (ReentrantReadWriteLock)</div>
+                            <div class="text-slate-300 pl-4">3. 实现清理惰性淘汰 (Lazy Eviction) 与后台定时线程</div>
+                        </div>
+
+                        <!-- Stage 2: Sequential Solving -->
+                        <div class="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40">
+                            <div class="text-emerald-300 font-bold mb-1 flex items-center justify-between">
+                                <span>STAGE 2: Sequential Solving Loop</span>
+                                <span class="text-[9px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">Prompt 2..N</span>
+                            </div>
+                            <div class="text-slate-300 pl-2"><span class="text-indigo-400">[Subtask 1 Output]</span> -> Node & DoublyLinkedList Impl</div>
+                            <div class="text-slate-300 pl-2"><span class="text-indigo-400">[Subtask 2 Output]</span> -> Append Lock Protection to Subtask 1</div>
+                            <div class="text-emerald-300 font-bold pl-2"><span class="text-indigo-400">[Subtask 3 Final]</span> -> Integrate TTL Thread + Pass Unit Tests</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-circle-check text-indigo-400 mr-1"></i>前序子问题 Output 成为后续推理输入</span>
+                    <span class="text-amber-300">完美攻克 Context 漂移</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Comparative Principles & Why It Works -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <div class="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat text-indigo-600"></i>
+                            <span>克服传统 CoT 的注意力遗忘</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">Core Value</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        当代码生成任务超过 200 行时，传统 CoT 一吐到底会导致中间逻辑丢失。Least-to-Most 将巨型 Task 拆解为多个独立 API 调用的上下文小块，消除概率漂移。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-blue-600"></i>
+                            <span>拓扑依赖按需串联 (Topological Sorting)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Mechanism</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        解构阶段（Decomposition）强行要求模型输出子任务的依赖顺序（如：先建 DTO 类，再建 DAO 接口，最后写 Service 校验），符合人类软件工程师的真实编码习惯。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-vial-circle-check text-emerald-600"></i>
+                            <span>与 Unit Test Harness 无缝闭环</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Engineering</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        每个子问题求解后，可交由沙箱跑一次单测，若 Subtask 2 失败则立即重试，防止错误积累至最终全量代码。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">解构 Prompt 强契约</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Stage 1 必须要求 LLM 输出格式化子任务清单，以便 Python/Node.js 调度器通过正则或 JSON 提取子任务列表。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">上下文滑动控制</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        随着求解推进，前序子任务只保留“精简签名与关键代码”，避免 Context Window 爆炸。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">面向大型架构迁移</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        最适合将大型旧系统（如 Monolith 到 Microservice）按模块依次平滑重构。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Design Rule / 架构分治法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        Least-to-Most Prompting 是软件工程“<strong>分而治之 (Divide and Conquer)</strong>”在 Prompt 领域的经典映射；把复杂系统降解为依赖递进的子问题图谱，是保障长代码可运行率的关键。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[55%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Least-to-Most Prompting：由简入繁的任务分解</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Least-to-Most 的核心契机：</span>
+                    “向学员强调：不要试图在一个 Prompt 里让 LLM 吐出 500 行无瑕疵的代码！人类高级工程师在面对大型模块时也是先画架构图、定义接口、实现底层组件，最后组装。Least-to-Most 就是通过程序化的 2-Stage 循环将这种解构思维固化。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 衔接后文（从线到树 Tree-of-Thoughts）：</span>
+                    “提示学员：Least-to-Most 依然是线性的（Subtask 1 -> Subtask 2 -> Subtask 3）。那如果子任务有多种可选方案需要评估选优呢？下一页我们将引入升维的 Tree-of-Thoughts (ToT) 树状搜索范式。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (21.html <- 22.html -> 23.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

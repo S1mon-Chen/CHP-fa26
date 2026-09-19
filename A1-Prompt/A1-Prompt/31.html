@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 31 - ReAct 与当下 Function Calling (Tool Call) 的技术映射</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-arrows-split-up-and-left"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Protocol Evolution</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                ReAct 与当下 Function Calling (Tool Call) 的技术映射
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                解构 Agent 交互协议演进：从早期 <span class="text-blue-600 font-semibold">基于文本正则提取的 ReAct Prompt</span> 到现代 <span class="text-emerald-600 font-semibold">API 原生 Function Calling Protocol</span> 的底层四大映射与性能飞跃
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: Mapping Matrix vs Architectural Benefits) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Detailed Technical Mapping Matrix -->
+            <div class="lg:col-span-7 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-table-cells"></i>
+                            <span>Text-based ReAct Prompt vs. Native API Function Calling Mapping</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">Protocol Evolution</span>
+                    </div>
+
+                    <!-- Comparison Rows -->
+                    <div class="space-y-2 text-slate-300 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Row 1: Tool Schema Definition -->
+                        <div class="p-2 rounded-xl bg-slate-800/80 border border-slate-700">
+                            <div class="flex justify-between items-center text-blue-300 font-bold mb-1">
+                                <span>1. 工具声明 (Tool Definition Schema)</span>
+                                <span class="text-[9px] bg-blue-950 text-blue-300 px-1.5 py-0.5 rounded">Schema Layer</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px]">
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-rose-900/50 text-rose-300">
+                                    <span class="font-bold text-rose-400 block mb-0.5">Classic ReAct Prompt:</span>
+                                    System Prompt 嵌入 XML/Markdown 文本（如 `<available_tools>`）说明函数签名。
+                                </div>
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-900/50 text-emerald-300">
+                                    <span class="font-bold text-emerald-400 block mb-0.5">Native Function Calling:</span>
+                                    API 顶层参数 `tools: [{type: "function", function: JSONSchema}]` 结构化注入。
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 2: Action Triggering -->
+                        <div class="p-2 rounded-xl bg-slate-800/80 border border-slate-700">
+                            <div class="flex justify-between items-center text-amber-300 font-bold mb-1">
+                                <span>2. 动作触发 (Action Trigger)</span>
+                                <span class="text-[9px] bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded">Sampling Layer</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px]">
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-rose-900/50 text-rose-300">
+                                    <span class="font-bold text-rose-400 block mb-0.5">Classic ReAct Prompt:</span>
+                                    文本输出 `<action>{"name": "...", "params": {...}}</action>`，依靠正则/AST抓取。
+                                </div>
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-900/50 text-emerald-300">
+                                    <span class="font-bold text-emerald-400 block mb-0.5">Native Function Calling:</span>
+                                    模型输出 `finish_reason: "tool_calls"`, 携带结构化 `tool_calls: [...]` 数组。
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Row 3: Observation Feedback -->
+                        <div class="p-2 rounded-xl bg-slate-800/80 border border-slate-700">
+                            <div class="flex justify-between items-center text-emerald-300 font-bold mb-1">
+                                <span>3. 物理结果回写 (Observation Protocol)</span>
+                                <span class="text-[9px] bg-emerald-950 text-emerald-300 px-1.5 py-0.5 rounded">Message Role</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px]">
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-rose-900/50 text-rose-300">
+                                    <span class="font-bold text-rose-400 block mb-0.5">Classic ReAct Prompt:</span>
+                                    Controller 拼接字符串 `<observation>result...</observation>` 反写回 Prompt 尾部。
+                                </div>
+                                <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-900/50 text-emerald-300">
+                                    <span class="font-bold text-emerald-400 block mb-0.5">Native Function Calling:</span>
+                                    追加专属消息对象 `{role: "tool", tool_call_id: "call_abc123", content: "..."}`。
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-code-merge text-blue-400 mr-1"></i>从“文本猜规则”演进为“API 原生二进制级契约”</span>
+                    <span class="text-emerald-300">本质思想 100% 继承</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Core Architectural Advantages & Engineering Value -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                            <span>语法解析零碰撞 (Zero Syntax Errors)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Logit Masking</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        API 层在 Sampling 采样阶段施加 GBNF 语法树掩码（Grammar-based Decoding），强行将 JSON 格式不合规的 Token 概率降至零，物理消灭语法解析异常。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-blue-600"></i>
+                            <span>原生多工具并行调用 (Parallel Tool Calls)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Parallelism</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        原生 Function Calling 允许 LLM 在单个 Response Turn 中吐出多个 `tool_calls`（例如同时并发读取 3 个源文件），极大降低 Agent 循环网络 RTT 延迟。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-brain text-purple-600"></i>
+                            <span>隐式思考与 Tool Call 无缝解耦</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Reasoning API</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        在新一代 Reasoning 模型（如 OpenAI o1/o3、DeepSeek-R1、Claude 3.7 Sonnet）中，内部思维链 (`thinking`) 与外显的 Function Calling 完美分离，兼顾深度思考与精确调用。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">Pydantic 自动导出 API Schema</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        无需手写 JSON Schema，直接使用 Pydantic Model 导出 `model_json_schema()` 填入 Function Calling API 参数。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">`tool_call_id` 状态精确追踪</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        回传 Observation 时必须带上匹配的 `tool_call_id`，Controller 据此在长对话上下文里完成精准状态对齐。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">开源小模型降级平滑适配</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        对于不支持原生 Function Calling 的轻量开元小模型（如 Qwen-1.5B），可降级平滑使用文本 Prompt ReAct 模版。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-arrows-to-dot"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Protocol Rule / 协议下沉法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        Function Calling 并非否定 ReAct 范式，而是<strong>将 ReAct 的“思考-行动-观察”闭环下沉为模型与 API 层的底层原生契约</strong>；掌握两者的技术映射，才能在不同模型间灵活构建坚固的 Agent 工具系统。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">31</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[77.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (30.html <- 31.html -> 32.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="30.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReAct 与 Function Calling 的技术映射</span>
+            <a href="32.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="30.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="32.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 ReAct 与 Function Calling 的演进本质：</span>
+                    “向学员强调：不要把 ReAct 范式和 Function Calling 割裂开来看。ReAct 是学术界和早期工程界提出的**思考框架（Mental Model）**；而 Function Calling 是厂商（OpenAI、Anthropic、DeepSeek）把这个思考框架**下沉为 API 原生协议与 Logit 采样掩码**。两者的核心本质完全一致。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 强调并发工具调用与 `tool_call_id`：</span>
+                    “提示学员：原生 Function Calling API 带来的最大优势之一是**并行工具调用 (Parallel Tool Calls)**。模型可以一次性返回调用多个工具的请求，极大减少网络往返耗时；同时，`tool_call_id` 保证了异步回传结果时不会在上下文数组里错位。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (30.html <- 31.html -> 32.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '30.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '32.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

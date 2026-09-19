@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - Zero-Shot vs Few-Shot 在代码场景的边界</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-scale-balanced"></i>
+                <span>模块三：推理范式精讲 / Module 3</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                Zero-Shot vs Few-Shot 在代码场景的边界
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                明确范式选择的临界点：从 <span class="text-blue-600 font-semibold">标准 Open Source API</span> 调用的 Zero-Shot 敏捷生成，到 <span class="text-purple-600 font-semibold">企业私有 SDK、自研 DSL 与编码风格契约</span> 的 Few-Shot 精确对齐
+            </p>
+        </div>
+
+        <!-- Main Comparison Layout (2 Columns: Zero-Shot vs Few-Shot) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 6 Cols: Zero-Shot Paradigm -->
+            <div class="lg:col-span-6 rounded-2xl border border-blue-200 bg-blue-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-amber-500"></i> Zero-Shot Direct Prompting
+                        </span>
+                        <span class="text-[10px] font-mono text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">Standard Knowledge</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1">
+                        适用边界：标准公共库与经典算法
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        依赖大模型 Pre-training 阶段吸纳的海量开源代码先验，无需在 Prompt 中放置示范例即可一次性精准生成。
+                    </p>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-1 mb-2">
+                        <div class="text-blue-400">// Prompt: "用 Python stdlib 实现 LRU Cache"</div>
+                        <div class="text-emerald-300">from collections import OrderedDict</div>
+                        <div class="text-slate-300">class LRUCache(OrderedDict): ...</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>最佳场景：Python/Java 标准库、LeetCode 经典算法、RFC 协议</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                            <span>失能死穴：企业内部包（如 `com.internal.rpc.*`）、私有配置规范</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-blue-100 text-[10px] text-blue-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-gauge-high mr-1"></i>Token 消耗最低，响应延迟最优</span>
+                    <span>幻觉率: 高(私有域)</span>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Few-Shot Paradigm -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-copy text-purple-600"></i> Few-Shot In-Context Learning
+                        </span>
+                        <span class="text-[10px] font-mono text-purple-800 bg-white px-2 py-0.5 rounded border border-purple-200 font-bold">Domain Alignment</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1">
+                        适用边界：私有 SDK、DSL 转换与团队规范
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        在 Prompt 中注入 2~3 个 `<example>` Input-Output 参照对，对齐特定命名法则、异常处理约定与转译逻辑。
+                    </p>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-0.5 mb-2">
+                        <div class="text-purple-400">&lt;example_1&gt;</div>
+                        <div class="text-slate-400 pl-2">In: SQL Select -> Out: Custom QueryBuilder DTO</div>
+                        <div class="text-purple-400">&lt;/example_1&gt;</div>
+                        <div class="text-amber-300">&lt;target_input&gt;SELECT name FROM users&lt;/target_input&gt;</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>最佳场景：自研框架注入、DSL 生成、代码风格 100% 对齐</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>架构收益：无需微调（Fine-Tuning），以零成本实现格式强拟合</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-purple-100 text-[10px] text-purple-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-coins mr-1"></i>占用额外部份 Context Token</span>
+                    <span>格式拟合度: &gt;95%</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Few-Shot Selection Golden Rules (3 Principles Cards) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">Relevance (语义相关性)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        借助 RAG 向量检索，从知识库中动态选择与当前 Task 最相似的示例（Semantic Similarity），避免无关范例占用 Context。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">Diversity (范例多样性)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        示例需覆盖边界状态（如空数组、网络超时异常），教会 LLM 在生成业务代码时自动补全边界判空防护。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">Negative Examples (对比反例)</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        引入 <code class="bg-slate-100 px-1 rounded text-rose-600">&lt;bad_example&gt;</code> 说明“禁止编写的垃圾代码”，实现对比引导（Contrastive Prompting）。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Decision Rule / 决策黄金准则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        通用算法用 <strong>Zero-Shot</strong> 省 Token；团队私有框架、自研 DSL 转译与规范约束，必须使用 <strong>动态 RAGFew-Shot 范例对齐</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Zero-Shot vs Few-Shot 在代码场景的边界</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员理解“为什么 Few-Shot 可以替代模型微调”：</span>
+                    “向学员强调：在企业代码场景中，去专门微调一个基座模型成本极高且容易产生过拟合（Overfitting）。而利用 Few-Shot In-Context Learning，配合基于向量数据库的动态示例检索（Dynamic Few-Shot RAG），可以在零微调成本的前提下，让大模型 100% 遵守企业内部私有 SDK 和架构规范。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调反例教学（Negative Examples）：</span>
+                    “告诉学员：不要只给模型提供正确代码范例！在 Prompt 中显式加入 `<bad_example>`（如未关连接的数据库查询），并标注‘绝对禁止此类写法’，效果往往比单独正面强调好倍以上。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (16.html <- 17.html -> 18.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

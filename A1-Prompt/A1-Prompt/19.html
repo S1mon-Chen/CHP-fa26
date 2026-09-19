@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - Zero-Shot CoT：一句“Let's think step by step”背后的威力与局限</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>模块三：推理范式精讲 / Module 3</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                Zero-Shot CoT：一句“Let's think step by step”背后的威力与局限
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Kojima et al. (2022) 突破：通过低成本魔法句解锁预训练模型隐藏的 <span class="text-blue-600 font-semibold">自回归思考路径</span>，同时警惕其无自我修正能力造成的 <span class="text-rose-600 font-semibold">单点失效级联</span>
+            </p>
+        </div>
+
+        <!-- Main Comparison Layout (2 Columns: Core Power vs Critical Limitations) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 6 Cols: Power & Trigger Mechanisms -->
+            <div class="lg:col-span-6 rounded-2xl border border-blue-200 bg-blue-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-amber-500"></i> 触发机制与核心威力
+                        </span>
+                        <span class="text-[10px] font-mono text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200 font-bold">Kojima et al. 2022</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1">
+                        零标注成本唤醒中间逻辑推演
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        在 Prompt 尾部追加 <code class="bg-blue-100 text-blue-800 px-1 rounded font-mono font-bold">"Let's think step by step"</code> 或 <code class="bg-blue-100 text-blue-800 px-1 rounded font-mono font-bold">"让我们一步步分析代码逻辑："</code>，即可物理卡死直接输出代码的采样路径。
+                    </p>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-1 mb-2">
+                        <div class="text-blue-400">// Zero-Shot CoT Trigger Pattern</div>
+                        <div class="text-slate-300">Prompt: "分析此 Java 方法中的并发锁竞争死锁风险。让我们一步步拆解："</div>
+                        <div class="text-emerald-300 pl-2">-> Output: "Step 1: 检查 lockA 与 lockB 获取顺序..."</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>零样本上手：无需手动编写任何范例对，极度敏捷</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-emerald-600 shrink-0"></i>
+                            <span>复杂代码分析准确率：在算法与死锁审计中提升 30%~50%</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-blue-100 text-[10px] text-blue-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>最敏捷的探索式代码诊断手段</span>
+                    <span>工程成本: 极低</span>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Limitations & Failure Modes -->
+            <div class="lg:col-span-6 rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 font-mono text-xs font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i> 局限性与工程死穴
+                        </span>
+                        <span class="text-[10px] font-mono text-rose-700 bg-white px-2 py-0.5 rounded border border-rose-200 font-bold">Failure Modes</span>
+                    </div>
+
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1">
+                        无自我修正机制造成的“错误级联”
+                    </h3>
+
+                    <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">
+                        Zero-Shot CoT 完全依赖模型自回归的“一吐到底”。由于缺乏外部反馈与范例约束，一旦第一步推导产生幻觉，后续全部思考将沿着错误路径强行自圆其说。
+                    </p>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] space-y-0.5 mb-2">
+                        <div class="text-rose-400">// Error Cascading in Zero-Shot CoT</div>
+                        <div class="text-slate-400 pl-2">Step 1: 假设该类继承自 ThreadPoolExecutor (错误事实)</div>
+                        <div class="text-slate-400 pl-2">Step 2: 依据 Step 1 推导出使用 corePoolSize 变量...</div>
+                        <div class="text-rose-300 font-bold pl-2">Result: 输出完全不相干的重构代码 (彻底跑偏)</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700 font-medium">
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                            <span>无规范契约：无法保证中间思考格式与团队 DSL 规范对齐</span>
+                        </li>
+                        <li class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                            <span>无工具交互：无法像 ReAct 机制一样运行单元测试纠错</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-rose-100 text-[10px] text-rose-900 font-mono flex items-center justify-between font-bold">
+                    <span><i class="fa-solid fa-shield-cat mr-1"></i>需要升级为 Few-Shot CoT 或 ReAct</span>
+                    <span>错误恢复能力: 0%</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Practical Scenario Contrast Card -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">探索性 Bug 诊断</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        面对未知堆栈崩溃，使用 Zero-Shot CoT 快速触发“排查日志 $\to$ 分析变量 $\to$ 推导猜测”，作为人工 Debug 的第一步。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">代码静态安全审查</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        要求 LLM 在给出风险结论前，先分步列出所有入参的 Sanitization 处理情况，大幅降低误报率（False Positive）。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">升级临界点辨析</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        一旦涉及企业私有 SDK，或需要直接修改系统代码，零样本 CoT 将失效，必须升级为带有单元测试验证的 <strong>ReAct Agent</strong>。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Paradigm Rule / 架构使用法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        Zero-Shot CoT 是最快捷的“轻量级思考启发术”，适合<strong>探索性分析与快速审查</strong>；但在自动化生产管线中，必须使用带有静态类型与样本示范的 <strong>Few-Shot CoT / ReAct 闭环</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Zero-Shot CoT 的威力与局限</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员理解“为什么一句提示词能提效 30%+”：</span>
+                    “向学员说明：Kojima 的 Zer-Shot CoT 论文证明了预训练模型内部其实已经学习到了大量的推理链条，只是在直接生成模式下没有被激活。追加‘Let's think step by step’改变了模型开头的 Logit 采样，强制模型先输出 Step 1，从而在上下文面板里展开了算力。”
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">💡 强调 Zero-Shot CoT 的工业死穴：</span>
+                    “提醒学员：Zero-Shot CoT 没有外部反馈机制！如果 Step 1 错了，后续所有推演都在自圆其说。所以在自动编写与重构核心业务代码时，不能仅依赖零样本 CoT，后文我们将引入带有单元测试反馈机制的 ReAct 范式。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (18.html <- 19.html -> 20.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 26 - 纯纯思考（CoT）的盲区：缺乏外部状态交互</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-brain"></i>
+                <span>模块四导论 / Module 4: Tools & State Interaction</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                纯纯思考（CoT）的盲区：缺乏外部状态交互
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析纯内部推理链的物理壁垒：在大规模真实软件工程中，没有外部 <span class="text-rose-600 font-semibold">工具调用 (Tool Execution)</span> 与 <span class="text-blue-600 font-semibold">物理状态反馈 (Observation)</span>，再强大的 CoT 也无法突破“封闭脑补”与“幻觉黑洞”
+            </p>
+        </div>
+
+        <!-- Main Content Grid (2 Columns: Blind Spots vs Tool Augmented Paradigm) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 6 Cols: 3 Critical Blind Spots of Pure CoT -->
+            <div class="lg:col-span-6 space-y-2.5 flex flex-col justify-between">
+                
+                <!-- Blind Spot 1: Time Cutoff & Private State -->
+                <div class="rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-rose-600"></i>
+                            <span>盲区 1: 静态权重与私有状态黑洞</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-rose-100 text-rose-800 px-1.5 py-0.5 rounded">Information Gap</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        大模型内部参数仅代表训练截止日前的概率记忆。模型无法“凭空脑补”当前 Git 分支状态、最新的数据库 Schema、宿主机未预装的第三方 SDK 接口或实时 API 监控数据。
+                    </p>
+                </div>
+
+                <!-- Blind Spot 2: Precision Math & String Manipulation -->
+                <div class="rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-calculator text-amber-600"></i>
+                            <span>盲区 2: 复杂数值计算与精准匹配失灵</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Autoregressive Limit</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        基于自回归 Token 抽样的 LLM 天然不擅长精确的浮点运算、哈希计算、长正则表达式匹配与 AST 语法树遍历。强行用思维链推算 64 位哈希易产生单 Token 漂移导致的全盘崩溃。
+                    </p>
+                </div>
+
+                <!-- Blind Spot 3: Lack of Objective Environmental Feedback -->
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-vial-virus text-purple-600"></i>
+                            <span>盲区 3: 缺乏物理沙箱裁决（Hallucinated Consistency）</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">No Feedback Loop</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        纯 CoT 的自我反思很容易掉入“逻辑看起来很通顺，但在真实 Docker 环境下根本编译不通”的伪自洽（Self-Consistency Illusion）陷阱，缺少客观编译与 Pytest 断言的物理裁决。
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Right 6 Cols: Execution Comparison Box (Pure Thinking vs Tool Augmented) -->
+            <div class="lg:col-span-6 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-code-compare"></i>
+                            <span>Paradigm Shift: Pure CoT vs. Tool-Augmented Reasoning</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">ReAct Engine</span>
+                    </div>
+
+                    <!-- Scenario Contrast Box -->
+                    <div class="space-y-2 text-slate-300 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Pure CoT Flaw -->
+                        <div class="p-2.5 rounded-xl bg-rose-950/40 border border-rose-600/50">
+                            <div class="flex items-center justify-between text-rose-300 font-bold mb-1">
+                                <span>[Approach A] Pure Mental CoT (闭门造车)</span>
+                                <span class="text-[9px] bg-rose-900 text-rose-200 px-1.5 py-0.5 rounded">AttributeError ❌</span>
+                            </div>
+                            <div class="text-slate-400 text-[10px]">
+                                Thought: "猜测 boto3 库最新版本应该包含 verify_kms_key() 方法..."<br>
+                                Code: s3.verify_kms_key(key_id)<br>
+                                <span class="text-rose-400 font-bold">Result: 实际该 SDK 根本无此 API，导致生产崩溃！</span>
+                            </div>
+                        </div>
+
+                        <!-- Tool-Augmented Solution -->
+                        <div class="p-2.5 rounded-xl bg-emerald-950/50 border border-emerald-500">
+                            <div class="flex items-center justify-between text-emerald-300 font-bold mb-1">
+                                <span>[Approach B] Tool-Augmented ReAct (动手感知)</span>
+                                <span class="text-[9px] bg-emerald-900 text-emerald-200 px-1.5 py-0.5 rounded">Pass Execution ★</span>
+                            </div>
+                            <div class="text-slate-300 text-[10px]">
+                                Thought: "我需要检查当前 Python 环境下 boto3 的真实 API 列表"<br>
+                                <span class="text-amber-300">Action: execute_bash("python -c 'import boto3; print(dir(boto3))'")</span><br>
+                                <span class="text-sky-300">Observation: ['client', 'resource', 'Session', ...]</span><br>
+                                <span class="text-emerald-300 font-bold">Refined Action: 使用正确的 client('s3') 实例化流程并顺利通过测试！</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-hand-holding-hand text-blue-400 mr-1"></i>从“大脑独角戏”迈向“手脑协同”</span>
+                    <span class="text-amber-300">引入 Module 4: Skill & Function Calling</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">放弃对内部权重的迷信</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        涉及具体环境版本、精确数学计算、文件系统状态时，绝不让 LLM“猜”，必须通过工具获取确定性物理事实。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">构建 Observation 反馈链路</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        工具调用的返回值（Observation）是消除思考幻觉的降维打击武器，也是 Agent 迭代决策的关键锚点。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">引出工具与 Skill 范式</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        模块四将全面揭秘：如何用 Function Calling、Skill 规范与沙箱容器赋予 AI 改变现实世界的双手。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Paradigm Rule / 架构演进法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        代码工程不是纯粹的“哲学推演”，必须是<strong>“思考 (Reasoning) + 动手 (Tool Execution/Observation)”</strong>的结合。引入 Skill 与 Function Calling，是赋予大模型物理世界感知与执行双手的必然之路。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">26</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[65%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (25.html <- 26.html -> 27.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="25.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">纯纯思考（CoT）的盲区：缺乏外部状态交互</span>
+            <a href="27.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="25.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="27.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导模块四转换（从大脑到双手）：</span>
+                    “向学员强调：模块三我们研究了 CoT、ToT 和 Reflexion，这些都是模型的‘脑内风暴’（Thought/Reasoning）。但如果不给大模型配备外部工具，它就像一个关在黑黑房间里只能心算的哲学家——既无法知道当前的真实环境，也无法验证代码是否能运行成功。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 引入 Skill / Function Calling：</span>
+                    “向学员引出：模块四的重点就是赋予大模型‘手脚’。我们将从 Function Calling 原理切入，学习如何定义工具规范（Skill Schema）、如何通过观察结果（Observation）更新 Agent 的注意力状态。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (25.html <- 26.html -> 27.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '27.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 28 - ReAct 的系统执行时序图</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Header -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>模块四：工具与物理状态交互 / Module 4: Sequence & Execution Flow</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                ReAct 的系统执行时序图
+            </h1>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 max-w-4xl">
+                剖析 Agent 系统内部 4 方协作契约：解构 <span class="text-blue-600 font-semibold">用户 (User)</span>、<span class="text-indigo-600 font-semibold">调度器 (Agent Controller)</span>、<span class="text-purple-600 font-semibold">推理大脑 (LLM Reasoner)</span> 与 <span class="text-emerald-600 font-semibold">物理沙箱 (Tool Executor)</span> 之间的状态流转与回调时序
+            </p>
+        </div>
+
+        <!-- Main Content Layout (2 Columns: System Sequence Diagram vs Sequence Principles) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-2.5 grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- Left 7 Cols: Interactive ReAct Sequence Diagram View -->
+            <div class="lg:col-span-7 rounded-2xl border border-blue-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between font-mono text-[11px] overflow-hidden">
+                <div>
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                        <span class="text-blue-400 font-bold flex items-center gap-2">
+                            <i class="fa-solid fa-arrows-split-up-and-left"></i>
+                            <span>ReAct Runtime Interaction Sequence</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 px-2 py-0.5 rounded border border-blue-800">4-Participant Swimlane</span>
+                    </div>
+
+                    <!-- Swimlane Header Roles -->
+                    <div class="grid grid-cols-4 gap-1 text-center font-bold text-[10px] mb-2 pb-1.5 border-b border-slate-800 text-slate-300">
+                        <div class="bg-blue-950/80 text-blue-300 py-1 rounded border border-blue-800/80">User</div>
+                        <div class="bg-indigo-950/80 text-indigo-300 py-1 rounded border border-indigo-800/80">Controller</div>
+                        <div class="bg-purple-950/80 text-purple-300 py-1 rounded border border-purple-800/80">LLM Engine</div>
+                        <div class="bg-emerald-950/80 text-emerald-300 py-1 rounded border border-emerald-800/80">Tool Sandbox</div>
+                    </div>
+
+                    <!-- Sequence Steps -->
+                    <div class="space-y-1.5 text-[10px] leading-snug">
+                        
+                        <!-- Step 1: User Task Submit -->
+                        <div class="p-1.5 rounded-lg bg-slate-800/90 border border-blue-700/50 flex items-center justify-between">
+                            <span class="text-blue-300 font-bold">1. submit_task()</span>
+                            <span class="text-slate-400">User <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> Controller</span>
+                            <span class="text-slate-300 text-[9px]">Prompt: "修复 auth_service.py"</span>
+                        </div>
+
+                        <!-- Step 2: Controller -> LLM Prompt -->
+                        <div class="p-1.5 rounded-lg bg-slate-800/90 border border-indigo-700/50 flex items-center justify-between">
+                            <span class="text-indigo-300 font-bold">2. completion_req()</span>
+                            <span class="text-slate-400">Controller <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> LLM</span>
+                            <span class="text-slate-300 text-[9px]">Injects System & Tools Schema</span>
+                        </div>
+
+                        <!-- Step 3: LLM Thought + Action Output -->
+                        <div class="p-1.5 rounded-lg bg-purple-950/50 border border-purple-600/50 flex items-center justify-between">
+                            <span class="text-purple-300 font-bold">3. completion_res()</span>
+                            <span class="text-slate-400">LLM <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> Controller</span>
+                            <span class="text-amber-300 text-[9px]">Thought + Action: file_search()</span>
+                        </div>
+
+                        <!-- Step 4: Controller Parse & Execute -->
+                        <div class="p-1.5 rounded-lg bg-slate-800/90 border border-emerald-700/50 flex items-center justify-between">
+                            <span class="text-emerald-300 font-bold">4. execute_tool()</span>
+                            <span class="text-slate-400">Controller <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> Sandbox</span>
+                            <span class="text-emerald-200 text-[9px]">Isolated Docker/Bash Execution</span>
+                        </div>
+
+                        <!-- Step 5: Sandbox Observation Return -->
+                        <div class="p-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/60 flex items-center justify-between">
+                            <span class="text-emerald-300 font-bold">5. observation_result()</span>
+                            <span class="text-slate-400">Sandbox <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> Controller</span>
+                            <span class="text-slate-300 text-[9px]">Observation: Found file line 42</span>
+                        </div>
+
+                        <!-- Step 6: Loop Update & Final Response -->
+                        <div class="p-1.5 rounded-lg bg-blue-950/60 border border-blue-500 flex items-center justify-between">
+                            <span class="text-blue-300 font-bold">6. append & final_answer()</span>
+                            <span class="text-slate-400">Controller <i class="fa-solid fa-arrow-right text-[9px] mx-1"></i> User</span>
+                            <span class="text-emerald-300 text-[9px]">Tests Passed & Task Completed ★</span>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span><i class="fa-solid fa-arrows-spin text-blue-400 mr-1"></i>无状态 LLM 与 有状态 Controller 协调工作</span>
+                    <span class="text-amber-300">Observation 增量同步</span>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Core Architectural Principles of the Sequence Engine -->
+            <div class="lg:col-span-5 flex flex-col justify-between space-y-2.5">
+                
+                <div class="rounded-2xl border border-blue-200 bg-blue-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-fork text-blue-600"></i>
+                            <span>控制权倒置 (Control Loop Inversion)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">Core Pattern</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        大语言模型本身无状态且无法直接调用 OS API。Controller 作为宿主进程充当状态机：拦截 Action 指令、在沙箱中运行工具、将 Observation 打包再投递给 LLM。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock text-amber-600"></i>
+                            <span>超时熔断与挂起防护 (Timeout Guard)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Safety Lock</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-relaxed">
+                        沙箱工具执行必须设置严苛超时限制（如 Bash 限制 30 秒）。防止诸如阻塞式 `npm start` 或等待键盘输入的指令将 Controller 线程彻底死锁。
+                    </p>
+                </div>
+
+                <div class="rounded-2xl border border-purple-200 bg-purple-50/30 p-3.5 soft-shadow">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="font-bold text-xs text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-purple-600"></i>
+                            <span>上下文缓冲区增量追加 (Context Sync)</span>
+                        </span>
+                        <span class="text-[10px] font-mono bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Memory Sync</span>
+                    </div>
+                    <p class="text-[11px] text-slate-700 leading-relaxed">
+                        工具调用的原始输出（Observation）需经过结构化清洗后追加至消息数组。Controller 维护长对话历史，防止在多轮交互中丟失任务目标。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Key Engineering Takeaway Cards -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 font-bold shrink-0 text-xs">
+                    01
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">强隔离物理沙箱</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Tool Executor 必须运行于隔离容器（Docker/Firecracker）或零信任微进程中，切断删库与越权网络风险。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 font-bold shrink-0 text-xs">
+                    02
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">状态机硬计数熔断</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        Controller 必须对 `Max Iterations` 进行硬编码计数（如最多 15 步），单任务超时强行向用户抛出异常。
+                    </p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-3 soft-shadow flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-700 font-bold shrink-0 text-xs">
+                    03
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-slate-900 mb-0.5">原生 Function Calling 升级</h4>
+                    <p class="text-[10px] text-slate-600 leading-snug">
+                        将早期基于正则解析 Action 的文本模式，升级为 API 原生的 Function Calling Schema 契约调用。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-base shrink-0">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-[11px] font-mono uppercase text-slate-500 font-semibold">Architectural Sequence Rule / 系统时序法则</h4>
+                    <p class="text-xs font-medium text-slate-800">
+                        ReAct 系统的灵魂是<strong>“调度器 (Controller) 掌控绝对状态机主导权，LLM 仅作为无状态逻辑决策节点”</strong>；通过严密的工具超时隔离与状态回调，保障 Agent 系统在面对复杂物理环境时的坚固性。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">28</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[70%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (27.html <- 28.html -> 29.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="27.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReAct 的系统执行时序图</span>
+            <a href="29.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="27.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="29.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 ReAct 系统时序的核心：</span>
+                    “向学员强调：很多初学者以为 ReAct 是大模型自己‘直接调了 API’。实际上，大模型只负责输出结构化的字符串（如 Function Call JSON），真正的网络请求或 Shell 命令是由外层的 **Controller 调度器** 捕获并送到沙箱执行的。这叫控制权倒置（Control Loop Inversion）。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调超时与安全卡扣：</span>
+                    “向学员提醒：在写 Controller 状态机时，千万不要对沙箱执行做无限等待！必须设置 Timeout 和最大循环步数，这是生产级 Agent 避免耗尽 API 预算与服务器 CPU 的命门。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Keyboard Shortcuts (27.html <- 28.html -> 29.html)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '27.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
