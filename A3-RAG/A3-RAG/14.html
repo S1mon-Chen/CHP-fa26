@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检索前置：查询改写 (Query Rewriting)</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 35px 75px 40px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.5 : 6.5 比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.5fr 6.5fr;
+            gap: 40px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .objective-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 18px 20px;
+            border-radius: 12px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧代码沙盒：精密高度控制以实现 100% 完整显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: fit-content;
+            max-height: 380px;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 38px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 24px 30px;
+            overflow: hidden;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 15px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：杜绝任何重叠，保留高呼吸感 -->
+    <header class="header">
+        <span class="slide-tag">14 / 40 · 第三部分：高级 RAG 检索治理与性能进阶</span>
+        <h2 class="slide-title">检索前置优化：查询改写 (Query Rewriting)</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理剖析 -->
+        <div class="theory-panel">
+            <div class="objective-card">
+                <span class="card-label">The Core Pain Point</span>
+                <p class="text-[16px] font-bold text-slate-800 leading-snug">
+                    用户提问极度简短（如带有错字、省略语或方言），与向量数据库中由专业严谨词汇构建的底层切片之间，存在无法直接对齐的物理语义距离。
+                </p>
+            </div>
+
+            <div class="logic-card">
+                <span class="card-label">Engineering Paradigm Shift</span>
+                <ul class="space-y-2.5">
+                    <li class="flex items-start gap-2 text-[14px] text-slate-600">
+                        <span class="text-blue-600 font-black mt-0.5">1.</span>
+                        <span><strong class="text-slate-900">治水先治源</strong>：在 Query 送入 Embedder 之前，使用低时延模型对用户的原始提问进行对齐和词义扩充。</span>
+                    </li>
+                    <li class="flex items-start gap-2 text-[14px] text-slate-600">
+                        <span class="text-blue-600 font-black mt-0.5">2.</span>
+                        <span><strong class="text-slate-900">多维度对齐</strong>：将单点口语转换为 3 个适合检索的多角度精准、高保真关键词或短句。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧代码沙盒：完美缩进，16.5px 超大字号完整显示 -->
+        <div class="code-sandbox">
+            <div class="code-header">
+                <div class="window-dots">
+                    <div class="dot bg-[#ff5f56]"></div>
+                    <div class="dot bg-[#ffbd2e]"></div>
+                    <div class="dot bg-[#27c93f]"></div>
+                </div>
+                <span class="text-slate-500 code-font text-[10px]">query_rewriter.py</span>
+            </div>
+            <div class="code-body">
+                <pre class="code-font text-[16.5px] leading-[1.5] text-slate-300 text-left"><span class="k">def</span> <span class="f">rewrite_query</span>(user_query: <span class="t">str</span>) -> <span class="t">list</span>[<span class="t">str</span>]:
+    system_prompt = (
+        <span class="s">"你是一个搜索专家。请将用户输入的模糊口语转换为"</span>
+        <span class="s">"3个不同角度的标准的、适合向量检索的关键词或短句，"</span>
+        <span class="s">"以标准的 Python 列表格式输出，无需额外解释。"</span>
+    )
+    
+    <span class="c"># 核心逻辑：驱动大模型，返回列表格式的改写关键词</span>
+    llm_output = call_llm(system_prompt, user_query)
+    
+    <span class="c"># 预期输出: ["HNSW 原理", "向量数据库索引优化", "ANN 算法时间复杂度"]</span>
+    <span class="k">return</span> <span class="f">eval</span>(llm_output)</pre>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">系统架构师的延迟权衡 (Latency Trade-off)：</strong> 
+            查询改写能在检索前解决约 40% 的相关性丢失问题，但会平白引入一轮额外的 LLM 推理开销。在实际的敏捷软件开发中，通常只对长度极短或含有冷门错别字的提问启用此改写模块，以严格守护首字响应时间（TTFT）。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保幻灯片在任何尺寸侧边栏/视口下都完美锁定 16:9 横版比例，绝不产生滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "13.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "15.html";
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程落地案例：多模态复杂财报 RAG</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 25px 75px 35px 75px; /* 精密防遮挡安全 Padding */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 8px; /* 压缩底边距，隔离代码区 */
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.8 : 6.2 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.8fr 6.2fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧面板 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器：矮化至 110px 极致防阻挡高度 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 6px;
+            height: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        /* 左侧卡片 */
+        .warning-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 12px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 14px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：精确高 325px 限制，15行代码绝不溢出 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 325px; 
+            justify-content: space-between;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 32px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 8px 24px; /* 精密收缩 padding，极致利用高度 */
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string/number/key */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 10px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，拒绝任何遮挡 -->
+    <header class="header">
+        <span class="slide-tag">21 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">工程落地案例：多模态复杂财报 RAG</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理与挑战 -->
+        <div class="theory-panel">
+            <!-- 1. 传统 RAG 死穴卡片 -->
+            <div class="warning-card">
+                <span class="card-label" style="color: #b91c1c;">The Ingestion Nightmare of Flattening Tables</span>
+                <p class="text-[14px] font-bold text-slate-800 leading-relaxed">
+                    <strong class="text-red-600">摊平表格的毁灭性后果</strong>：财报中大量的核心财务数据死死卡在 PDF 的复杂表格 (Table) 和统计图表 (Chart) 里。普通的文本解析引擎若粗暴地将其按行“摊平”，会导致行列关系彻底破碎，沦为不可读的垃圾数据。
+                </p>
+            </div>
+
+            <!-- 2. 多模态 RAG 解析机理卡片 -->
+            <div class="logic-card">
+                <span class="card-label">Layout-Aware Multimodal Processing</span>
+                <ul class="text-[13.5px] text-slate-700 leading-relaxed font-medium space-y-2">
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">智能版面分割</strong>：使用高精度 OCR 或 LayoutLM 深度神经网络，首轮将 PDF 分割为文本区、表格区与图片/图表区。</span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">结构化转换与跨模态对齐</strong>：表格由 GPT-4o 统一翻译为高保真 Markdown；折线/柱状等统计图表生成详细的文本语义描述 (Caption)，将文本描述与原始图表 ID 绑定向量化入库。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧：多模态分流拓扑图 + 全局检索算法代码 -->
+        <div class="right-panel">
+            <!-- 1. 版面分流与特征对齐可视化 (纯原生 SVG 绘制，高紧凑版) -->
+            <div class="svg-container relative">
+                <span class="absolute top-1 left-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Layout-Aware Routing &amp; Feature Unified Processing</span>
+                <svg viewBox="0 0 500 95" width="100%" height="100%">
+                    <defs>
+                        <marker id="arrow-gray" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
+                        </marker>
+                    </defs>
+
+                    <!-- ① 原始 PDF 页面 -->
+                    <g transform="translate(45, 45)">
+                        <rect x="-25" y="-35" width="50" height="70" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" />
+                        <line x1="-15" y1="-20" x2="15" y2="-20" stroke="#cbd5e1" stroke-width="2" />
+                        <!-- 迷你表格 -->
+                        <rect x="-15" y="-10" width="30" height="15" fill="#f8fafc" stroke="#3b82f6" stroke-width="0.8" />
+                        <line x1="-15" y1="-2" x2="15" y2="-2" stroke="#3b82f6" stroke-width="0.8" />
+                        <!-- 迷你图表 -->
+                        <path d="M -15 23 L -5 16 L 5 20 L 15 10" fill="none" stroke="#10b981" stroke-width="1.2" />
+                        <text x="0" y="45" font-family="sans-serif" font-size="8" font-weight="900" fill="#475569" text-anchor="middle">复杂财报 PDF</text>
+                    </g>
+
+                    <!-- 布局切分 -->
+                    <path d="M 75 45 L 125 45" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#arrow-gray)" />
+                    <g transform="translate(145, 45)">
+                        <rect x="-20" y="-20" width="40" height="40" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2" />
+                        <text x="0" y="-3" font-family="sans-serif" font-size="9" font-weight="900" fill="#1d4ed8" text-anchor="middle">版面</text>
+                        <text x="0" y="8" font-family="sans-serif" font-size="9" font-weight="900" fill="#1d4ed8" text-anchor="middle">切分</text>
+                    </g>
+
+                    <!-- 三路路由连接 -->
+                    <path d="M 165 35 Q 200 12 235 12" fill="none" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" />
+                    <path d="M 165 45 L 235 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" />
+                    <path d="M 165 55 Q 200 78 235 78" fill="none" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" />
+
+                    <!-- 第一路：文本区 -->
+                    <g transform="translate(290, 12)">
+                        <rect x="-50" y="-10" width="100" height="20" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="9" font-weight="bold" fill="#334155" text-anchor="middle">文本 ➔ 物理清洗</text>
+                    </g>
+
+                    <!-- 第二路：表格区 -->
+                    <g transform="translate(290, 45)">
+                        <rect x="-50" y="-10" width="100" height="20" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="9" font-weight="bold" fill="#1e40af" text-anchor="middle">表格 ➔ GPT-4o (MD)</text>
+                    </g>
+
+                    <!-- 第三路：统计图 -->
+                    <g transform="translate(290, 78)">
+                        <rect x="-50" y="-10" width="100" height="20" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.2" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="9" font-weight="bold" fill="#065f46" text-anchor="middle">图表 ➔ 描述 (Caption)</text>
+                    </g>
+
+                    <!-- 三路合流 -->
+                    <path d="M 345 12 Q 395 12 410 32" fill="none" stroke="#cbd5e1" stroke-width="1.2" />
+                    <path d="M 345 45 L 400 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" />
+                    <path d="M 345 78 Q 395 78 410 58" fill="none" stroke="#cbd5e1" stroke-width="1.2" />
+
+                    <path d="M 410 45 L 435 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arrow-gray)" />
+
+                    <!-- 向量入库 -->
+                    <g transform="translate(460, 45)">
+                        <rect x="-18" y="-18" width="36" height="36" rx="8" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.5" />
+                        <text x="0" y="-2" font-family="sans-serif" font-size="9" font-weight="900" fill="#5b21b6" text-anchor="middle">向量</text>
+                        <text x="0" y="8" font-family="sans-serif" font-size="9" font-weight="900" fill="#5b21b6" text-anchor="middle">对齐</text>
+                    </g>
+                </svg>
+            </div>
+
+            <!-- 2. 多模态清洗与路由代码沙盒 (13.5px 完美字号，15行代码 100% 自然全显，无滚动条) -->
+            <div class="code-sandbox">
+                <!-- IDE 头部 -->
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px]">multimodal_rag_pipeline.py</span>
+                </div>
+                <!-- IDE 代码区 -->
+                <div class="code-body">
+                    <pre class="code-font text-[13.5px] leading-[1.32] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">process_pdf_element</span>(element: <span class="t">dict</span>) -> <span class="t">dict</span>:
+    el_type, content = element[<span class="s">"type"</span>], element[<span class="s">"content"</span>]
+    
+    <span class="k">if</span> el_type == <span class="s">"table"</span>:
+        <span class="c"># 驱动多模态大模型转化为标准的 Markdown 结构</span>
+        formatted = call_multimodal_llm(<span class="s">"将表格图像精准解析为标准 Markdown"</span>, content)
+        meta = {<span class="s">"type"</span>: <span class="s">"table"</span>, <span class="s">"raw_md"</span>: formatted}
+    <span class="k">elif</span> el_type == <span class="s">"chart"</span>:
+        <span class="c"># 由 LLM 自动撰写统计图表的多维度趋势描述 (Caption)</span>
+        caption = call_multimodal_llm(<span class="s">"请详细总结该图表的核心趋势与数据点"</span>, content)
+        meta = {<span class="s">"type"</span>: <span class="s">"chart"</span>, <span class="s">"caption"</span>: caption}
+    <span class="k">else</span>:
+        meta = {<span class="s">"type"</span>: <span class="s">"text"</span>, <span class="s">"raw_text"</span>: clean_text(content)}
+        
+    <span class="c"># 统一特征向量映射与 Metadata 绑定入库</span>
+    text_repr = meta.get(<span class="s">"raw_md"</span>) <span class="k">or</span> meta.get(<span class="s">"caption"</span>) <span class="k">or</span> meta[<span class="s">"raw_text"</span>]
+    <span class="k">return</span> {<span class="s">"vector"</span>: get_embedding(text_repr), <span class="s">"metadata"</span>: meta}</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12.5px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">工程实践价值：</strong> 
+            多模态 RAG 的本质是<strong class="text-slate-800">特征空间的对齐（Cross-Modal Alignment）</strong>。如果直接对复杂财报 PDF 进行盲目暴力文本抽取，不仅损坏数据的空间排布，更彻底阉割了表格中极其重要的纵横比率对照。通过 <code class="code-font bg-white px-1">Layoutlmv3</code> 做版面重构、对表格高保真 Markdown 化以及对统计图做语义 Caption 提纯，是企业搭建出高精度、高可用审计级财务 RAG 助手的公认行业金标准。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "20.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "22.html";
+        }
+    });
+</script>
+
+</body>
+</html>

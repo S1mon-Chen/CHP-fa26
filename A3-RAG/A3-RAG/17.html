@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多路召回的合并算法：倒数排名融合 (RRF)</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 35px 75px 40px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.5 : 6.5 比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.5fr 6.5fr;
+            gap: 40px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .objective-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 14px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 16px 20px;
+            border-radius: 12px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧代码沙盒：精密高度控制以实现 100% 完整显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: fit-content;
+            max-height: 380px;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 38px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 24px 30px;
+            overflow: hidden;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string/number */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 15px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，绝不遮挡 -->
+    <header class="header">
+        <span class="slide-tag">17 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">多路召回合并算法：倒数排名融合 (RRF)</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理与公式 -->
+        <div class="theory-panel">
+            <!-- 痛点卡片 -->
+            <div class="objective-card">
+                <span class="card-label" style="color: #b91c1c;">The Dimensionality Barrier</span>
+                <p class="text-[15px] font-bold text-slate-800 leading-snug">
+                    <strong class="text-red-600">数值不对称的合并痛点</strong>：向量匹配返回相似度余弦值（如 <code class="code-font bg-red-100 text-red-800 px-1 rounded text-xs font-bold">0.85</code>），而 BM25 返回原生词频统计原始分（如 <code class="code-font bg-red-100 text-red-800 px-1 rounded text-xs font-bold">12.4</code>）。量纲与标尺完全失真，根本无法直接相加排序。
+                </p>
+            </div>
+
+            <!-- 原理卡片 -->
+            <div class="logic-card">
+                <span class="card-label">RRF Mathematical Premise</span>
+                <p class="text-[14.5px] text-slate-700 leading-relaxed font-medium">
+                    <strong class="text-blue-700">倒数排名融合算法（Reciprocal Rank Fusion）</strong>：抛弃绝对分值，仅仅评估文档在两条异构路径中的<strong class="underline decoration-2">相对排名顺序</strong>：
+                </p>
+                <!-- 学术公式排版 -->
+                <div class="bg-white border border-slate-200/60 rounded-xl p-3 mt-2 flex justify-center items-center shadow-inner">
+                    <math xmlns="http://www.w3.org/1998/Math/MathML" display="block" style="font-size: 1.15rem; color: #0f172a;">
+                      <msub>
+                        <mi>RRF_Score</mi>
+                        <mrow></mrow>
+                      </msub>
+                      <mo>(</mo>
+                      <mi>d</mi>
+                      <mo>)</mo>
+                      <mo>=</mo>
+                      <munder>
+                        <mo>&#x2211;</mo>
+                        <mrow>
+                          <mi>m</mi>
+                          <mo>&#x2208;</mo>
+                          <mi>M</mi>
+                        </mrow>
+                      </munder>
+                      <mfrac>
+                        <mn>1</mn>
+                        <mrow>
+                          <mi>k</mi>
+                          <mo>+</mo>
+                          <msub>
+                            <mi>r</mi>
+                            <mi>m</mi>
+                          </msub>
+                          <mo>(</mo>
+                          <mi>d</mi>
+                          <mo>)</mo>
+                        </mrow>
+                      </mfrac>
+                    </math>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2.5 italic">
+                    * 其中 r_m(d) 为文档 d 在第 m 路检索结果中的自然名次，k 为平滑常数（业界一般设为 60）。
+                </p>
+            </div>
+        </div>
+
+        <!-- 右侧代码沙盒：完美缩进，15px 极致大字号无滚动条、100%全显 -->
+        <div class="code-sandbox">
+            <div class="code-header">
+                <div class="window-dots">
+                    <div class="dot bg-[#ff5f56]"></div>
+                    <div class="dot bg-[#ffbd2e]"></div>
+                    <div class="dot bg-[#27c93f]"></div>
+                </div>
+                <span class="text-slate-500 code-font text-[10px]">reciprocal_rank_fusion.py</span>
+            </div>
+            <div class="code-body">
+                <pre class="code-font text-[15px] leading-[1.48] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">rrf</span>(vector_results: <span class="t">list</span>, bm25_results: <span class="t">list</span>, k: <span class="t">int</span> = <span class="s">60</span>) -> <span class="t">list</span>:
+    rrf_scores = {}
+    
+    <span class="c"># 1. 累加计算向量检索路径的倒数相对位次 score</span>
+    <span class="k">for</span> rank, doc_id <span class="k">in</span> <span class="f">enumerate</span>(vector_results):
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, <span class="s">0.0</span>) + <span class="s">1.0</span> / (k + (rank + <span class="s">1</span>))
+    
+    <span class="c"># 2. 累加合并关键词检索路径的倒数相对位次 score</span>
+    <span class="k">for</span> rank, doc_id <span class="k">in</span> <span class="f">enumerate</span>(bm25_results):
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, <span class="s">0.0</span>) + <span class="s">1.0</span> / (k + (rank + <span class="s">1</span>))
+        
+    <span class="c"># 3. 根据倒数位次累加和进行全局降序重排</span>
+    sorted_docs = <span class="f">sorted</span>(rrf_scores.items(), key=<span class="k">lambda</span> x: x[<span class="s">1</span>], reverse=<span class="k">True</span>)
+    <span class="k">return</span> sorted_docs</pre>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">工程常数 k=60 的数学哲学：</strong> 
+            引入常数 <code class="code-font bg-white px-1 font-bold text-blue-800">k</code> 是为了极大程度地缓和“高位名次对整体总分产生的恶性统治力”。如果没有 k（即 k=0），那么第一名（1/1 = 1.0）的分量将是第三名（1/3 ≈ 0.33）的三倍。而当设定 k=60 时，第 1 名（1/61）与第 3 名（1/63）的分值趋于相对平滑，极大地保护了长尾匹配的参考连续度。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "16.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "18.html";
+        }
+    });
+</script>
+</body>
+</html>

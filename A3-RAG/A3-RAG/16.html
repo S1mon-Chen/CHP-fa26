@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检索中优化：混合检索 (Hybrid Search) 与两路召回</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 35px 75px 40px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.5 : 6.5 比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.5fr 6.5fr;
+            gap: 40px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .objective-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 18px 20px;
+            border-radius: 12px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧垂直排列（图表 + 代码） */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 8px;
+            height: 165px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：精密高度控制以实现 100% 完整显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 250px; /* 固定精密高度，完美容纳 11 行代码 */
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 38px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 18px 28px;
+            overflow: hidden;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 15px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题 -->
+    <header class="header">
+        <span class="slide-tag">16 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">检索中优化：混合检索 (Hybrid Search) 与两路召回</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理剖析 -->
+        <div class="theory-panel">
+            <!-- 痛点卡片 -->
+            <div class="objective-card">
+                <span class="card-label" style="color: #b91c1c;">Vector Search Bottleneck</span>
+                <p class="text-[15.5px] font-bold text-slate-800 leading-snug">
+                    <strong class="text-red-600">单语义向量检索的致命弱点</strong>：对精确匹配（如特定产品型号 <code class="bg-red-50 text-red-700 px-1 rounded text-xs font-mono">v2.4.1</code>、唯一股票代码、序列号）极其不敏感。向量化往往会因语义泛化，错误召回“相似但不精确”的噪点段落。
+                </p>
+            </div>
+
+            <!-- 原理核心 -->
+            <div class="logic-card">
+                <span class="card-label">The Double-Edged Sword Solution</span>
+                <ul class="text-[15px] text-slate-700 leading-relaxed font-medium space-y-2">
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-blue-700">1. 语义召回 (Dense Retrieval)</strong>：依靠向量神经网络，深度理解字面背后的抽象意图、多同义词和逻辑关联。</span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-emerald-600 mt-1">●</span>
+                        <span><strong class="text-emerald-700">2. 关键词召回 (Sparse Retrieval)</strong>：依靠经典的 <code class="code-font text-xs bg-slate-100 px-1 font-bold text-slate-800">BM25 算法</code>，硬字面精确统计，百分百无偏差锁定专有名词。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧：两路召回拓扑图 + 混合检索代码 -->
+        <div class="right-panel">
+            <!-- 1. 双路检索与融合拓扑（纯原生 SVG 绘制） -->
+            <div class="svg-container relative">
+                <span class="absolute top-2 left-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hybrid Search Pipeline Workflow</span>
+                <svg viewBox="0 0 540 140" width="100%" height="100%">
+                    <defs>
+                        <!-- 定义标准箭头 -->
+                        <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+                        </marker>
+                        <marker id="arrow-emerald" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                        </marker>
+                        <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+                        </marker>
+                    </defs>
+
+                    <!-- ① 用户 Query -->
+                    <g transform="translate(50, 70)">
+                        <circle cx="0" cy="0" r="16" fill="#f8fafc" stroke="#64748b" stroke-width="2" />
+                        <text x="0" y="4" font-family="sans-serif" font-size="10" font-weight="900" fill="#334155" text-anchor="middle">Query</text>
+                    </g>
+
+                    <!-- 分流路径：Dense 语义 -->
+                    <path d="M 66 58 Q 110 25 150 25" fill="none" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="3,3" />
+                    <g transform="translate(150, 10)">
+                        <rect x="0" y="0" width="130" height="30" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5" />
+                        <text x="65" y="18" font-family="sans-serif" font-size="10" font-weight="900" fill="#1d4ed8" text-anchor="middle">Dense 语义检索</text>
+                    </g>
+                    <path d="M 280 25 Q 330 25 365 54" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)" />
+
+                    <!-- 分流路径：Sparse 词频 -->
+                    <path d="M 66 82 Q 110 115 150 115" fill="none" stroke="#a7f3d0" stroke-width="1.5" stroke-dasharray="3,3" />
+                    <g transform="translate(150, 100)">
+                        <rect x="0" y="0" width="130" height="30" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5" />
+                        <text x="65" y="18" font-family="sans-serif" font-size="10" font-weight="900" fill="#047857" text-anchor="middle">Sparse (BM25) 检索</text>
+                    </g>
+                    <path d="M 280 115 Q 330 115 365 86" fill="none" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrow-emerald)" />
+
+                    <!-- ② 融合排序节点 (RRF) -->
+                    <g transform="translate(370, 48)">
+                        <rect x="0" y="0" width="75" height="44" rx="8" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="2" />
+                        <text x="37" y="20" font-family="sans-serif" font-size="10.5" font-weight="900" fill="#5b21b6" text-anchor="middle">RRF 融合</text>
+                        <text x="37" y="32" font-family="sans-serif" font-size="8" fill="#7c3aed" text-anchor="middle">排名交集算法</text>
+                    </g>
+                    <path d="M 445 70 L 478 70" fill="none" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrow-purple)" />
+
+                    <!-- ③ 最终 Top-K 结果 -->
+                    <g transform="translate(485, 54)">
+                        <rect x="0" y="0" width="40" height="32" rx="4" fill="#faf5ff" stroke="#c084fc" stroke-width="1" />
+                        <line x1="8" y1="10" x2="32" y2="10" stroke="#a855f7" stroke-width="2" />
+                        <line x1="8" y1="16" x2="26" y2="16" stroke="#c084fc" stroke-width="2" />
+                        <line x1="8" y1="22" x2="20" y2="22" stroke="#e9d5ff" stroke-width="2" />
+                        <text x="20" y="-8" font-family="sans-serif" font-size="9.5" font-weight="900" fill="#701a75" text-anchor="middle">Top-K</text>
+                    </g>
+                </svg>
+            </div>
+
+            <!-- 2. 混合检索逻辑编排沙盒 (16.5px 超大字号，100% 完整展现) -->
+            <div class="code-sandbox">
+                <div class="code-header flex justify-between">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-500 code-font text-[10px]">hybrid_search_orchestrator.py</span>
+                </div>
+                <div class="code-body">
+                    <pre class="code-font text-[16.5px] leading-[1.48] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">hybrid_retriever</span>(query: <span class="t">str</span>, top_k: <span class="t">int</span> = <span class="s">5</span>) -> <span class="t">list</span>[<span class="t">dict</span>]:
+    <span class="c"># 1. 语义召回 (Dense Path) -> 捕获同义词与长语义抽象意图</span>
+    dense_res = db.dense_vector_search(get_embedding(query), limit=<span class="s">20</span>)
+    
+    <span class="c"># 2. 精确召回 (Sparse Path) -> 锁定具体版本、型号、产品 ID</span>
+    sparse_res = db.sparse_bm25_search(query, limit=<span class="s">20</span>)
+    
+    <span class="c"># 3. 倒数排名融合 (RRF) -> 将不同量纲的多路评分进行科学无偏归并</span>
+    ranked_docs = reciprocal_rank_fusion(dense_res, sparse_res)
+    <span class="k">return</span> ranked_docs[:top_k]</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">业界共识 (多路召回是生产落地的基石)：</strong> 
+            混合检索是解决 RAG 系统面临特定专业专有名词失效的唯一工业标准解法。单纯基于语义向量的召回率（Recall）在面对版本号、特定产品代号时经常不尽人意。将 <code class="code-font bg-white px-1">BM25</code> 与 <code class="code-font bg-white px-1">Dense</code> 双管齐下，能完美兼顾系统的“深度语义理解”与“刚性字面拦截”。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "15.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "17.html";
+        }
+    });
+</script>
+
+</body>
+</html>

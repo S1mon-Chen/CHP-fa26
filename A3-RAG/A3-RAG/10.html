@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工业级向量数据库与索引选择</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 30px 75px 35px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 10px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：4:6 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 4fr 6fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论与对比区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .theory-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 12px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .tech-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .tech-table th {
+            background-color: #f1f5f9;
+            color: #475569;
+            font-weight: 700;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        .tech-table td {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            color: #334155;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器：垂直排列（图表 + 代码） */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* HNSW 拓扑图容器 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 10px;
+            height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 代码沙盒：精密控制高度以实现全显 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 245px; /* 精密计算高度，避免任何溢出 */
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 15px 25px;
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function/class */
+        .s { color: #fbbf24; } /* string */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type/param */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 10px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题 -->
+    <header class="header">
+        <span class="slide-tag">10 / 40 · 第二部分：解构向量数据库</span>
+        <h2 class="slide-title">工业级向量数据库与索引选择</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：瓶颈与数据库选型对比 -->
+        <div class="theory-panel">
+            <div class="theory-card">
+                <span class="text-xs font-black text-red-600 uppercase tracking-widest block mb-1">千万级算力红线 (O(N) Bottleneck)</span>
+                <p class="text-[14px] font-bold text-slate-800 leading-normal">
+                    内存暴力扫描在数据量达到千万级别时将直接导致 CPU 瘫痪。工业级方案必须通过数学降维与拓扑索引，实现高并发检索。
+                </p>
+            </div>
+
+            <div class="bg-white border border-slate-200 p-4 rounded-xl shadow-sm flex flex-col gap-2">
+                <span class="card-label">Production Database Selection Matrix</span>
+                <table class="tech-table">
+                    <thead>
+                        <tr>
+                            <th>数据库</th>
+                            <th>开发语言</th>
+                            <th>核心特色</th>
+                            <th>适用场景</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="font-bold text-blue-600">Qdrant</td>
+                            <td class="code-font text-xs">Rust</td>
+                            <td>极致高并发，内存开销低</td>
+                            <td>敏捷迭代/私有化部署</td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold text-indigo-600">Milvus</td>
+                            <td class="code-font text-xs">Go/C++</td>
+                            <td>存算分离，支持超巨量级</td>
+                            <td>TB级以上大型数仓</td>
+                        </tr>
+                        <tr>
+                            <td class="font-bold text-emerald-600">Pinecone</td>
+                            <td class="code-font text-xs">C++</td>
+                            <td>全托管 SaaS，免运维</td>
+                            <td>云原生轻量开发</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 右侧：HNSW 拓扑图与高吞吐调优代码 -->
+        <div class="right-panel">
+            <!-- 1. HNSW 分层图可视化 (学术规范 SVG) -->
+            <div class="svg-container relative">
+                <span class="absolute top-2 left-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">HNSW Multi-Layer Search Routing</span>
+                <svg viewBox="0 0 500 150" width="100%" height="100%">
+                    <!-- Layer 2 (Top - Sparse) -->
+                    <g transform="translate(0, 10)">
+                        <line x1="120" y1="20" x2="380" y2="20" stroke="#cbd5e1" stroke-width="1.5" />
+                        <circle cx="120" cy="20" r="6" fill="#ef4444" />
+                        <circle cx="380" cy="20" r="6" fill="#cbd5e1" />
+                        <text x="35" y="24" font-family="sans-serif" font-size="11" font-weight="900" fill="#ef4444">Layer 2 (粗筛)</text>
+                        <path d="M 120 20 L 120 60" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="3,3" />
+                    </g>
+
+                    <!-- Layer 1 (Middle - Medium) -->
+                    <g transform="translate(0, 50)">
+                        <line x1="120" y1="20" x2="220" y2="20" stroke="#cbd5e1" stroke-width="1.5" />
+                        <line x1="220" y1="20" x2="300" y2="20" stroke="#cbd5e1" stroke-width="1.5" />
+                        <line x1="300" y1="20" x2="380" y2="20" stroke="#cbd5e1" stroke-width="1.5" />
+                        <circle cx="120" cy="20" r="5" fill="#3b82f6" />
+                        <circle cx="220" cy="20" r="5" fill="#ef4444" />
+                        <circle cx="300" cy="20" r="5" fill="#cbd5e1" />
+                        <circle cx="380" cy="20" r="5" fill="#cbd5e1" />
+                        <text x="35" y="24" font-family="sans-serif" font-size="11" font-weight="900" fill="#3b82f6">Layer 1 (路由)</text>
+                        <path d="M 220 20 L 220 60" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3,3" />
+                    </g>
+
+                    <!-- Layer 0 (Bottom - Dense) -->
+                    <g transform="translate(0, 90)">
+                        <line x1="80" y1="20" x2="120" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="120" y1="20" x2="170" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="170" y1="20" x2="220" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="220" y1="20" x2="260" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="260" y1="20" x2="300" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="300" y1="20" x2="340" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <line x1="340" y1="20" x2="380" y2="20" stroke="#cbd5e1" stroke-width="1" />
+                        <circle cx="80" cy="20" r="4" fill="#cbd5e1" />
+                        <circle cx="120" cy="20" r="4" fill="#cbd5e1" />
+                        <circle cx="170" cy="20" r="4" fill="#cbd5e1" />
+                        <circle cx="220" cy="20" r="4" fill="#10b981" />
+                        <circle cx="260" cy="20" r="4" fill="#10b981" />
+                        <circle cx="300" cy="20" r="4" fill="#cbd5e1" />
+                        <circle cx="340" cy="20" r="4" fill="#cbd5e1" />
+                        <circle cx="380" cy="20" r="4" fill="#cbd5e1" />
+                        <text x="35" y="24" font-family="sans-serif" font-size="11" font-weight="900" fill="#10b981">Layer 0 (精检)</text>
+                        <!-- Search path highlight -->
+                        <path d="M 120 -60 Q 220 -20 220 20 T 260 110" fill="none" stroke="#ef4444" stroke-width="2.5" marker-end="url(#arrow)" />
+                    </g>
+                    <!-- Marker for search path -->
+                    <defs>
+                        <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+                        </marker>
+                    </defs>
+                </svg>
+            </div>
+
+            <!-- 2. HNSW 高并发创建代码 (15px大字号，精密排版100%全显) -->
+            <div class="code-sandbox">
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-500 code-font text-[10px]">qdrant_hnsw_tune.py</span>
+                </div>
+                <div class="code-body">
+                    <pre class="code-font text-[15px] leading-[1.4] text-slate-300 text-left m-0 p-0"><span class="k">from</span> qdrant_client <span class="k">import</span> QdrantClient
+<span class="k">from</span> qdrant_client.models <span class="k">import</span> VectorParams, Distance, HnswConfigDiff
+
+client = QdrantClient(url=<span class="s">"http://localhost:6333"</span>)
+client.create_collection(
+    collection_name=<span class="s">"enterprise_knowledge"</span>,
+    vectors_config=VectorParams(size=<span class="s">1536</span>, distance=Distance.COSINE),
+    <span class="c"># 高吞吐 HNSW 拓扑图索引调优配置</span>
+    hnsw_config=HnswConfigDiff(
+        m=<span class="s">16</span>,             <span class="c"># 每个节点的底层最大连接数 (拓扑图宽度)</span>
+        ef_construct=<span class="s">128</span>,  <span class="c"># 索引构建时的搜索深度 (越大图质量越高)</span>
+        full_scan_threshold=<span class="s">10000</span> <span class="c"># 数据量低于此值时强制走全内存暴搜</span>
+    )
+)</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">HNSW 算法精髓（类似多维跳表）：</strong> 
+            检索复杂度仅为 <code class="code-font bg-white px-1">O(log N)</code>。在建索引时调大 <code class="code-font bg-white px-1 font-bold">m</code> 与 <code class="code-font bg-white px-1 font-bold">ef_construct</code> 能有效提高检索召回率（Recall），但会成比例增加建图内存开销与耗时。这是软件工程在**时间与空间**维度的又一次经典权衡。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保幻灯片在任何尺寸侧边栏/视口下都完美锁定 16:9 横版比例，绝不产生滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "9.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "11.html";
+        }
+    });
+</script>
+
+</body>
+</html>

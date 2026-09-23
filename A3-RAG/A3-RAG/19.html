@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>解决大模型痛点：精简上下文与长文本挑战</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 30px 75px 35px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.8 : 6.2 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.8fr 6.2fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧面板 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器：矮化至 120px 高度 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 8px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        /* 左侧卡片 */
+        .warning-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 15px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：固定 310px 高度，满足100%无滚动条显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 310px; 
+            justify-content: space-between;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 34px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 10px 24px; /* 精细收窄 padding，完美利用每一像素高度 */
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string/number/key */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 12px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，拒绝任何遮挡 -->
+    <header class="header">
+        <span class="slide-tag">19 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">解决大模型痛点：精简上下文与长文本挑战</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：痛点与双重防御策略 -->
+        <div class="theory-panel">
+            <!-- 1. 学术痛点卡片 -->
+            <div class="warning-card">
+                <span class="card-label" style="color: #b91c1c;">Academic Warning: Lost in the Middle</span>
+                <p class="text-[15.5px] font-bold text-slate-800 leading-relaxed">
+                    <strong class="text-red-600">“中间迷失”现象</strong>：权威研究表明，当 Context 填入过量候选切块时，LLM 会对<strong class="underline decoration-red-400">最前和最后</strong>的信息产生极强关注，而直接“无视”排布在长上下文最中间的真实核心论据。
+                </p>
+            </div>
+
+            <!-- 2. 工程防御策略卡片 -->
+            <div class="logic-card">
+                <span class="card-label">Engineering Defenses</span>
+                <ul class="text-[14.5px] text-slate-700 leading-relaxed font-medium space-y-2.5">
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">Prompt 动态重排</strong>：将检索得分最高、最核心的切块分布于 Prompt 的两端（高敏感区），将得分低的噪点切块塞在最中间。</span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">上下文智能压缩</strong>：利用小型语言模型（如 <code class="code-font text-xs bg-slate-100 px-1 font-bold text-slate-800">LLMLingua</code>）剔除上下文里无意义的连接词或废话，节省 Token 并净化核心语义。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧：注意力曲线可视化 + 双端重排算法代码 -->
+        <div class="right-panel">
+            <!-- 1. U型注意力分布图表 (纯原生 SVG 绘制，高度精简对齐) -->
+            <div class="svg-container relative">
+                <span class="absolute top-1.5 left-4 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Context Position vs LLM Attention Curve</span>
+                <svg viewBox="0 0 500 110" width="100%" height="100%">
+                    <defs>
+                        <!-- 定义高亮渐变 -->
+                        <linearGradient id="curveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#3b82f6" />
+                            <stop offset="50%" stop-color="#ef4444" />
+                            <stop offset="100%" stop-color="#3b82f6" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- 网格线 -->
+                    <line x1="50" y1="85" x2="450" y2="85" stroke="#cbd5e1" stroke-width="1.5" />
+                    <line x1="50" y1="15" x2="50" y2="85" stroke="#e2e8f0" stroke-width="1" />
+                    <line x1="450" y1="15" x2="450" y2="85" stroke="#e2e8f0" stroke-width="1" />
+
+                    <!-- 注意力U型平滑曲线 (重新计算几何张力，完美防溢出) -->
+                    <path d="M 50 20 C 150 95, 350 95, 450 30" fill="none" stroke="url(#curveGrad)" stroke-width="3" />
+
+                    <!-- 关键监测节点 -->
+                    <!-- 头部 (高) -->
+                    <circle cx="50" cy="20" r="4.5" fill="#3b82f6" />
+                    <text x="58" y="16" font-family="sans-serif" font-size="9" font-weight="black" fill="#1d4ed8">头部高敏感区 (Start)</text>
+
+                    <!-- 中部 (极低) -->
+                    <circle cx="250" cy="72.5" r="4.5" fill="#ef4444" />
+                    <text x="250" y="62" font-family="sans-serif" font-size="9.5" font-weight="black" fill="#b91c1c" text-anchor="middle">❌ 中部迷失区 (Lost in Middle)</text>
+
+                    <!-- 尾部 (高) -->
+                    <circle cx="450" cy="30" r="4.5" fill="#3b82f6" />
+                    <text x="440" y="21" font-family="sans-serif" font-size="9" font-weight="black" fill="#1d4ed8" text-anchor="end">尾部复苏区 (End)</text>
+
+                    <!-- 坐标轴文字 -->
+                    <text x="50" y="98" font-family="sans-serif" font-size="8.5" fill="#64748b" text-anchor="middle">Prompt 头部</text>
+                    <text x="250" y="98" font-family="sans-serif" font-size="8.5" fill="#64748b" text-anchor="middle">Prompt 中部</text>
+                    <text x="450" y="98" font-family="sans-serif" font-size="8.5" fill="#64748b" text-anchor="middle">Prompt 尾部</text>
+                </svg>
+            </div>
+
+            <!-- 2. U型重排代码沙盒 (13.5px 大字号，100% 完美无滚动展现) -->
+            <div class="code-sandbox">
+                <!-- IDE 头部 -->
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px]">prompt_reorder.py</span>
+                </div>
+                <!-- IDE 代码区 -->
+                <div class="code-body">
+                    <pre class="code-font text-[13.5px] leading-[1.38] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">reorder_context</span>(chunks: <span class="t">list</span>[<span class="t">dict</span>]) -> <span class="t">list</span>[<span class="t">dict</span>]:
+    <span class="c"># 1. 优先按相似度得分从高到低对文档切片进行重排</span>
+    sorted_chunks = <span class="f">sorted</span>(chunks, key=<span class="k">lambda</span> x: x[<span class="s">"score"</span>], reverse=<span class="k">True</span>)
+    reordered = [None] * <span class="f">len</span>(sorted_chunks)
+    left, right = <span class="s">0</span>, <span class="f">len</span>(sorted_chunks) - <span class="s">1</span>
+    
+    <span class="c"># 2. 核心双端对角编排：高分分散在头部和尾部，低分塞入中段</span>
+    <span class="k">for</span> i, chunk <span class="k">in</span> <span class="f">enumerate</span>(sorted_chunks):
+        <span class="k">if</span> i % <span class="s">2</span> == <span class="s">0</span>:
+            reordered[left] = chunk
+            left += <span class="s">1</span>
+        <span class="k">else</span>:
+            reordered[right] = chunk
+            right -= <span class="s">1</span>
+    <span class="k">return</span> reordered</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12.5px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">工程实践策略：</strong> 
+            即便长文本大模型（支持 1M+ 上下文）日益成熟，也依然无法打破注意力集中度不均的物理天花板。通过 <code class="code-font bg-white px-1 font-bold text-blue-800">reorder_context</code> 算法进行 Prompt 重排，配合 <code class="code-font bg-white px-1 font-bold text-blue-800">LLMLingua</code> 提示词压缩，可在生产环境中为企业级 RAG 检索系统的多证据回答质量筑起坚实的最后防线。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "18.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "20.html";
+        }
+    });
+</script>
+
+</body>
+</html>

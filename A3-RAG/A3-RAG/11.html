@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简 RAG 后端：20行代码跑通全管道</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 30px 75px 35px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 8px; /* 缩减下边距，为内容区让出高度 */
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.2:6.8 比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.2fr 6.8fr;
+            gap: 40px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .objective-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 14px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 16px 20px;
+            border-radius: 12px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧代码沙盒：精密控制高度与内边距，实现 100% 显式无滚动 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 415px; /* 精密高度调节，绝不顶天立地 */
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 36px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 12px 26px; /* 收紧上下 padding，释放高度 */
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 10px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：杜绝遮挡，保留高呼吸感 -->
+    <header class="header">
+        <span class="slide-tag">11 / 40 · 第二部分：极简 RAG 全管道跑通</span>
+        <h2 class="slide-title">极简 RAG 后端：20行代码跑通全管道</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理剖析 -->
+        <div class="theory-panel">
+            <div class="objective-card">
+                <span class="card-label">Educational Goal</span>
+                <p class="text-[15px] font-bold text-slate-800 leading-snug">
+                    用不超过 20 行的纯 Python 代码实现端到端 RAG 极简原型，帮助学生在宏观上掌握数据在全管道中的流动过程。
+                </p>
+            </div>
+
+            <div class="logic-card">
+                <span class="card-label">Pipeline Workflow</span>
+                <ul class="space-y-2">
+                    <li class="flex items-start gap-2 text-[13.5px] text-slate-600">
+                        <span class="text-blue-600 font-black mt-0.5">1.</span>
+                        <span><strong class="text-slate-900">语义检索 (Retrieve)</strong>：计算提问向量并查询最相关的 1 个参考切片（top_k=1）。</span>
+                    </li>
+                    <li class="flex items-start gap-2 text-[13.5px] text-slate-600">
+                        <span class="text-blue-600 font-black mt-0.5">2.</span>
+                        <span><strong class="text-slate-900">上下文组装 (Augment)</strong>：利用 Python 格式化字符串进行 Prompt 拼接约束。</span>
+                    </li>
+                    <li class="flex items-start gap-2 text-[13.5px] text-slate-600">
+                        <span class="text-blue-600 font-black mt-0.5">3.</span>
+                        <span><strong class="text-slate-900">本地模型调用 (Generate)</strong>：调用 Ollama 接口驱动本地推理，输出精准答复。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧代码沙盒：13.5px 完美字号，20行代码 100% 一屏全显 -->
+        <div class="code-sandbox">
+            <div class="code-header flex justify-between">
+                <div class="window-dots">
+                    <div class="dot bg-[#ff5f56]"></div>
+                    <div class="dot bg-[#ffbd2e]"></div>
+                    <div class="dot bg-[#27c93f]"></div>
+                </div>
+                <span class="text-slate-500 code-font text-[10px]">naive_rag_pipeline.py</span>
+            </div>
+            <div class="code-body">
+                <pre class="code-font text-[13.5px] leading-[1.32] text-slate-300 text-left m-0 p-0"><span class="c"># 假设已经初始化好了 db</span>
+query = <span class="s">"什么是向量数据库的 HNSW 算法？"</span>
+q_vector = get_ollama_embedding(query)
+results = db.query(q_vector, top_k=<span class="s">1</span>)
+
+<span class="c"># 1. 上下文拼装 (Context Augmentation)</span>
+context = results[<span class="s">0</span>][<span class="s">"meta"</span>][<span class="s">"text"</span>]
+prompt = f<span class="s">"请严格根据以下参考资料回答问题：\\n【资料】：{context}\\n【问题】：{query}"</span>
+
+<span class="c"># 2. 调用大模型生成响应 (LLM Generation)</span>
+llm_response = requests.post(
+    <span class="s">"http://localhost:11434/api/generate"</span>, 
+    json={
+        <span class="s">"model"</span>: <span class="s">"llama3"</span>, 
+        <span class="s">"prompt"</span>: prompt, 
+        <span class="s">"stream"</span>: <span class="k">False</span>
+    }
+).json()
+
+print(llm_response[<span class="s">"response"</span>])</pre>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-red-500 text-white p-1 rounded shrink-0 animate-pulse">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-red-600 font-bold">Naïve RAG 的脆弱硬伤：</strong> 
+            这种极简链路在生产环境中极其脆弱。一旦检索召回了低质量或跑题的切块（例如 top_k=1 匹配失败），不相关的数据就会严重“污染” Context。大模型在垃圾输入的误导下，仍会强行输出极具迷惑性的幻觉事实。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保幻灯片在任何尺寸侧边栏/视口下都完美锁定 16:9 横版比例，绝不产生滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "10.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "12.html";
+        }
+    });
+</script>
+
+</body>
+</html>

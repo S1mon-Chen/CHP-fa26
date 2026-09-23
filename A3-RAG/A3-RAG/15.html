@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>检索前置：假设性文档嵌入 (HyDE)</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 35px 75px 40px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.5 : 6.5 比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.5fr 6.5fr;
+            gap: 40px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧理论区 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .objective-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 18px 20px;
+            border-radius: 12px;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧垂直排列（图表 + 代码） */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 8px;
+            height: 165px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：精密高度控制以实现 100% 完整显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 250px; /* 固定精密高度，完美容纳 11 行代码 */
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 38px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 18px 28px;
+            overflow: hidden;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 15px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题 -->
+    <header class="header">
+        <span class="slide-tag">15 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">检索前置优化：假设性文档嵌入 (HyDE)</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理剖析 -->
+        <div class="theory-panel">
+            <!-- 痛点卡片 -->
+            <div class="objective-card">
+                <span class="card-label" style="color: #b91c1c;">The Core Pain Point</span>
+                <p class="text-[15.5px] font-bold text-slate-800 leading-snug">
+                    <strong class="text-red-600">提问与回答的几何异构性</strong>：用户提问往往很短且带口语，而知识库中的正确答案是详尽的标准长文。两者在向量表征空间中的投影特征可能极其不接近，导致相似性匹配首轮失效。
+                </p>
+            </div>
+
+            <!-- 原理核心 -->
+            <div class="logic-card">
+                <span class="card-label">Mathematical Core Premise</span>
+                <p class="text-[15.5px] text-slate-700 leading-relaxed font-medium">
+                    利用 LLM 自主发散的“直觉”，先“瞎编”一个非绝对真实、但符合期望长相的技术草稿（假设性文档 $H$）。
+                </p>
+                <div class="mt-2 text-[14.5px] text-blue-800 bg-blue-100/50 p-2.5 rounded-lg border border-blue-200/50">
+                    💡 <strong>几何公理：</strong>在高维空间中，<strong class="underline decoration-2">“假设文档 H ➔ 真实回答 D”</strong> 的语义特征距离，远远小于 <strong class="underline decoration-2">“简短提问 Q ➔ 真实回答 D”</strong> 的距离。
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：拓扑可视化 + 算法代码 -->
+        <div class="right-panel">
+            <!-- 1. 向量空间特征距离投影（纯原生 SVG 绘制） -->
+            <div class="svg-container relative">
+                <span class="absolute top-2 left-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vector Space Geometric Projection</span>
+                <svg viewBox="0 0 540 140" width="100%" height="100%">
+                    <!-- 定义箭头 -->
+                    <defs>
+                        <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+                        </marker>
+                        <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                        </marker>
+                    </defs>
+
+                    <!-- ① 用户提问 Q (红色点) -->
+                    <g transform="translate(80, 45)">
+                        <circle cx="0" cy="0" r="10" fill="#fee2e2" stroke="#ef4444" stroke-width="2.5" />
+                        <circle cx="0" cy="0" r="4" fill="#ef4444" />
+                        <text x="0" y="26" font-family="sans-serif" font-size="10.5" font-weight="900" fill="#991b1b" text-anchor="middle">用户模糊提问 Q</text>
+                        <text x="0" y="38" font-family="sans-serif" font-size="9" fill="#94a3b8" text-anchor="middle">"什么是 HNSW？"</text>
+                    </g>
+
+                    <!-- ② 假设文档 H (橙色点 - LLM 生成) -->
+                    <g transform="translate(260, 95)">
+                        <circle cx="0" cy="0" r="10" fill="#ffedd5" stroke="#f97316" stroke-width="2.5" />
+                        <circle cx="0" cy="0" r="4" fill="#f97316" />
+                        <text x="0" y="-22" font-family="sans-serif" font-size="10.5" font-weight="900" fill="#c2410c" text-anchor="middle">假设性文档 H (假答案)</text>
+                        <text x="0" y="-12" font-family="sans-serif" font-size="9" fill="#94a3b8" text-anchor="middle">"HNSW 是一种分层图..."</text>
+                    </g>
+
+                    <!-- ③ 真实文档 D (绿色点 - 目标切片) -->
+                    <g transform="translate(440, 45)">
+                        <circle cx="0" cy="0" r="10" fill="#d1fae5" stroke="#10b981" stroke-width="2.5" />
+                        <circle cx="0" cy="0" r="4" fill="#10b981" />
+                        <text x="0" y="26" font-family="sans-serif" font-size="10.5" font-weight="900" fill="#065f46" text-anchor="middle">真实文档 D (目标)</text>
+                        <text x="0" y="38" font-family="sans-serif" font-size="9" fill="#94a3b8" text-anchor="middle">"HNSW 图中包含多个层级..."</text>
+                    </g>
+
+                    <!-- 连线一：Q ➔ D (长距离，检索难) -->
+                    <path d="M 120 45 L 395 45" fill="none" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow-red)" />
+                    <text x="260" y="38" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#ef4444" text-anchor="middle">❌ 语义几何跨度过长 (易漏检)</text>
+
+                    <!-- 连线二：Q ➔ H (LLM 幻想) -->
+                    <path d="M 115 60 Q 180 85 220 90" fill="none" stroke="#fdba74" stroke-width="1.5" stroke-dasharray="3,3" />
+                    <text x="165" y="88" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#f97316" text-anchor="middle">① LLM 幻想生成</text>
+
+                    <!-- 连线三：H ➔ D (短距离，精检索) -->
+                    <path d="M 290 85 L 415 54" fill="none" stroke="#a7f3d0" stroke-width="2" marker-end="url(#arrow-green)" />
+                    <text x="375" y="85" font-family="sans-serif" font-size="9.5" font-weight="bold" fill="#10b981" text-anchor="middle">② 高保真近邻检索</text>
+                </svg>
+            </div>
+
+            <!-- 2. HyDE 逻辑代码沙盒 (16px 超大字号，100% 自然全显，绝无滚动条) -->
+            <div class="code-sandbox">
+                <div class="code-header flex justify-between">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-500 code-font text-[10px]">hyde_pipeline.py</span>
+                </div>
+                <div class="code-body">
+                    <pre class="code-font text-[16px] leading-[1.48] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">hyde_retriever</span>(query: <span class="t">str</span>, top_k: <span class="t">int</span> = <span class="s">2</span>) -> <span class="t">list</span>[<span class="t">dict</span>]:
+    system_prompt = (
+        <span class="s">"请针对用户的技术提问，撰写一段契合专业学术"</span>
+        <span class="s">"文档规范的假设性回答草稿，无需保证事实绝对准确。"</span>
+    )
+    
+    <span class="c"># 1. 引导大模型编造符合真实答案“骨架特征”的假设性长文</span>
+    fake_doc = call_llm(system_prompt, query)
+    
+    <span class="c"># 2. 将“假答案”转为高维特征向量，替代原始简短提问进行检索</span>
+    fake_vector = get_ollama_embedding(fake_doc)
+    <span class="k">return</span> db.query(fake_vector, top_k=top_k)</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">工程落地警示 (以时间换精度)：</strong> 
+            HyDE 算法能够有效克服冷启动检索的相关度遗漏问题，但因为在首轮引入了额外的大模型推理开销（生成假文档），系统响应的首字延迟（TTFT）会增加 <code class="code-font bg-white px-1">0.5s~1.5s</code>。此方案更适合对精准度要求极严、但对耗时相对宽容的财务、法律及内部专业知识检索业务。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "14.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "16.html";
+        }
+    });
+</script>
+
+</body>
+</html>

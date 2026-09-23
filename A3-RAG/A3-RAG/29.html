@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自反思架构 (Self-RAG / Corrective RAG) 的工程闭环</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 25px 75px 35px 75px; /* 精密防遮挡安全 Padding */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 8px; /* 压缩底边距，隔离内容区 */
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.8 : 6.2 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.8fr 6.2fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧面板 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器：绝对防阻挡高度 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 6px;
+            height: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        /* 左侧卡片 */
+        .warning-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 12px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 14px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：精确高 365px 限制，代码完美容纳，边框无遮挡，呼吸感极佳 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 365px; 
+            justify-content: space-between;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 32px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 10px 24px; /* 精密收缩上下 padding，为代码文本和框线拉开绝对距离 */
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string/number/key */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 10px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，拒绝任何遮挡 -->
+    <header class="header">
+        <span class="slide-tag">29 / 40 · 第五部分：Agentic RAG：从静态检索到自主智能</span>
+        <h2 class="slide-title">自反思架构 (Self-RAG / Corrective RAG) 的工程闭环</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：原理与痛点 -->
+        <div class="theory-panel">
+            <!-- 1. 生产痛点卡片 -->
+            <div class="warning-card">
+                <span class="card-label" style="color: #b91c1c;">Vibe Ingestion: Blind Faith Generation</span>
+                <p class="text-[14px] font-bold text-slate-800 leading-relaxed">
+                    <strong class="text-red-600">生成前缺乏审计与纠偏</strong>：静态 RAG 的检索是不加验证地全部塞进 Prompt。如果向量相似度召回的都是无关的噪声干扰，大模型会强行依靠这些垃圾信息生成错误的“一本正经瞎编”的幻觉，导致生成端对端质量不可控。
+                </p>
+            </div>
+
+            <!-- 2. 自反思自纠偏架构方案 -->
+            <div class="logic-card">
+                <span class="card-label">Active Self-Correction Closed-Loop</span>
+                <ul class="text-[13.5px] text-slate-700 leading-relaxed font-medium space-y-2">
+                    <li class="flex items-start gap-1">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">大模型变身“阅卷官” (Evaluator)</strong>：召回切片后，先启动轻量模型评估每个 Chunk 的相关置信度评分（“完全相关”、“部分相关”、“垃圾废话”）。</span>
+                    </li>
+                    <li class="flex items-start gap-1">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">搜索引擎动态补救 (Corrective)</strong>：一旦判定所有召回切片均无有效事实支撑，立刻触发 Tool Call 驱动外部搜索引擎（如 Tavily）在线抓取最新事实完成证据链重构。</span>
+                    </li>
+                    <li class="flex items-start gap-1">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">双端事实一致性自纠错</strong>：初稿成文后，大模型再次自我审查：“我生成的答案是否能在刚才保留的 Context 证据中被安全推导？”未通过则立刻退回重新生成。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧：自反思图 + 闭环自反思自纠错代码 -->
+        <div class="right-panel">
+            <!-- 1. CRAG/Self-RAG 决策纠偏图 (纯原生 SVG 绘制，高度仿真) -->
+            <div class="svg-container relative">
+                <span class="absolute top-1 left-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Self-RAG Active Evaluator &amp; Corrective Loop</span>
+                <svg viewBox="0 0 500 95" width="100%" height="100%">
+                    <defs>
+                        <!-- 定义带颜色标准箭头 -->
+                        <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+                        </marker>
+                        <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                        </marker>
+                        <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+                        </marker>
+                    </defs>
+
+                    <!-- ① Vector Retrieve (向量召回) -->
+                    <g transform="translate(45, 45)">
+                        <rect x="-25" y="-12" width="50" height="24" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1.5" />
+                        <text x="0" y="4" font-family="sans-serif" font-size="8.5" font-weight="900" fill="#334155" text-anchor="middle">向量召回</text>
+                    </g>
+
+                    <path d="M 70 45 L 110 45" fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#arrow-blue)" />
+
+                    <!-- ② Chunk Evaluator (阅卷官判定) -->
+                    <g transform="translate(155, 45)">
+                        <polygon points="0,-22 32,0 0,22 -32,0" fill="#eff6ff" stroke="#2563eb" stroke-width="2" />
+                        <text x="0" y="-1.5" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#1d4ed8" text-anchor="middle">切片</text>
+                        <text x="0" y="7.5" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#1d4ed8" text-anchor="middle">相关性?</text>
+                    </g>
+
+                    <!-- 分流一 ➔ 完全相关 / 部分相关 (Green Pathway) -->
+                    <path d="M 187 45 Q 220 15 250 15" fill="none" stroke="#10b981" stroke-width="1.2" marker-end="url(#arrow-green)" />
+                    <g transform="translate(325, 15)">
+                        <rect x="-65" y="-10" width="130" height="20" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.2" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="8.5" font-weight="bold" fill="#047857" text-anchor="middle">有相关切片 ➔ 安全生成</text>
+                    </g>
+
+                    <path d="M 390 15 L 415 15" fill="none" stroke="#10b981" stroke-width="1.2" marker-end="url(#arrow-green)" />
+
+                    <!-- ③ LLM Fact Self-Checker (自我纠错校验) -->
+                    <g transform="translate(455, 45)">
+                        <rect x="-35" y="-30" width="70" height="60" rx="4" fill="#faf5ff" stroke="#8b5cf6" stroke-width="1.5" />
+                        <text x="0" y="-10" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#6b21a8" text-anchor="middle">幻觉自审</text>
+                        <text x="0" y="5" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#7c3aed" text-anchor="middle">纠偏</text>
+                        <text x="0" y="18" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#5b21b6" text-anchor="middle">输出</text>
+                    </g>
+
+                    <!-- 分流二 ➔ 垃圾信息 / 无关 (Red Pathway ➔ Tool Call Search) -->
+                    <path d="M 187 45 Q 220 75 250 75" fill="none" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#arrow-red)" />
+                    <g transform="translate(325, 75)">
+                        <rect x="-65" y="-10" width="130" height="20" rx="4" fill="#fef2f2" stroke="#ef4444" stroke-width="1.2" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="8.5" font-weight="bold" fill="#b91c1c" text-anchor="middle">❌ 无相关 ➔ Tavily 大网检索</text>
+                    </g>
+
+                    <path d="M 390 75 Q 455 75 455 35" fill="none" stroke="#ef4444" stroke-width="1.2" />
+                </svg>
+            </div>
+
+            <!-- 2. 闭环自反思自纠错代码沙盒 (13.5px 极致大字号，16行闭合代码 100% 自然全显，无滚动条) -->
+            <div class="code-sandbox">
+                <!-- IDE 头部 -->
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px]">self_rag_corrective_pipeline.py</span>
+                </div>
+                <!-- IDE 代码区 -->
+                <div class="code-body">
+                    <pre class="code-font text-[13.5px] leading-[1.32] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">corrective_rag_flow</span>(query: <span class="t">str</span>) -> <span class="t">str</span>:
+    <span class="c"># 1. 向量检索与质量自评估过滤</span>
+    chunks = db.query(query, top_k=<span class="s">3</span>)
+    valid_chunks = [c <span class="k">for</span> c <span class="k">in</span> chunks <span class="k">if</span> eval_relevance(query, c) >= <span class="s">0.7</span>]
+    
+    <span class="c"># 2. 触发主动补救：若相关性不足则调用大网搜索补货</span>
+    <span class="k">if</span> <span class="k">not</span> valid_chunks:
+        valid_chunks = google_search_api(query)
+        
+    <span class="c"># 3. 驱动大模型生成初稿</span>
+    draft = generate_answer(query, valid_chunks)
+    
+    <span class="c"># 4. 幻觉自审：比对初稿与上下文，若有捏造则退回重构纠偏</span>
+    <span class="k">if</span> check_hallucination(draft, valid_chunks):
+        draft = regenerate_and_debias(query, valid_chunks)
+    <span class="k">return</span> draft</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12.5px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">自反思闭环控制论 (Closed-Loop Quality Control)：</strong> 
+            自反思架构（CRAG / Self-RAG）是解决生产系统不确定性的关键跃迁。传统的 RAG 是“无条件信任检索”的开环系统，其最终生成质量完全向检索效果低头。通过引入**阅卷评估、备用网络检索补救、以及幻觉自检反思重写**的工程闭环，大模型具备了在运行时进行自我容错与纠偏的能力，能将真实业务中失控的幻觉发生概率逼近归零。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "28.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "30.html";
+        }
+    });
+</script>
+
+</body>
+</html>

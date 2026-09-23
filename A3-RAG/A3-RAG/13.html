@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级 RAG 演进架构：三阶段治理</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 40px 75px; /* 精密呼吸边距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 15px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：管道流在上，卡片在下 */
+        .content-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 3阶段学术卡片容器 */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-top: 15px;
+        }
+
+        /* 卡片共用样式 */
+        .governance-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .governance-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.04);
+        }
+
+        .stage-badge {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            width: fit-content;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 20px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 12px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题 -->
+    <header class="header">
+        <span class="slide-tag">13 / 40 · 第三部分：高级 RAG 检索治理与性能进阶</span>
+        <h2 class="slide-title">高级 RAG 演进架构：三阶段治理</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        
+        <!-- 1. 顶部 HNSW / 3阶段核心工作流拓扑（纯原生 SVG 绘制） -->
+        <div class="w-full bg-slate-50/50 border border-slate-200/80 rounded-2xl p-4 h-[165px] flex items-center justify-center">
+            <svg viewBox="0 0 1100 130" width="100%" height="100%">
+                <defs>
+                    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#2563eb" />
+                        <stop offset="100%" stop-color="#1d4ed8" />
+                    </linearGradient>
+                    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#f59e0b" />
+                        <stop offset="100%" stop-color="#d97706" />
+                    </linearGradient>
+                    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#10b981" />
+                        <stop offset="100%" stop-color="#047857" />
+                    </linearGradient>
+                </defs>
+
+                <!-- 背景流程引导线 -->
+                <path d="M 120 65 L 980 65" fill="none" stroke="#e2e8f0" stroke-width="4" stroke-dasharray="8,8" />
+                <path d="M 120 65 L 600 65" fill="none" stroke="#3b82f6" stroke-width="3" opacity="0.3" />
+
+                <!-- 0. 输入源 -->
+                <g transform="translate(60, 65)">
+                    <circle cx="0" cy="0" r="28" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="2" />
+                    <text x="0" y="4" font-family="sans-serif" font-size="11" font-weight="900" fill="#475569" text-anchor="middle">用户提问</text>
+                    <path d="M 33 0 L 52 0" fill="none" stroke="#cbd5e1" stroke-width="2" />
+                </g>
+
+                <!-- 1. Pre-Retrieval 节点 -->
+                <g transform="translate(250, 65)">
+                    <rect x="-85" y="-30" width="170" height="60" rx="12" fill="url(#blueGrad)" />
+                    <text x="0" y="-8" font-family="sans-serif" font-size="12" font-weight="900" fill="#ffffff" text-anchor="middle">Pre-Retrieval</text>
+                    <text x="0" y="14" font-family="sans-serif" font-size="11" font-weight="700" fill="#93c5fd" text-anchor="middle">检索前：查询改写/对齐</text>
+                    <!-- 输出箭头 -->
+                    <path d="M 90 0 L 120 0" fill="none" stroke="#2563eb" stroke-width="2" />
+                </g>
+
+                <!-- 2. Retrieval 节点 -->
+                <g transform="translate(550, 65)">
+                    <rect x="-85" y="-30" width="170" height="60" rx="12" fill="url(#amberGrad)" />
+                    <text x="0" y="-8" font-family="sans-serif" font-size="12" font-weight="900" fill="#ffffff" text-anchor="middle">Retrieval</text>
+                    <text x="0" y="14" font-family="sans-serif" font-size="11" font-weight="700" fill="#fde047" text-anchor="middle">检索中：多路召回/混合</text>
+                    <!-- 输出箭头 -->
+                    <path d="M 90 0 L 120 0" fill="none" stroke="#d97706" stroke-width="2" />
+                </g>
+
+                <!-- 3. Post-Retrieval 节点 -->
+                <g transform="translate(850, 65)">
+                    <rect x="-85" y="-30" width="170" height="60" rx="12" fill="url(#emeraldGrad)" />
+                    <text x="0" y="-8" font-family="sans-serif" font-size="12" font-weight="900" fill="#ffffff" text-anchor="middle">Post-Retrieval</text>
+                    <text x="0" y="14" font-family="sans-serif" font-size="11" font-weight="700" fill="#6ee7b7" text-anchor="middle">检索后：重排序/压缩</text>
+                    <!-- 输出箭头 -->
+                    <path d="M 90 0 L 120 0" fill="none" stroke="#10b981" stroke-width="2" />
+                </g>
+
+                <!-- 4. LLM 生成 -->
+                <g transform="translate(1040, 65)">
+                    <circle cx="0" cy="0" r="28" fill="#e0f2fe" stroke="#38bdf8" stroke-width="2" />
+                    <text x="0" y="4" font-family="sans-serif" font-size="11" font-weight="900" fill="#0369a1" text-anchor="middle">LLM 生成</text>
+                </g>
+            </svg>
+        </div>
+
+        <!-- 2. 下部：三大维度治理体系核心卡片（字号加大） -->
+        <div class="cards-grid">
+            <!-- 阶段一 -->
+            <div class="governance-card border-t-4 border-t-blue-600">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-[19px] font-black text-blue-900">1. Pre-Retrieval (检索前)</h3>
+                    <span class="stage-badge bg-blue-50 text-blue-700">治水先治源</span>
+                </div>
+                <div class="text-[15px] leading-relaxed text-slate-600 flex flex-col gap-3">
+                    <p>
+                        <strong class="text-slate-900 font-bold">使命要义：</strong> 重点在数据送入向量索引引擎之前，解决由于用户口语化表达、错字或技术概念模糊导致的“第一层偏离”。
+                    </p>
+                    <p>
+                        <strong class="text-blue-700 font-bold">典型算法手段：</strong> 
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">Query Rewrite（查询改写）</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">HyDE（假设性文档嵌入）</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">智能 Query 路由</code>。
+                    </p>
+                </div>
+            </div>
+
+            <!-- 阶段二 -->
+            <div class="governance-card border-t-4 border-t-amber-500">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-[19px] font-black text-amber-900">2. Retrieval (检索中)</h3>
+                    <span class="stage-badge bg-amber-50 text-amber-700">多维提广度</span>
+                </div>
+                <div class="text-[15px] leading-relaxed text-slate-600 flex flex-col gap-3">
+                    <p>
+                        <strong class="text-slate-900 font-bold">使命要义：</strong> 摒弃单一向量数据库暴力临近检索的硬伤，确保在大规模数据集中捞取到完整、不失真且带有强字面匹配性的潜在段落。
+                    </p>
+                    <p>
+                        <strong class="text-amber-700 font-bold">典型算法手段：</strong> 
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">Dense + Sparse 混合检索</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">BM25 字面匹配</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">向量元数据多租户过滤</code>。
+                    </p>
+                </div>
+            </div>
+
+            <!-- 阶段三 -->
+            <div class="governance-card border-t-4 border-t-emerald-500">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-[19px] font-black text-emerald-900">3. Post-Retrieval (检索后)</h3>
+                    <span class="stage-badge bg-emerald-50 text-emerald-700">提纯防迷失</span>
+                </div>
+                <div class="text-[15px] leading-relaxed text-slate-600 flex flex-col gap-3">
+                    <p>
+                        <strong class="text-slate-900 font-bold">使命要义：</strong> 针对捞回的多路海量文档片段进行无情瘦身与提纯，彻底破解大模型“中间迷失（Lost in the middle）”的阅读理解盲区。
+                    </p>
+                    <p>
+                        <strong class="text-emerald-700 font-bold">典型算法手段：</strong> 
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">Cross-Encoder 重排序</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">LLMLingua（提示词上下文压缩）</code>、
+                        <code class="code-font text-xs bg-slate-100 px-1 py-0.5 rounded font-bold">动态切片分值重筛</code>。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[14px] text-slate-700 leading-normal">
+            <strong class="text-blue-900 font-bold">架构演进共识：</strong> 
+            高级 RAG 的本质是从<strong>单纯的物理搬运数据</strong>转向<strong>主动的数据周期治理</strong>。在这三个环节中运用适当的重排序和改写算法，能够让 RAG 系统整体召回率与准确性指标（Ragas 指标）获得成倍的数学提升，是工业级生产落地不可逾越的护城河。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保幻灯片在任何尺寸侧边栏/视口下都完美锁定 16:9 横版比例，绝不产生滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "12.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "14.html";
+        }
+    });
+</script>
+
+</body>
+</html>

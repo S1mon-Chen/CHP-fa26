@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课后工程大作业与 Q&A</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 25px 75px 35px 75px; /* 精密防遮挡安全 Padding */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 8px; /* 压缩底边距，隔离内容区 */
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.8 : 6.2 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.8fr 6.2fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧面板 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 6px;
+            height: 110px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        /* 左侧卡片 */
+        .warning-card {
+            background: rgba(37, 99, 235, 0.02);
+            border-left: 5px solid #2563eb;
+            padding: 12px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(16, 185, 129, 0.02);
+            border-left: 5px solid #10b981;
+            padding: 14px 18px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：精确高 365px 限制，流程看板一屏全显，边框无遮挡，呼吸感极佳 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 365px; 
+            justify-content: space-between;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 32px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 12px 24px; /* 精密收缩上下 padding */
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 10px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，拒绝任何遮挡 -->
+    <header class="header">
+        <span class="slide-tag">40 / 40 · 第七部分：总结与技术展望</span>
+        <h2 class="slide-title">课后工程大作业与 Q&amp;A 研讨环节</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：焦虑解毒与认知质变 -->
+        <div class="theory-panel">
+            <!-- 1. 终极职业心法 -->
+            <div class="warning-card">
+                <span class="card-label">Syllabus Philosophy Recross</span>
+                <p class="text-[14px] font-bold text-slate-800 leading-relaxed">
+                    <strong class="text-blue-600">未来的软件工程属于什么样的开发者？</strong><br>
+                    绝非只会死记硬背 API 的打字工匠。未来的世界永远属于<strong class="text-slate-900">“深刻掌握底层物理逻辑、精通顶层系统架构设计、并且能疯狂压榨 AI 生产力”</strong>的硬核研发导演。
+                </p>
+            </div>
+
+            <!-- 2. 大作业主轴指导 -->
+            <div class="logic-card">
+                <span class="card-label" style="color: #059669;">The Assignment Mission</span>
+                <p class="text-[14px] text-slate-700 leading-relaxed font-medium">
+                    通过亲自动手组装一个“班级专属课程助手机器人”，你将把课堂中零散的理论模型熔铸为真正的线上级高可用商业服务。**不当 AI 的旁观者，做大模型生产力的使役者。**
+                </p>
+            </div>
+        </div>
+
+        <!-- 右侧：研发拓扑图 + 任务对决看板 -->
+        <div class="right-panel">
+            <!-- 1. 大作业研发模型拓扑图 (纯原生 SVG 绘制) -->
+            <div class="svg-container relative">
+                <span class="absolute top-1.5 left-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">Agile Assignment Development &amp; Evaluation Pipeline</span>
+                <svg viewBox="0 0 500 95" width="100%" height="100%">
+                    <defs>
+                        <!-- 定义标准连接箭头 -->
+                        <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+                        </marker>
+                    </defs>
+
+                    <!-- ① 学生架构师 (Human Architect) -->
+                    <g transform="translate(50, 45)">
+                        <circle cx="0" cy="0" r="16" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" />
+                        <text x="0" y="3" font-family="sans-serif" font-size="8" font-weight="900" fill="#1d4ed8" text-anchor="middle">架构设计</text>
+                        <text x="0" y="25" font-family="sans-serif" font-size="7" fill="#64748b" text-anchor="middle">"下达 Prompt"</text>
+                    </g>
+
+                    <path d="M 70 45 L 110 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arrow-blue)" />
+
+                    <!-- ② AI 智能体补全 (AI Auto-Coding) -->
+                    <g transform="translate(150, 45)">
+                        <rect x="-30" y="-14" width="60" height="28" rx="4" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.5" />
+                        <text x="0" y="0" font-family="sans-serif" font-size="8.5" font-weight="900" fill="#5b21b6" text-anchor="middle">AI 协同编写</text>
+                        <text x="0" y="9" font-family="sans-serif" font-size="7" font-weight="bold" fill="#7c3aed" text-anchor="middle">(Cursor/Wind)</text>
+                    </g>
+
+                    <path d="M 185 45 L 225 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arrow-blue)" />
+
+                    <!-- ③ RAGAS 自动化打分 (Ragas Evaluator) -->
+                    <g transform="translate(265, 45)">
+                        <rect x="-30" y="-14" width="60" height="28" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5" />
+                        <text x="0" y="0" font-family="sans-serif" font-size="8.5" font-weight="900" fill="#047857" text-anchor="middle">Ragas 自回归</text>
+                        <text x="0" y="9" font-family="sans-serif" font-size="7" font-weight="bold" fill="#059669" text-anchor="middle">指标化评估</text>
+                    </g>
+
+                    <path d="M 300 45 L 340 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arrow-blue)" />
+
+                    <!-- ④ 交付成品 (Final Classroom Bot App) -->
+                    <g transform="translate(385, 45)">
+                        <rect x="-35" y="-14" width="70" height="28" rx="4" fill="#fff7ed" stroke="#f97316" stroke-width="1.5" />
+                        <text x="0" y="0" font-family="sans-serif" font-size="8" font-weight="900" fill="#c2410c" text-anchor="middle">最终交付</text>
+                        <text x="0" y="9" font-family="sans-serif" font-size="7" font-weight="bold" fill="#ea580c" text-anchor="middle">班级专属 RAG</text>
+                    </g>
+
+                    <path d="M 425 45 L 452 45" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arrow-blue)" />
+
+                    <!-- ⑤ Q&A 研讨 -->
+                    <g transform="translate(474, 45)">
+                        <circle cx="0" cy="0" r="12" fill="#fff1f2" stroke="#ec4899" stroke-width="1.5" />
+                        <text x="0" y="2.5" font-family="sans-serif" font-size="8" font-weight="900" fill="#be185d" text-anchor="middle">Q&amp;A</text>
+                    </g>
+                </svg>
+            </div>
+
+            <!-- 2. 大作业规格书与 Q&A 看板 (字号尽量大，富文本多徽章与步骤，100% 自然全显，无滚动条) -->
+            <div class="code-sandbox">
+                <!-- 看板头部 -->
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px]">class_helper_rag_spec.txt</span>
+                    <span class="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Homework Requirements</span>
+                </div>
+                <!-- 看板主体 (高度解耦的富文本四大核心步骤) -->
+                <div class="code-body bg-[#0f172a] text-slate-100 flex flex-col justify-between py-5 px-6">
+                    <div class="flex flex-col gap-2.5 text-left">
+                        <!-- Requirement 1 -->
+                        <div class="flex items-start gap-3 border-l-2 border-blue-500/30 pl-3">
+                            <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0">要求 01</span>
+                            <div>
+                                <h4 class="text-[14.5px] font-bold text-slate-200">数据预处理与多路混合检索 (Ingestion &amp; Hybrid)</h4>
+                                <p class="text-[12.5px] text-slate-400 mt-0.5">必须包含真实的 PDF 解析切块，并实现 <code class="code-font text-[11px] text-blue-300">向量检索 (Dense) + BM25精确检索 (Sparse)</code> 的多路召回及 RRF 排名交集排序。</p>
+                            </div>
+                        </div>
+                        <!-- Requirement 2 -->
+                        <div class="flex items-start gap-3 border-l-2 border-orange-500/30 pl-3">
+                            <span class="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0">要求 02</span>
+                            <div>
+                                <h4 class="text-[14.5px] font-bold text-slate-200">重排序二阶提纯 (Cross-Encoder Re-ranking)</h4>
+                                <p class="text-[12.5px] text-slate-400 mt-0.5">必须引入重排序模块对粗筛结果进行精细化打分过滤，彻底防御大模型“中间迷失”与噪声稀释硬伤。</p>
+                            </div>
+                        </div>
+                        <!-- Requirement 3 -->
+                        <div class="flex items-start gap-3 border-l-2 border-purple-500/30 pl-3">
+                            <span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0">要求 03</span>
+                            <div>
+                                <h4 class="text-[14.5px] font-bold text-slate-200">自动化 RAGAS 数据评测打分 (Auto Evaluation)</h4>
+                                <p class="text-[12.5px] text-slate-400 mt-0.5">必须在终端提供自动评测质量分析，输出该课程助手的 <code class="code-font text-[11px] text-purple-300">忠实度、答案相关性与召回率</code> 三维度量化打分报告。</p>
+                            </div>
+                        </div>
+                        <!-- Requirement 4 -->
+                        <div class="flex items-start gap-3 border-l-2 border-emerald-500 pl-3 bg-emerald-500/5 py-1 pr-2 rounded-r">
+                            <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold shrink-0">要求 04</span>
+                            <div>
+                                <h4 class="text-[14.5px] font-bold text-emerald-400">Vibe Coding 提效证明 (Vibe Command Log)</h4>
+                                <p class="text-[12.5px] text-slate-300 mt-0.5"><strong>严禁手写全部样板代码！</strong> 必须附加你在 Cursor 或 Windsurf 中指挥 AI 交付自愈逻辑时输入的所有高信息熵 Prompt 交互历史记录，用实例证明你的 AI 协同提效。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-pink-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12.5px] text-slate-500 leading-normal">
+            <strong class="text-pink-900 font-bold">Q&amp;A 研讨与答疑环节 (Interact &amp; Brainstorm)：</strong> 
+            至此，本期课程已全部结束。我们将进入自由研讨阶段。欢迎就**切片参数如何保持语义连续、如何利用 MCP 将大模型无痛融入本地研发环境、以及在 Vibe Coding 新范式下如何对 AI 产生的错漏逻辑实施极速定性指挥和纠错自愈**等问题展开深入碰撞。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "39.html";
+        } 
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识图谱增强：GraphRAG (进阶架构)</title>
+    <!-- Tailwind CSS 支撑精细排版 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 核心16:9幻灯片容器规范 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 绝对锁定 16:9 物理画幅 (1280x720) */
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 30px 75px 35px 75px; /* 精密防遮挡间距 */
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        /* 统一学术背景网格 */
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* 标题样式 */
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 12px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        /* 布局控制：3.8 : 6.2 黄金比例 */
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 3.8fr 6.2fr;
+            gap: 35px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 左侧面板 */
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        /* SVG 图表容器：矮化至 120px 高度 */
+        .svg-container {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 8px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+        }
+
+        /* 左侧卡片 */
+        .warning-card {
+            background: rgba(239, 68, 68, 0.02);
+            border-left: 5px solid #ef4444;
+            padding: 15px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .logic-card {
+            background: rgba(37, 99, 235, 0.03);
+            border-left: 5px solid #2563eb;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+        }
+
+        .card-label {
+            font-size: 11px;
+            font-weight: 900;
+            color: #94a3b8;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        /* 右侧容器 */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        /* 右侧代码沙盒：固定 310px 高度，满足100%无滚动条显示 */
+        .code-sandbox {
+            background-color: #0f172a;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #334155;
+            height: 310px; 
+            justify-content: space-between;
+        }
+
+        .code-header {
+            background-color: #1e293b;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            height: 34px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        .code-body {
+            padding: 10px 24px; /* 精细收窄 padding，完美利用每一像素高度 */
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* 语法高亮配色 */
+        .k { color: #f472b6; font-weight: 600; } /* keyword */
+        .f { color: #60a5fa; } /* function */
+        .s { color: #fbbf24; } /* string/number/key */
+        .c { color: #64748b; font-style: italic; } /* comment */
+        .t { color: #34d399; } /* type */
+
+        /* 底部条 */
+        .footer-bar {
+            margin-top: 12px;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题：安全间距，拒绝任何遮挡 -->
+    <header class="header">
+        <span class="slide-tag">20 / 40 · 第三部分：高级 RAG：解决检索质量的算法与工程实现</span>
+        <h2 class="slide-title">知识图谱增强：GraphRAG (进阶架构)</h2>
+    </header>
+
+    <!-- 中间内容 -->
+    <main class="content-area">
+        <!-- 左侧：痛点与图谱增强策略 -->
+        <div class="theory-panel">
+            <!-- 1. 传统 RAG 死穴卡片 -->
+            <div class="warning-card">
+                <span class="card-label" style="color: #b91c1c;">The Achilles' Heel of Local Vector Search</span>
+                <p class="text-[15px] font-bold text-slate-800 leading-relaxed">
+                    <strong class="text-red-600">传统检索死角</strong>：当用户问“总结这两家公司在过去三年里所有的合作项目”时，由于线索零散分布在几十个异构文件里，局部相似度检索会产生漏检，无法在宏观上拼装信息网络。
+                </p>
+            </div>
+
+            <!-- 2. GraphRAG 核心机理卡片 -->
+            <div class="logic-card">
+                <span class="card-label">GraphRAG Paradigm Shift</span>
+                <ul class="text-[14.5px] text-slate-700 leading-relaxed font-medium space-y-2.5">
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">图谱关系抽取</strong>：利用大模型离线扫描，提前识别并抽取文档里的 <strong class="text-blue-700">实体 (Entity)</strong> 与 <strong class="text-blue-700">关系 (Relationship)</strong>，构建相互交织的语义知识图谱。</span>
+                    </li>
+                    <li class="flex items-start gap-1.5">
+                        <span class="text-blue-600 mt-1">●</span>
+                        <span><strong class="text-slate-900">社区发现聚合</strong>：采用社区发现算法（如 <code class="code-font text-xs bg-slate-100 px-1 font-bold text-slate-800">Leiden</code>）对图谱进行区域层级划分，利用 LLM 对子社区预先提炼摘要报告，从根本上解决非局部归纳问题。</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 右侧：图拓扑关系可视化 + 全局检索算法代码 -->
+        <div class="right-panel">
+            <!-- 1. 实体图谱社区聚类可视化 (纯原生 SVG 绘制) -->
+            <div class="svg-container relative">
+                <span class="absolute top-1.5 left-4 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Entity-Relation Topology &amp; Leiden Communities</span>
+                <svg viewBox="0 0 500 110" width="100%" height="100%">
+                    <defs>
+                        <!-- 社区 A 半透明罩 -->
+                        <radialGradient id="commA" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15" />
+                            <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0" />
+                        </radialGradient>
+                        <!-- 社区 B 半透明罩 -->
+                        <radialGradient id="commB" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#10b981" stop-opacity="0.15" />
+                            <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                        </radialGradient>
+                    </defs>
+
+                    <!-- 社区背景圈 (Community Boundaries) -->
+                    <circle cx="150" cy="55" r="45" fill="url(#commA)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="3,3" />
+                    <circle cx="340" cy="55" r="45" fill="url(#commB)" stroke="#10b981" stroke-width="1" stroke-dasharray="3,3" />
+                    <text x="150" y="22" font-family="sans-serif" font-size="8" font-weight="black" fill="#2563eb" text-anchor="middle">Community Cluster 01</text>
+                    <text x="340" y="22" font-family="sans-serif" font-size="8" font-weight="black" fill="#059669" text-anchor="middle">Community Cluster 02</text>
+
+                    <!-- 拓扑关系线 (Edges) -->
+                    <!-- 内部连接 -->
+                    <line x1="120" y1="45" x2="150" y2="75" stroke="#cbd5e1" stroke-width="1.5" />
+                    <line x1="150" y1="75" x2="180" y2="40" stroke="#cbd5e1" stroke-width="1.5" />
+                    <line x1="120" y1="45" x2="180" y2="40" stroke="#cbd5e1" stroke-width="1.5" />
+                    
+                    <line x1="310" y1="70" x2="340" y2="35" stroke="#cbd5e1" stroke-width="1.5" />
+                    <line x1="340" y1="35" x2="370" y2="70" stroke="#cbd5e1" stroke-width="1.5" />
+                    <line x1="310" y1="70" x2="370" y2="70" stroke="#cbd5e1" stroke-width="1.5" />
+
+                    <!-- 跨社区桥接 (Bridge Edge) -->
+                    <line x1="180" y1="40" x2="310" y2="70" stroke="#8b5cf6" stroke-width="2.5" />
+                    <text x="245" y="47" font-family="sans-serif" font-size="8.5" font-weight="black" fill="#7c3aed" text-anchor="middle">跨域合作关系</text>
+
+                    <!-- 实体节点 (Nodes) -->
+                    <!-- 社区 A 内部 -->
+                    <circle cx="120" cy="45" r="6" fill="#3b82f6" />
+                    <text x="120" y="36" font-family="sans-serif" font-size="8" font-weight="bold" fill="#1e3a8a" text-anchor="middle">公司甲 (Ent)</text>
+                    
+                    <circle cx="150" cy="75" r="6" fill="#3b82f6" />
+                    <text x="150" y="87" font-family="sans-serif" font-size="8" font-weight="bold" fill="#1e3a8a" text-anchor="middle">研发投入</text>
+
+                    <circle cx="180" cy="40" r="6" fill="#6366f1" />
+                    <text x="195" y="34" font-family="sans-serif" font-size="8" font-weight="bold" fill="#312e81" text-anchor="middle">项目 A (桥节点)</text>
+
+                    <!-- 社区 B 内部 -->
+                    <circle cx="310" cy="70" r="6" fill="#10b981" />
+                    <text x="295" y="81" font-family="sans-serif" font-size="8" font-weight="bold" fill="#065f46" text-anchor="middle">项目 B (桥节点)</text>
+
+                    <circle cx="340" cy="35" r="6" fill="#10b981" />
+                    <text x="340" y="27" font-family="sans-serif" font-size="8" font-weight="bold" fill="#065f46" text-anchor="middle">公司乙 (Ent)</text>
+
+                    <circle cx="370" cy="70" r="6" fill="#10b981" />
+                    <text x="370" y="81" font-family="sans-serif" font-size="8" font-weight="bold" fill="#065f46" text-anchor="middle">合作成果</text>
+                </svg>
+            </div>
+
+            <!-- 2. GraphRAG 全局查询代码沙盒 (14.5px 完美字号，100% 自然全显，无滚动条) -->
+            <div class="code-sandbox">
+                <!-- IDE 头部 -->
+                <div class="code-header">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px]">graph_rag_global_search.py</span>
+                </div>
+                <!-- IDE 代码区 -->
+                <div class="code-body">
+                    <pre class="code-font text-[14.5px] leading-[1.38] text-slate-300 text-left m-0 p-0"><span class="k">def</span> <span class="f">graph_rag_global_search</span>(query: <span class="t">str</span>, level: <span class="t">int</span> = <span class="s">2</span>) -> <span class="t">str</span>:
+    <span class="c"># 1. 识别并提取查询中提及的核心概念实体 (Entities)</span>
+    target_entities = extract_query_entities(query)
+    
+    <span class="c"># 2. 定位包含这些实体关系的拓扑子图社区 (Leiden Communities)</span>
+    communities = kg_index.get_matched_communities(target_entities, level=level)
+    
+    <span class="c"># 3. 遍历提取目标社区在离线阶段由 LLM 聚合好的“章节综述报告”</span>
+    community_summaries = []
+    <span class="k">for</span> comm <span class="k">in</span> communities:
+        report = kg_index.get_community_report(comm)
+        community_summaries.append(report)
+        
+    <span class="c"># 4. 合并多路报告拼装 Context，驱动 LLM 进行全局宏观归纳</span>
+    prompt = f<span class="s">"请整合以下子社区综述回答：\\n{community_summaries}\\n提问：{query}"</span>
+    <span class="k">return</span> call_llm(prompt)</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部结论 -->
+    <footer class="footer-bar">
+        <div class="bg-blue-600 text-white p-1 rounded shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-[12.5px] text-slate-500 leading-normal">
+            <strong class="text-blue-900 font-bold">工程实践价值：</strong> 
+            微软提出的 GraphRAG 并非完全摒弃向量，而是将“图模型”与“向量语义”在数据级实现深度咬合。在面对跨源全局性问题时，传统的 <code class="code-font bg-white px-1">Top-K</code> 细粒度搜索会由于缺乏宏观视图而答非所问；利用 <strong class="text-slate-800">图拓扑提取 + 预编译社区摘要报告</strong>，能够在完全不超出输入 Token 上限的前提下，轻松建立具备超强宏观全局归纳的企业级高智商 RAG 服务。
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 自动等比例缩放算法：确保在不同窗口、侧边栏尺寸下幻灯片完美锁死 16:9 画幅，决不产生任何方向的滚动条
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+</script>
+
+<script>
+    // 键盘左右方向键快捷翻页
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "ArrowLeft") {
+            window.location.href = "19.html";
+        } else if (event.key === "ArrowRight") {
+            window.location.href = "21.html";
+        }
+    });
+</script>
+
+</body>
+</html>
