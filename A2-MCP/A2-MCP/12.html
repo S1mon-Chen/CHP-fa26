@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>错误处理规范 (代码级)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Poppins:wght@700;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .slide-container {
+            width: 1280px;
+            height: 720px;
+            background-color: #ffffff;
+            font-family: 'Noto Sans SC', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding: 25px 75px 35px 75px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.15);
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+
+        .academic-grid {
+            background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+            background-size: 30px 30px;
+            opacity: 0.35;
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        .header {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 8px;
+        }
+
+        .slide-title {
+            font-size: 36px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -1px;
+            line-height: 1.1;
+        }
+
+        .slide-tag {
+            font-family: 'Poppins', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .content-area {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: 4.8fr 5.2fr;
+            gap: 32px;
+            align-items: center;
+            min-height: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        .theory-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            justify-content: center;
+        }
+
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            height: 100%;
+            justify-content: center;
+        }
+
+        .code-sandbox-light {
+            background-color: #f8fafc;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e2e8f0;
+            height: 440px; 
+            justify-content: space-between;
+        }
+
+        .code-header-light {
+            background-color: #f1f5f9;
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            height: 32px;
+        }
+
+        .window-dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .dot { width: 9px; height: 9px; border-radius: 50%; }
+
+        .code-body-light {
+            padding: 16px 24px;
+            overflow: hidden;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* JSON 亮色高亮类 */
+        .j-key { color: #0f172a; font-weight: 600; }
+        .j-str { color: #b91c1c; }
+        .j-num { color: #1d4ed8; }
+
+        .error-code {
+            color: #dc2626;
+            font-family: 'Fira Code', monospace;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide-stage" class="slide-container">
+    <div class="academic-grid"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50/40 via-transparent to-transparent pointer-events-none z-0"></div>
+
+    <!-- 顶部标题区 -->
+    <header class="header">
+        <span class="slide-tag">12 / 46 · 第二部分：MCP 核心协议与传输架构</span>
+        <h2 class="slide-title">错误处理规范 (代码级)</h2>
+        <p class="text-sm font-medium text-slate-500 mt-0.5">遵循 JSON-RPC 2.0 标准错误体系，构建确定性强的企业级错误反馈机制</p>
+    </header>
+
+    <!-- 中间核心内容区 -->
+    <main class="content-area">
+        <!-- 左侧：错误码表格与响应设计要点 -->
+        <div class="theory-panel">
+            <!-- 1. JSON-RPC 2.0 标准错误码表格 -->
+            <div class="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-2">
+                <h3 class="text-sm font-bold text-sky-700 mb-1">JSON-RPC 2.0 标准错误码</h3>
+                
+                <div class="w-full text-[11.5px] border-t border-slate-200 pt-2">
+                    <!-- 表头 -->
+                    <div class="grid grid-cols-12 gap-2 pb-1.5 font-bold text-slate-400 border-b border-slate-200">
+                        <span class="col-span-3">代码</span>
+                        <span class="col-span-3">含义</span>
+                        <span class="col-span-6">描述</span>
+                    </div>
+
+                    <!-- 行 1 -->
+                    <div class="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-100 items-center">
+                        <span class="col-span-3 error-code">-32700</span>
+                        <span class="col-span-3 font-bold text-slate-800">解析错误</span>
+                        <span class="col-span-6 text-slate-600">服务端接收到无效 JSON，解析失败</span>
+                    </div>
+
+                    <!-- 行 2 -->
+                    <div class="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-100 items-center">
+                        <span class="col-span-3 error-code">-32600</span>
+                        <span class="col-span-3 font-bold text-slate-800">无效请求</span>
+                        <span class="col-span-6 text-slate-600">发送的 JSON 不是有效的请求对象</span>
+                    </div>
+
+                    <!-- 行 3 -->
+                    <div class="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-100 items-center">
+                        <span class="col-span-3 error-code">-32601</span>
+                        <span class="col-span-3 font-bold text-slate-800">方法未找到</span>
+                        <span class="col-span-6 text-slate-600">请求的方法不存在或当前不可用</span>
+                    </div>
+
+                    <!-- 行 4 -->
+                    <div class="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-100 items-center">
+                        <span class="col-span-3 error-code">-32602</span>
+                        <span class="col-span-3 font-bold text-slate-800">参数无效</span>
+                        <span class="col-span-6 text-slate-600">方法参数语义错误或格式不匹配</span>
+                    </div>
+
+                    <!-- 行 5 -->
+                    <div class="grid grid-cols-12 gap-2 py-1.5 border-b border-slate-100 items-center">
+                        <span class="col-span-3 error-code">-32603</span>
+                        <span class="col-span-3 font-bold text-slate-800">内部错误</span>
+                        <span class="col-span-6 text-slate-600">服务端内部异常，非请求本身导致</span>
+                    </div>
+
+                    <!-- 行 6 -->
+                    <div class="grid grid-cols-12 gap-2 pt-1.5 items-center">
+                        <span class="col-span-3 error-code">-32xxx</span>
+                        <span class="col-span-3 font-bold text-slate-800">服务端错误</span>
+                        <span class="col-span-6 text-slate-600">-32000 到 -32099 预留用于自定义错误</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. 错误响应设计要点 -->
+            <div class="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-1.5">
+                <h3 class="text-sm font-bold text-sky-700">错误响应设计要点</h3>
+                <p class="text-[12px] text-slate-600 leading-relaxed font-medium">
+                    在 <code class="code-font bg-slate-200/60 px-1 rounded text-slate-800 text-[11px]">data</code> 字段中提供具体上下文（如必填字段缺失说明），不仅能辅助人工调试，更能让 LLM 感知异常原因并尝试自愈 (Self-Correction)。
+                </p>
+            </div>
+        </div>
+
+        <!-- 右侧：JSON 错误响应格式沙盒 -->
+        <div class="right-panel">
+            <div class="code-sandbox-light">
+                <div class="code-header-light">
+                    <div class="window-dots">
+                        <div class="dot bg-[#ff5f56]"></div>
+                        <div class="dot bg-[#ffbd2e]"></div>
+                        <div class="dot bg-[#27c93f]"></div>
+                    </div>
+                    <span class="text-slate-400 code-font text-[10px] font-medium">Error_Response_Example.json</span>
+                </div>
+                <div class="code-body-light">
+                    <pre class="code-font text-[12.5px] leading-[1.5] text-slate-800 text-left m-0 p-0">{
+  <span class="j-key">"jsonrpc"</span>: <span class="j-str">"2.0"</span>,
+  <span class="j-key">"id"</span>: <span class="j-num">1</span>,
+  <span class="j-key">"error"</span>: {
+    <span class="j-key">"code"</span>: <span class="j-num">-32602</span>,
+    <span class="j-key">"message"</span>: <span class="j-str">"Invalid params"</span>,
+    <span class="j-key">"data"</span>: <span class="j-str">"City parameter is required."</span>
+  }
+}</pre>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部翻页导航栏 -->
+    <div class="flex justify-between items-center mt-2 pt-2 border-t border-slate-200 z-10 relative">
+        <a href="11.html" class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            上一页 (11)
+        </a>
+        <span class="text-xs font-bold text-slate-400 code-font">12 / 46</span>
+        <a href="13.html" class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shadow-sm">
+            下一页 (13)
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+    </div>
+</div>
+
+<script>
+    function scaleSlide() {
+        const stage = document.getElementById('slide-stage');
+        const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+        stage.style.transform = `scale(${scale})`;
+        stage.style.transformOrigin = 'center center';
+    }
+    window.addEventListener('resize', scaleSlide);
+    window.addEventListener('load', scaleSlide);
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === "ArrowLeft" || e.key === "PageUp") {
+            window.location.href = "11.html";
+        } else if (e.key === "ArrowRight" || e.key === "PageDown") {
+            window.location.href = "13.html";
+        }
+    });
+</script>
+
+</body>
+</html>
