@@ -1,0 +1,381 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "E-BookStore 图书管理后台 API",
+    "version": "1.0.0",
+    "description": "E-BookStore 图书管理后台接口契约（Spring Boot 3 + JPA，统一前缀 /api）。覆盖图书列表分页查询、图书详情查询、新增图书、库存增减四个接口。本次不涉及鉴权。所有 4xx/5xx 错误响应统一使用 ErrorResponse 结构。\nASSUMPTIONS: (1) isbn 为 13 位纯数字、不含连字符，且以 978 或 979 开头；(2) price 映射 BigDecimal，以 JSON number 传输，最多两位小数；(3) createdAt/updatedAt 由服务端按 ISO-8601 输出，并带 UTC 时区偏移（如 2026-10-01T08:00:00Z），以满足 date-time 格式；(4) 列表接口未要求排序参数，因此不提供 sort，返回顺序由服务端决定；(5) page 超出 totalPages 时返回 200，content 为空数组；(6) description 与 coverImage 为可选字段，未提供时响应中值为 null；description 未规定长度上限，故不加 maxLength；coverImage 须为合法 URI；(7) GET /api/books/{id} 与 PATCH /api/books/{id}/stock 中的 id 不是正整数时返回 400；(8) 新增的 category 字段在响应中视为必有字段，存量数据的迁移与回填不在本文档范围内；(9) 201 响应头 Location 返回新资源的绝对 URL；(10) StockUpdateRequest.delta 为 0、缺失或超出 int32 范围时返回 400；(11) 本期接口不需要鉴权，各 operation 均显式声明 security: []。"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "本地开发环境"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Books",
+      "description": "图书资源管理"
+    }
+  ],
+  "paths": {
+    "/api/books": {
+      "get": {
+        "tags": ["Books"],
+        "summary": "获取书目列表",
+        "description": "分页查询图书列表，可按分类筛选。page 从 0 开始。",
+        "operationId": "listBooks",
+        "security": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码，从 0 开始",
+            "schema": { "type": "integer", "format": "int32", "minimum": 0, "default": 0 },
+            "example": 0
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "description": "每页条数，取值范围 1–100",
+            "schema": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 100, "default": 10 },
+            "example": 10
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "图书分类筛选条件；不传则返回全部分类",
+            "schema": {
+              "type": "string",
+              "enum": ["LITERATURE", "SCIENCE", "TECHNOLOGY", "HISTORY", "ART", "CHILDREN", "OTHER"]
+            },
+            "example": "TECHNOLOGY"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PageBookResponse" } } }
+          },
+          "400": {
+            "description": "查询参数非法（如 page < 0、size 超出 1–100、category 不在枚举范围内）",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "VALIDATION_FAILED",
+                  "message": "请求参数校验失败",
+                  "status": 400,
+                  "path": "/api/books",
+                  "timestamp": "2026-10-01T08:00:00Z",
+                  "errors": [{ "field": "size", "message": "必须在 1 到 100 之间" }]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Books"],
+        "summary": "添加新书",
+        "description": "创建一本新书。id、createdAt、updatedAt 由服务端生成。创建成功后，在响应头 Location 中返回新资源地址。",
+        "operationId": "createBook",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "description": "新书信息",
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功",
+            "headers": {
+              "Location": {
+                "description": "新建图书资源的地址",
+                "required": true,
+                "schema": { "type": "string", "format": "uri" },
+                "example": "http://localhost:8080/api/books/1"
+              }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookResponse" } } }
+          },
+          "400": {
+            "description": "请求体校验失败",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "VALIDATION_FAILED",
+                  "message": "请求参数校验失败",
+                  "status": 400,
+                  "path": "/api/books",
+                  "timestamp": "2026-10-01T08:00:00Z",
+                  "errors": [
+                    { "field": "title", "message": "不能为空" },
+                    { "field": "price", "message": "必须大于或等于 0" }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ISBN 已存在",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "ISBN_ALREADY_EXISTS",
+                  "message": "ISBN 9787111213826 已存在",
+                  "status": 409,
+                  "path": "/api/books",
+                  "timestamp": "2026-10-01T08:00:00Z"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/books/{id}": {
+      "get": {
+        "tags": ["Books"],
+        "summary": "查看单本书详情",
+        "description": "根据图书 ID 返回图书的完整信息。",
+        "operationId": "getBookById",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "图书 ID",
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 },
+            "example": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookResponse" } } }
+          },
+          "400": {
+            "description": "路径参数 id 非法",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "图书不存在",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "BOOK_NOT_FOUND",
+                  "message": "ID 为 1 的图书不存在",
+                  "status": 404,
+                  "path": "/api/books/1",
+                  "timestamp": "2026-10-01T08:00:00Z"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/books/{id}/stock": {
+      "patch": {
+        "tags": ["Books"],
+        "summary": "更新库存",
+        "description": "按增量调整图书库存：delta 为正数表示入库，为负数表示出库，不能为 0。如果调整后库存小于 0，则拒绝本次更新。成功后返回更新后的完整图书信息。",
+        "operationId": "updateBookStock",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "图书 ID",
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 },
+            "example": 1
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "库存增量",
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StockUpdateRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "库存更新成功",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookResponse" } } }
+          },
+          "400": {
+            "description": "请求非法（如 delta 缺失或为 0，或 id 非法）",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "VALIDATION_FAILED",
+                  "message": "请求参数校验失败",
+                  "status": 400,
+                  "path": "/api/books/1/stock",
+                  "timestamp": "2026-10-01T08:00:00Z",
+                  "errors": [{ "field": "delta", "message": "不能为 0" }]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "图书不存在",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "BOOK_NOT_FOUND",
+                  "message": "ID 为 1 的图书不存在",
+                  "status": 404,
+                  "path": "/api/books/1/stock",
+                  "timestamp": "2026-10-01T08:00:00Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "库存不足，更新后库存将小于 0",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "code": "INSUFFICIENT_STOCK",
+                  "message": "当前库存为 3，无法出库 5",
+                  "status": 409,
+                  "path": "/api/books/1/stock",
+                  "timestamp": "2026-10-01T08:00:00Z"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器内部错误",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BookResponse": {
+        "type": "object",
+        "description": "图书完整信息",
+        "required": ["id", "title", "author", "isbn", "price", "stock", "category", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64", "minimum": 1, "description": "主键，自增", "example": 1 },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "书名", "example": "深入理解 Java 虚拟机" },
+          "author": { "type": "string", "minLength": 1, "maxLength": 100, "description": "作者", "example": "周志明" },
+          "isbn": { "type": "string", "minLength": 13, "maxLength": 13, "pattern": "^97[89][0-9]{10}$", "description": "ISBN-13，全局唯一", "example": "9787111213826" },
+          "description": { "type": "string", "nullable": true, "description": "简介", "example": "全面讲解 JVM 内存管理、类加载与执行引擎。" },
+          "price": { "type": "number", "minimum": 0, "description": "价格，大于或等于 0；对应后端 BigDecimal，最多两位小数，精度由服务端校验", "example": 99.9 },
+          "stock": { "type": "integer", "format": "int32", "minimum": 0, "description": "库存，大于或等于 0", "example": 50 },
+          "category": {
+            "type": "string",
+            "enum": ["LITERATURE", "SCIENCE", "TECHNOLOGY", "HISTORY", "ART", "CHILDREN", "OTHER"],
+            "description": "图书分类",
+            "example": "TECHNOLOGY"
+          },
+          "coverImage": { "type": "string", "format": "uri", "nullable": true, "description": "封面图片 URL", "example": "https://cdn.example.com/covers/9787111213826.jpg" },
+          "createdAt": { "type": "string", "format": "date-time", "description": "创建时间，由服务端生成", "example": "2026-10-01T08:00:00Z" },
+          "updatedAt": { "type": "string", "format": "date-time", "description": "更新时间，由服务端生成", "example": "2026-10-01T08:00:00Z" }
+        }
+      },
+      "BookCreateRequest": {
+        "type": "object",
+        "description": "新增图书请求体，不包含 id、createdAt、updatedAt",
+        "required": ["title", "author", "isbn", "price", "stock", "category"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "书名，必填", "example": "深入理解 Java 虚拟机" },
+          "author": { "type": "string", "minLength": 1, "maxLength": 100, "description": "作者，必填", "example": "周志明" },
+          "isbn": { "type": "string", "minLength": 13, "maxLength": 13, "pattern": "^97[89][0-9]{10}$", "description": "ISBN-13，必填且唯一", "example": "9787111213826" },
+          "description": { "type": "string", "nullable": true, "description": "简介，可选", "example": "全面讲解 JVM 内存管理、类加载与执行引擎。" },
+          "price": { "type": "number", "minimum": 0, "description": "价格，必填，大于或等于 0；对应后端 BigDecimal，最多两位小数，精度由服务端校验", "example": 99.9 },
+          "stock": { "type": "integer", "format": "int32", "minimum": 0, "description": "初始库存，必填，大于或等于 0", "example": 50 },
+          "category": {
+            "type": "string",
+            "enum": ["LITERATURE", "SCIENCE", "TECHNOLOGY", "HISTORY", "ART", "CHILDREN", "OTHER"],
+            "description": "图书分类，必填",
+            "example": "TECHNOLOGY"
+          },
+          "coverImage": { "type": "string", "format": "uri", "nullable": true, "description": "封面图片 URL，可选", "example": "https://cdn.example.com/covers/9787111213826.jpg" }
+        }
+      },
+      "StockUpdateRequest": {
+        "type": "object",
+        "description": "库存增量调整请求体",
+        "required": ["delta"],
+        "properties": {
+          "delta": {
+            "type": "integer",
+            "format": "int32",
+            "not": { "type": "integer", "enum": [0], "description": "不允许为 0" },
+            "description": "库存变化量，不能为 0；正数表示入库，负数表示出库",
+            "example": -5
+          }
+        }
+      },
+      "PageBookResponse": {
+        "type": "object",
+        "description": "图书分页结果",
+        "required": ["content", "page", "size", "totalElements", "totalPages"],
+        "properties": {
+          "content": {
+            "type": "array",
+            "description": "当前页图书列表",
+            "items": { "$ref": "#/components/schemas/BookResponse" }
+          },
+          "page": { "type": "integer", "format": "int32", "minimum": 0, "description": "当前页码，从 0 开始", "example": 0 },
+          "size": { "type": "integer", "format": "int32", "minimum": 1, "maximum": 100, "description": "每页条数", "example": 10 },
+          "totalElements": { "type": "integer", "format": "int64", "minimum": 0, "description": "符合条件的总记录数", "example": 42 },
+          "totalPages": { "type": "integer", "format": "int32", "minimum": 0, "description": "总页数", "example": 5 }
+        }
+      },
+      "FieldError": {
+        "type": "object",
+        "description": "字段级校验错误",
+        "required": ["field", "message"],
+        "properties": {
+          "field": { "type": "string", "description": "校验失败的字段名", "example": "title" },
+          "message": { "type": "string", "description": "该字段的错误信息", "example": "不能为空" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "统一错误响应结构",
+        "required": ["code", "message", "status", "path", "timestamp"],
+        "properties": {
+          "code": { "type": "string", "description": "机器可读的错误码，如 VALIDATION_FAILED、BOOK_NOT_FOUND、ISBN_ALREADY_EXISTS、INSUFFICIENT_STOCK、INTERNAL_SERVER_ERROR", "example": "BOOK_NOT_FOUND" },
+          "message": { "type": "string", "description": "可读的错误描述", "example": "ID 为 1 的图书不存在" },
+          "status": { "type": "integer", "format": "int32", "minimum": 400, "maximum": 599, "description": "HTTP 状态码", "example": 404 },
+          "path": { "type": "string", "description": "出错的请求路径", "example": "/api/books/1" },
+          "timestamp": { "type": "string", "format": "date-time", "description": "错误发生时间", "example": "2026-10-01T08:00:00Z" },
+          "errors": {
+            "type": "array",
+            "description": "字段级校验错误明细，仅在 400 校验失败时返回",
+            "items": { "$ref": "#/components/schemas/FieldError" }
+          }
+        }
+      }
+    }
+  }
+}
