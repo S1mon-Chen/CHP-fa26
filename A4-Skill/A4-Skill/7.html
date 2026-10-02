@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - 消息角色协议：system, user, assistant (with tool_calls), and tool (with tool_call_id)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-comments"></i>
+                <span>第 4 课：AI 原子能力与工具调用</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                消息角色协议：system, user, assistant (with tool_calls), and tool (with tool_call_id)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 Function Calling 四角色消息队列状态机：剖析 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">system / user / assistant / tool</span> 的生命周期与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">tool_call_id 异步句柄</span> 物理绑定逻辑
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Left Card: 4-Turn Message Array Trace -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-6 md:p-8 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-list-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">4-Turn 消息队列状态流</h3>
+                                <p class="text-xs text-blue-700 font-mono">Message Queue State Machine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Protocol Trace</span>
+                    </div>
+
+                    <!-- JSON Array Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[11px] mb-3 space-y-1 shadow-inner overflow-x-auto">
+                        <div class="text-slate-500">[</div>
+                        <div class="text-slate-400 pl-3">{"role": <span class="text-amber-200">"system"</span>, "content": <span class="text-emerald-300">"You are an assistant with SQL tools."</span>},</div>
+                        <div class="text-slate-400 pl-3">{"role": <span class="text-amber-200">"user"</span>, "content": <span class="text-emerald-300">"Find top 3 VIP users."</span>},</div>
+                        <div class="text-purple-300 pl-3">{"role": <span class="text-amber-200">"assistant"</span>, "content": null, "tool_calls": [</div>
+                        <div class="text-purple-300 pl-6">{"id": <span class="text-amber-200">"call_call998"</span>, "type": <span class="text-emerald-300">"function"</span>, "function": {"name": <span class="text-amber-200">"query_db"</span>, "arguments": <span class="text-emerald-300">"{\"limit\":3}"</span>}}</div>
+                        <div class="text-purple-300 pl-3">]},</div>
+                        <div class="text-emerald-400 pl-3">{"role": <span class="text-amber-200">"tool"</span>, "tool_call_id": <span class="text-amber-200">"call_call998"</span>, "content": <span class="text-emerald-300">"[{\"id\":1,\"name\":\"Alice\"}]"</span>}</div>
+                        <div class="text-slate-500">]</div>
+                    </div>
+
+                    <ul class="space-y-2 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>`assistant` 节点持有 `tool_calls`：</strong>模型不再直接返回字符串回答，而是产出挂载了全局唯一 `id` 的工具调用意图。</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 shrink-0"></i>
+                            <span><strong>`tool` 节点强引用 `tool_call_id`：</strong>宿主执行完成后追加 `role: "tool"` 消息，显式以 `tool_call_id` 回写执行 Observation。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                    <span>规则：缺失中间 `assistant (tool_calls)` 消息直接补 `tool` 结果会导致 API 报错</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Architectural Role Responsibilities & Alignment -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-6 md:p-8 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-network-wired"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">4 角色协议职责与句柄防错</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Role Responsibilities & State Sync</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Role Contracts</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Role 1 & 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">system & user</span>
+                                <span>上下文边界与目标输入</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                `system` 注入全局角色指令与安全边界；`user` 提出业务诉求，激活多轮对话决策链。
+                            </p>
+                        </div>
+
+                        <!-- Role 3 & 4 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">assistant & tool</span>
+                                <span>`tool_call_id` 是并发对齐的物理钥匙</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在并发工具调用（Parallel Tool Calls）中，模型可一次性发出多个 `call_01`, `call_02`。宿主在并发执行完后，必须通过 `tool_call_id` 按顺序精准对齐回上下文，防止模型在后续 Turn 中产生“认知混淆”。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>物理事实：tool_call_id 保证了长对话上下文里异步工具结果的零交错防死锁</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        Function Calling 的 4 角色消息队列是维护“无状态 LLM”与“有状态物理沙箱”状态同步的<strong>状态机契约（Message State Machine Contract）</strong>；只有严格保障 <code class="bg-slate-200 px-1 rounded text-blue-800">tool_call_id</code> 句柄的完整传递，才能构建不崩溃的长对话 Agent 控制流。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">7</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (06.html <- 07.html -> 08.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">消息角色协议与 tool_call_id 句柄</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 4 角色消息队列的核心规则：</span>
+                    “向学员深入剖析：在引入 Function Calling 后，消息数组不再只是简单的 user 和 assistant 交替。当模型决定调用工具时，会输出一个带 `tool_calls` 的 `assistant` 消息；随后应用层执行工具，并必须追加一个 `role: 'tool'` 消息，其中 `tool_call_id` 必须与上一条 `assistant` 消息中的 `id` 绝对对齐。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 解决常见的 API 400 报错：</span>
+                    “很多工程师在开发 Agent 时经常遭遇 API 报错 `An assistant message with 'tool_calls' must be followed by tool messages`。这就是因为在对话历史剪枝（Pruning）或重试时漏掉了中间带有 `tool_calls` 的 assistant 消息，或者 `tool_call_id` 不匹配导致状态机崩溃。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

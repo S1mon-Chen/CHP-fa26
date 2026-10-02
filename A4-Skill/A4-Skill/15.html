@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - 复杂的入参类型处理：Enum 枚举、Nested Objects 嵌套对象与 List/Dict 边界</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- STREAMING_CHUNK:Rendering slide title and header block... -->
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-diagram-nested"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                复杂的入参类型处理：Enum 枚举、Nested Objects 嵌套对象与 List/Dict 边界
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                收紧复杂参数的概率空间：利用 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Literal / Enum 枚举限制</span>、<span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">多层 Pydantic 嵌套模型</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">强类型 List[T] 容器</span>，消杀任意文本带来的类型坍缩
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building code box and design architecture cards... -->
+        <!-- Content Grid (2 Columns: Complex Pydantic Schema vs Architectural Type Controls) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Left Card: Complex Pydantic Schema Example -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-6 md:p-8 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">复杂强类型 Pydantic 工具契约</h3>
+                                <p class="text-xs text-purple-700 font-mono">Nested Pydantic Model Code</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Complex Schema</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] mb-3 space-y-1 shadow-inner overflow-x-auto leading-relaxed">
+                        <div class="text-purple-400">from pydantic import BaseModel, Field</div>
+                        <div class="text-purple-400">from typing import Literal, List, Optional</div>
+                        <br>
+                        <div class="text-slate-400"># 1. 嵌套对象 (Nested Object) 契约</div>
+                        <div class="text-purple-300">class</div> <span class="text-blue-300">FilterCondition</span>(BaseModel):
+                        <div class="text-slate-300 pl-3">field: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"Target column name"</span>)</div>
+                        <div class="text-slate-300 pl-3">operator: Literal[<span class="text-amber-200">"eq"</span>, <span class="text-amber-200">"gt"</span>, <span class="text-amber-200">"in"</span>] = Field(description=<span class="text-amber-200 font-mono">"Operator"</span>)</div>
+                        <div class="text-slate-300 pl-3">value: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"Comparison value string"</span>)</div>
+                        <br>
+                        <div class="text-slate-400"># 2. 顶级复杂查询入参</div>
+                        <div class="text-purple-300">class</div> <span class="text-blue-300">DataExportInput</span>(BaseModel):
+                        <div class="text-slate-300 pl-3">export_format: Literal[<span class="text-amber-200">"JSON"</span>, <span class="text-amber-200">"CSV"</span>, <span class="text-amber-200">"PARQUET"</span>] <span class="text-slate-500"># Enum 约束 ★</span></div>
+                        <div class="text-slate-300 pl-3">filters: List[FilterCondition] = Field(description=<span class="text-amber-200">"Filter items list"</span>) <span class="text-slate-500"># List[T] ★</span></div>
+                        <div class="text-slate-300 pl-3">limit: Optional[<span class="text-emerald-300">int</span>] = Field(default=100, ge=1, le=5000) <span class="text-slate-500"># 数值范围 ★</span></div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>嵌套 Schema 自动展开：</strong>Pydantic 导出的 JSON Schema 自动将 `FilterCondition` 提炼为 `$defs` 引用的子对象结构。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-purple-600"></i>
+                    <span>原则：拒绝在入参里使用无约束的纯 Dict/Any，必须将字段展开为强类型模型</span>
+                </div>
+            </div>
+
+            <!-- STREAMING_CHUNK:Rendering architectural rules and design principles... -->
+            <!-- Right Card: Three Complex Type Control Principles -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-6 md:p-8 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">复杂入参收紧的三大工程法则</h3>
+                                <p class="text-xs text-emerald-700 font-mono">Complex Type Boundary Control</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">Type Safeguards</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">1. 枚举离散收敛 (Literal / Enum)</span>
+                                <span>Free Text $\to$ Discrete Enum</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                用 `Literal["JSON", "CSV"]` 强行将大模型的自由文本吐字收敛为固定的合法字符串集，在 JSON Schema 层注入 `enum` 字段阻断未知变体。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">2. 显式嵌套模型 (Nested BaseModel)</span>
+                                <span>Avoid Raw Dict/Any</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                严禁使用未声明结构的自由 `dict` 参数。将复杂的结构化字典拆解为独立的子 `BaseModel` 类，为每一个子字段赋予精准的 `description`。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 容器类型元素绑定 (Typed List[T])</span>
+                                <span>Item Type Constraints</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                声明数组时必须指定泛型元素类型 `List[T]`（如 `List[FilterCondition]`），防止大模型向列表里混入标量与非结构化杂质。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>工程收益：使复杂的嵌套 SQL 条件与批量任务调用的反序列化成功率达到 99.5%+</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Rendering architectural takeaway banner... -->
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        面对复杂的数据查询与多条件过滤，<strong>绝对不要把类型判断扔给运行时代码去写正则补偿</strong>！通过将输入约束升级为多层嵌套 Pydantic Model 与 Literal 枚举，在 Logit Masking 层即可完成绝对合规的参数生成。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[37.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">复杂的入参类型处理</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 剖析复杂入参类型的防崩溃设计：</span>
+                    “向学员强调：很多工程师在写工具参数时，对于复合选项喜欢写 `format: str` 并在注释里说‘填 JSON 或 CSV’。这给大模型留下了很大的自由度，容易吐出 `json_string` 或 `csv_format` 等变体。使用 `Literal['JSON', 'CSV', 'PARQUET']` 在 Schema 层直接转译为 `enum` 数组，能 100% 消除这个问题。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 避免自由 Dict/Any 参数：</span>
+                    “提醒学员：在 Pydantic 中千万不要图省事写 `filters: dict`！因为 `dict` 导出的 Schema 只有 `type: object`，里面没有任何字段描述，大模型根本不知道该传什么 key。必须将其封装为子 `BaseModel` 类（如 `FilterCondition`）。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

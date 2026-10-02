@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - Skill 的副作用（Side Effects）分类：ReadOnly (只读) vs State-Changing (写操作)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-[#000000] fa-scale-balanced"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Skill 的副作用（Side Effects）分类：ReadOnly (只读) vs State-Changing (写操作)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                建立安全与可恢复性的物理屏障：按 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">只读查询 (ReadOnly)</span> 与 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">状态修改 (State-Changing)</span> 显式标注 Skill 副作用，为幂等重试、事务回滚与 HITL 人工审批卡扣提供工程凭据
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Code Metadata Annotation vs Architectural Governance) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Python Side-Effect Metadata Annotation Code -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Skill 副作用元数据显式标注</h3>
+                                <p class="text-xs text-blue-700 font-mono">Side-Effect Metadata Declaration</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Metadata Contract</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">SideEffectType</span>(str, Enum):
+    READ_ONLY = <span class="text-amber-200">"READ_ONLY"</span>          <span class="text-slate-500"># 无副作用：纯查询/无状态变更</span>
+    STATE_CHANGING = <span class="text-amber-200">"STATE_CHANGING"</span>  <span class="text-slate-500"># 有副作用：写数据库/修改文件/调外部API</span>
+
+<span class="text-emerald-400">@tool(
+    side_effect=SideEffectType.READ_ONLY,
+    idempotent=True
+)</span>
+<span class="text-purple-300">def</span> <span class="text-blue-300">query_user_orders</span>(user_id: <span class="text-emerald-300">int</span>) -&gt; <span class="text-emerald-300">list</span>:
+    <span class="text-slate-500">"""Pure read-only query. Safe for auto-retry."""</span>
+    <span class="text-purple-300">return</span> db.select_orders(user_id)
+
+<span class="text-rose-400">@tool(
+    side_effect=SideEffectType.STATE_CHANGING,
+    requires_approval=True,  <span class="text-slate-500"># 触发 HITL 卡扣 ★</span>
+    supports_undo=True        <span class="text-slate-500"># 附带撤销动作 ★</span>
+)</span>
+<span class="text-purple-300">def</span> <span class="text-blue-300">delete_user_account</span>(user_id: <span class="text-emerald-300">int</span>) -&gt; <span class="text-emerald-300">str</span>:
+    <span class="text-slate-500">"""Deletes account. State-changing & high risk."""</span>
+    <span class="text-purple-300">return</span> db.delete_user(user_id)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>代码即契约：</strong>在修饰器元数据中显式暴露 `side_effect` 属性，为上游控制器提供管控抓手。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                    <span>核心：将工具按“只读”与“修改”区分是实现生产级安全卡扣的关键</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Side-Effect Governance -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-5 md:p-6 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">副作用治理的三大工程基石</h3>
+                                <p class="text-xs text-rose-700 font-mono">Side-Effect Engineering Governance</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[11px] font-mono font-bold">Safety Control</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-rose-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 幂等重试机制 (Idempotent Retries)</span>
+                                <span>ReadOnly Auto-Retry</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                对于 `ReadOnly` Skill，网络超时或偶发错误可放心进行自动重试 (Auto-Retry)；对于 `State-Changing` 工具则严禁盲目重试，防止产生二次写污染。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-rose-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">2. HITL 人工审批卡扣 (Human-in-the-Loop)</span>
+                                <span>Approval Gate</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                标注 `STATE_CHANGING` 且具备高风险（如删除、提权、出站写）的 Skill，控制器自动挂起并唤醒 HITL 审批弹窗，待人类确认后方可释放执行。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-rose-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">3. 审计日志与撤销策略 (Undo & Audit)</span>
+                                <span>Dry-Run & Transaction Memo</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                修改类 Skill 必须强行记录结构化审计日志（Audit Log），并优先支持 `dry_run` 模式预演或提供对应的 `undo` 撤销回调逻辑。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-rose-200/60 text-xs text-rose-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>最佳实践：只读工具自动放行，修改类工具强加审批与审计</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        Skill 的副作用分类并非简单的元数据打标，而是<strong>构建系统级容错、权限分级与人工治理卡扣（HITL Gate）的硬性凭据</strong>；显式隔离并管控写操作，是打造生产级 Agent 防崩防越权防线的关键一步。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Skill 的副作用分类：ReadOnly vs State-Changing</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析为什么必须显式标注 Side Effects：</span>
+                    “向学员深入剖析：大模型并不清楚调用 `query_user` 和 `delete_user` 在物理世界有什么本质区别，对它而言都只是吐出一个函数名。如果系统不显式打上 `side_effect` 标签，控制器就无法判断遇到网络失败时能否自动重试，也无法阻断越权的删除操作。”
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">💡 衔接后面的 HITL 与沙箱安全：</span>
+                    “提示学员：显式打标 `STATE_CHANGING` 是后续模块三引入 **Human-in-the-Loop 人工审批卡扣** 和 **沙箱隔离级别分配** 的基础依据。只读工具可以直接放行运行，写操作工具则触发强卡扣，这是企业级 AI 安全治理的基本功。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

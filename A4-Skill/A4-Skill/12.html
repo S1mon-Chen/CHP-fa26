@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 函数签名即 Prompt：docstring 与 Field(description=...) 如何决定模型调用成功率</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-signature"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                函数签名即 Prompt：docstring 与 Field(description=...) 如何决定模型调用成功率
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构代码契约的注意力植入机制：为什么 Python 函数的 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Docstring 注释</span> 与 Pydantic <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">Field 字段描述</span> 不是程序员文档，而是引导 LLM 注意力与采样的 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">微型 Prompt (Micro-Prompt)</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Low-Recall vs High-Recall Signatures) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Left Card: Bad vs Good Python Code Comparison -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-6 md:p-8 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-brands fa-python"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">“含糊签名” vs “语义锚定签名”</h3>
+                                <p class="text-xs text-purple-700 font-mono">Docstring & Field Description Impact</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Signature Audit</span>
+                    </div>
+
+                    <!-- Code Box -->
+                    <div class="space-y-3 font-mono text-[11px]">
+                        <!-- Bad Example -->
+                        <div class="p-3 rounded-xl bg-slate-900 text-slate-100 shadow-inner space-y-1">
+                            <div class="text-rose-400 font-bold">// ❌ 反例：缺失语义描述 (错唤率高、参数乱填)</div>
+                            <div class="text-slate-400">def <span class="text-rose-300">get_user</span>(u_id: str, flag: bool = False):</div>
+                            <div class="text-slate-500 pl-3">"""Gets user."""</div>
+                            <div class="text-rose-300 text-[10px] pt-1">// 结果: LLM 无法判断是 UUID 还是 Email、flag 作用未知 ❌</div>
+                        </div>
+
+                        <!-- Good Example -->
+                        <div class="p-3 rounded-xl bg-slate-900 text-slate-100 shadow-inner space-y-1 border border-emerald-500/50">
+                            <div class="text-emerald-400 font-bold">// ✅ 正例：完整动作目标与 Field 边界 (100% 精准召回)</div>
+                            <div class="text-slate-400">def <span class="text-emerald-300">get_active_user_by_email</span>(</div>
+                            <div class="text-slate-300 pl-3">email: str = Field(description=<span class="text-amber-200">"Exact user email address (e.g. alice@company.com)"</span>),</div>
+                            <div class="text-slate-300 pl-3">include_roles: bool = Field(default=False, description=<span class="text-amber-200">"Set True ONLY if user RBAC permissions are needed"</span>)</div>
+                            <div class="text-slate-400">) -> UserDTO:</div>
+                            <div class="text-slate-300 pl-3">"""Fetches an active user's profile from DB by exact email match. Read-only."""</div>
+                            <div class="text-emerald-300 text-[10px] pt-1">// 结果: 极度清晰的触发条件、入参例样与权限说明 ★</div>
+                        </div>
+                    </div>
+
+                    <ul class="mt-4 space-y-2 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>从 Docstring 提取微型 Prompt：</strong>导出工具 Schema 时，Docstring 自动转译为 API `description` 压入 System Instructions。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-purple-600"></i>
+                    <span>实测数据：清晰的 Field 描述可将参数格式错误率降低 85% 以上</span>
+                </div>
+            </div>
+
+            <!-- Right Card: The 3 Golden Rules of Function Signature Prompting -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-6 md:p-8 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-pen-ruler"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">函数签名 Prompting 的三大金律</h3>
+                                <p class="text-xs text-blue-700 font-mono">Micro-Prompting Principles</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Golden Rules</span>
+                    </div>
+
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <!-- Rule 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 明确“动作 + 目标 + 边界”</span>
+                                <span>Action + Target + Boundary</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                Docstring 开头第一句必须包含明确谓词（如 `Fetches`, `Submits`, `Deletes`）和前置触发条件（如 `Trigger ONLY after unit test passes`）。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">2. 示例格式内嵌 (Concrete Exemplars)</span>
+                                <span>Field Examples</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                在 `Field(description=...)` 里显式内嵌合法的正则表达式或格式示例（如 `e.g. 'v1.2.0' or '2026-08-01'`），避免 LLM 填入任意字符串。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 显式标注“不可用情况”</span>
+                                <span>Negative Guidance</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                在工具描述中加入否定提示（如 `Do NOT use this tool for batch queries; use query_users_batch instead`），彻底杜绝近义工具的混淆。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>下一步：探索领域前缀（Namespace）如何消除多工具场景下的语义冲突</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        写 Skill 代码注释就是在写<strong>面向 LLM 的微型 Prompt</strong>；把 Docstring 与 Pydantic Field 当作注意力契约来精雕细琢，是提升 Skill 召回准确率与参数零报错的关键。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">12</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[30%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (11.html <- 12.html -> 13.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">函数签名即 Prompt</span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="11.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="13.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员重塑对 Code Comment 的认知：</span>
+                    “向学员强调：在传统软件开发中，Docstring 和注释是写给接盘的程序员看的；但在 LLM 工具调用中，函数的 Docstring 和 Pydantic 的 `Field(description=...)` 会被系统全量提炼为 JSON Schema 压入 System Instructions，直接作为 LLM 决策召回的唯一依据！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调写示例（Examples）的力量：</span>
+                    “提示学员：在 `Field(description=...)` 中，不仅要写这个参数是什么，一定要附带一两个具体格式的 Example（例如 `e.g. 'alice@company.com'`）。这相当于在 Tool Calling 阶段融入了 Few-Shot 示范，能大幅降低类型反序列化失败的概率。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

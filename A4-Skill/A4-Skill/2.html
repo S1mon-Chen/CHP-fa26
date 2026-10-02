@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 02 - 大模型为何需要“手脚”？封闭 Transformer 计算图的局限性</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-cubes"></i>
+                <span>第 4 课：AI 原子能力与工具调用</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                大模型为何需要“手脚”？封闭 Transformer 计算图的局限性
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构纯 Transformer 前向传播图的物理壁垒：为何仅靠 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">自回归概率采样</span> 无法应对实时环境感知与精准计算需求
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Left Card: Structural Limitations of Closed Computing Graph -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-6 md:p-8 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 text-xl shrink-0">
+                            <i class="fa-solid fa-lock"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">封闭计算图的四大固有盲区</h3>
+                            <p class="text-xs text-slate-500 font-mono">Inherent Boundaries of Pure LLM</p>
+                        </div>
+                    </div>
+
+                    <ul class="space-y-3 text-sm text-slate-700">
+                        <li class="flex items-start gap-2.5">
+                            <div class="w-5 h-5 rounded bg-rose-100 text-rose-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</div>
+                            <span><strong>静态知识截断 (Time Cutoff)：</strong>仅包含训练日前的历史参数记忆，对现实世界的实时变化（如实时股价、天数据、部署状态）一无所知。</span>
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <div class="w-5 h-5 rounded bg-rose-100 text-rose-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</div>
+                            <span><strong>缺少私有状态与隔离环境：</strong>无法直接触达企业内部数据库、Git 仓库或私有微服务节点，处于隔离的数据黑洞中。</span>
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <div class="w-5 h-5 rounded bg-rose-100 text-rose-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</div>
+                            <span><strong>精确运算与 Hash 失灵：</strong>自回归神经网络擅长模式匹配与模糊推理，但在浮点精算、长正则匹配、字符串 Hash 运算上极易产生 Token 概率漂移。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-rose-600 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>物理结论：试图依靠“增加参数量”来解决精准计算与状态感知属于方向性误判。</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Practical SHA256 Mental Math vs Tool Execution -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/40 p-6 md:p-8 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-xl shrink-0">
+                            <i class="fa-solid fa-vial"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">实战对比：心算 Hash vs. 工具调用</h3>
+                            <p class="text-xs text-blue-700 font-mono">Exact Compute Verification</p>
+                        </div>
+                    </div>
+
+                    <!-- Problem 1: Mental Math Token Drift -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-xs mb-3 space-y-1 shadow-inner">
+                        <div class="text-rose-400">// 方案 A: 让 LLM "心算" sha256("Hello World")</div>
+                        <div class="text-slate-400">Input: "计算 'Hello World' 的 SHA256"</div>
+                        <div class="text-rose-300">"根据我的记忆，SHA256 值为 a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e..."</div>
+                        <div class="text-rose-500 text-[10px]">// 结果: 概率漂移，产生了看似合理但绝对错误的伪随机 Hex 字符串 ❌</div>
+                    </div>
+
+                    <!-- Problem 2: Tool Calling Determinism -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-xs mb-3 space-y-1 shadow-inner">
+                        <div class="text-emerald-400">// 方案 B: 触发 Tool Call 调用 Python hashlib</div>
+                        <div class="text-blue-300">1. tool_call: python_exec("import hashlib; print(hashlib.sha256(b'Hello World').hexdigest())")</div>
+                        <div class="text-emerald-300">2. observation: "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"</div>
+                        <div class="text-slate-400 text-[10px]">// 结果: 100% 物理确定性，消除任何概率模糊性 ★</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>工程方案：将精确计算下沉给外部 Sandbox，LLM 仅负责参数提取与调度。</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        不要让概率模型做它不擅长的事情；通过 Skill 与 Function Calling 给大模型装上“手脚”，将其定位转换为<strong>“确定性计算与物理状态调度的决策中枢”</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">2</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls -->
+        <div class="flex items-center space-x-3">
+            <a href="1.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">大模型为何需要“手脚”？</span>
+            <a href="3.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="1.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="3.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 Transformer 的计算模型局限：</span>
+                    “向学员强调：不要试图去训一个更大的模型来解决浮点运算或哈希计算！Transformer 的前向传播是概率点积注意力，面对精确数学、哈希计算和长正则匹配，它天然不如一行原生 Python 代码。工具不是权宜之计，而是架构上的必然选择。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 举例引导学员思考：</span>
+                    “大家可以尝试让最顶尖的模型心算一个长字符串的 sha256 或者执行复杂正则。如果靠自回归预测，模型后半段的十六进制字符几乎必然产生概率漂移。而通过 Tool Call 调 Python 的 `hashlib`，耗时不到 1 毫秒且 100% 准确。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '1.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

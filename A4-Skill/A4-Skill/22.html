@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - 工具执行沙箱三层架构：Process Level -> Container Level -> MicroVM Level</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-cubes-stacked"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                工具执行沙箱三层架构：Process Level → Container Level → MicroVM Level
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                物理隔离边界与算力开销的权衡杠杆：对比 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">进程级 (subprocess)</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">容器级 (Docker/gVisor)</span> 与 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">微虚拟机级 (Firecracker MicroVM)</span> 的启动延迟、网络禁退与内核共享安全防线
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Dynamic Isolation Allocator Code vs Three Isolation Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Dynamic Isolation Level Allocator Engine -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-server"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">沙箱等级动态分配引擎</h3>
+                                <p class="text-xs text-blue-700 font-mono">Risk-Driven Dynamic Sandbox Allocator</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Dynamic Allocation</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">from</span> enum <span class="text-purple-400">import</span> Enum
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">IsolationLevel</span>(str, Enum):
+    PROCESS = <span class="text-amber-200">"PROCESS"</span>      <span class="text-slate-500"># &lt; 1ms | 共享内核 | 适合纯只读 API</span>
+    CONTAINER = <span class="text-amber-200">"CONTAINER"</span>  <span class="text-slate-500"># ~100ms | Cgroups/gVisor | 适合标准 Shell</span>
+    MICROVM = <span class="text-amber-200">"MICROVM"</span>      <span class="text-slate-500"># ~5ms | 硬件虚拟化 | 适合任意 Python 代码 ★</span>
+
+<span class="text-purple-300">def</span> <span class="text-blue-300">allocate_sandbox</span>(tool_meta: <span class="text-emerald-300">dict</span>) -&gt; <span class="text-emerald-300">Sandbox</span>:
+    <span class="text-purple-300">if</span> tool_meta[<span class="text-amber-200">"side_effect"</span>] == <span class="text-amber-200">"READ_ONLY"</span>:
+        <span class="text-purple-300">return</span> SubprocessSandbox(timeout_s=3)
+    <span class="text-purple-300">elif</span> tool_meta[<span class="text-amber-200">"requires_arbitrary_code"</span>]:
+        <span class="text-purple-300">return</span> FirecrackerMicroVM(memory_mb=512, network=<span class="text-purple-300">False</span>)
+    <span class="text-purple-300">else</span>:
+        <span class="text-purple-300">return</span> DockerSandbox(image=<span class="text-amber-200">"python:3.11-slim"</span>, read_only=<span class="text-purple-300">True</span>)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>按需分配算力与安全预算：</strong>只读轻量工具无需付出高额 VM 启动代价，高危代码执行强加物理硬件隔离。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                    <span>核心：依据 Skill 风险等级在启动延迟、资源消耗与安全逃逸风险间取得最佳平衡</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Sandboxing Architecture -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-5 md:p-6 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-cat"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">沙箱三层隔离对比与选择法则</h3>
+                                <p class="text-xs text-purple-700 font-mono">3-Tier Isolation Trade-offs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Trade-offs</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 进程级 (subprocess)</span>
+                                    <span>Zero Overheads</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-blue-700 font-bold">&lt; 1ms Boot</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                共享宿主 OS 内核与文件系统，仅靠 OS 进程参数约束；适合完全受信的内部只读查询工具，禁止执行模型生成的裸代码。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">2. 容器级 (Docker / gVisor)</span>
+                                    <span>Namespace & Cgroups</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-purple-700 font-bold">50~100ms Boot</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                通过 Namespaces、Cgroups 或 gVisor 拦截 Syscalls；实现根文件系统只读、限制 CPU/RAM 内存配额，切断网络出站。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">3. 微虚拟机级 (Firecracker / e2b)</span>
+                                    <span>Hardware Virtualization</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-rose-700 font-bold">~5ms Boot ★</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                基于 KVM 虚拟化独立 Linux 内核，秒级拉起微虚拟机；彻底消杀内核漏洞逃逸（Kernel Escape）威胁，是任意代码解释器的黄金选型。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>应用选型：e2b / Modal (MicroVM) vs AWS Fargate / Docker (Container)</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        绝对不要在同一个环境中混用不同安全等级的工具！根据 Skill 的副作用与代码自由度构建<strong>“动态分级沙箱分配器 (Dynamic Sandbox Allocator)”</strong>，是将生成式代码安全接入生产环境的核心技术基石。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[55%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">工具执行沙箱三层架构</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲授三层沙箱架构的 Trade-offs：</span>
+                    “向学员深入剖析：在构建 Code Interpreter 或工具宿主时，很多工程师陷入两极分化——要么直接用原生的 `subprocess` 跑任意代码（导致宿主服务器随时面临 `rm -rf` 风险），要么所有请求都拉起庞大的 Docker 容器（导致冷启动延迟拉长到秒级）。了解进程级、容器级与微虚拟机（Firecracker）三层的 Trade-offs，是架构师做选型的基本功。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 Firecracker / MicroVM 的兴起：</span>
+                    “提示学员：在现代云原生 Agent 框架（如 e2b 或 Modal）中，基于 KVM 的 Firecracker MicroVM 已经成为趋势。它拥有与 Docker 相当的轻量（启动仅 5ms），同时具备独立 Linux 内核的硬件级隔离，能彻底拦截内核漏洞逃逸攻击。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

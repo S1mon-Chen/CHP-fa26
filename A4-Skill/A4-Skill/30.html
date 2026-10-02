@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 模块三实战代码：手写一个带 Docker 容器隔离与超时强杀的 Code Execution Engine</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-laptop-code"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三演练</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块三实战代码：手写一个带 Docker 容器隔离与超时强杀的 Code Execution Engine
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                零信任沙箱工程落地最终章：基于 Python Docker SDK 打造包含 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">物理网络断路 (network_mode="none")</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">配额管控 (CPU/RAM/non-root)</span> 与 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">asyncio 物理超时强杀</span> 的高可用执行引擎
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Docker Sandbox Engine Code vs Four Security Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Docker Sandbox Code Execution Engine -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-brands fa-docker"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Docker 沙箱执行引擎核心代码</h3>
+                                <p class="text-xs text-blue-800 font-mono">Docker Sandbox Engine Code</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Capstone Engine</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">import</span> docker, asyncio
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">DockerSandboxEngine</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">__init__</span>(self, image: <span class="text-emerald-300">str</span> = <span class="text-amber-200">"python:3.11-slim"</span>):
+        self.client = docker.from_env()
+        self.image = image
+
+    <span class="text-purple-300">async def</span> <span class="text-blue-300">run_code</span>(self, code: <span class="text-emerald-300">str</span>, timeout_s: <span class="text-emerald-300">float</span> = 10.0) -&gt; <span class="text-emerald-300">dict</span>:
+        <span class="text-slate-500"># 1. 物理安全约束：切断出站网络、禁写根文件系统、限制资源 ★</span>
+        container = self.client.containers.create(
+            image=self.image,
+            command=[<span class="text-amber-200">"python"</span>, <span class="text-amber-200">"-c"</span>, code],
+            network_mode=<span class="text-amber-200">"none"</span>,         <span class="text-slate-500"># 切断网络，防止数据外退</span>
+            mem_limit=<span class="text-amber-200">"256m"</span>,            <span class="text-slate-500"># 256MB RAM 内存强上限</span>
+            read_only=<span class="text-purple-300">True</span>,              <span class="text-slate-500"># 根文件系统只读</span>
+            user=<span class="text-amber-200">"nobody"</span>                <span class="text-slate-500"># 禁用 root 提权 ★</span>
+        )
+        <span class="text-purple-300">try</span>:
+            container.start()
+            <span class="text-slate-500"># 2. 包裹 asyncio.wait_for 实现非阻塞物理超时处理 ★</span>
+            loop = asyncio.get_running_loop()
+            <span class="text-purple-300">await</span> asyncio.wait_for(
+                loop.run_in_executor(<span class="text-purple-300">None</span>, container.wait),
+                timeout=timeout_s
+            )
+            logs = container.logs(stdout=<span class="text-purple-300">True</span>, stderr=<span class="text-purple-300">True</span>).decode()
+            <span class="text-purple-300">return</span> {<span class="text-amber-200">"stdout"</span>: logs, <span class="text-amber-200">"status"</span>: <span class="text-amber-200">"SUCCESS"</span>}
+        <span class="text-purple-300">except</span> asyncio.TimeoutError:
+            <span class="text-slate-500"># 3. 超时物理强杀并清除死锁容器 ★</span>
+            container.kill()
+            <span class="text-purple-300">return</span> {<span class="text-amber-200">"error"</span>: <span class="text-amber-200">f"Timed out after {timeout_s}s"</span>}
+        <span class="text-purple-300">finally</span>:
+            container.remove(force=<span class="text-purple-300">True</span>)  <span class="text-slate-500"># 临态生命周期清理</span></code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>开箱即用高可用：</strong>完美融合了网络防泄漏、低权限运行、配额限制与 `container.kill()` 强杀回收。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>恭喜完成模块三：掌握零信任物理沙箱与安全隔离工程体系</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Four Engineering Pillars of Docker Sandboxing -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Docker 沙箱工程的四大防御柱石</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Sandbox Defense Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Cap Security</span>
+                    </div>
+
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 物理出站断路 (network_mode="none")</span>
+                                <span>Network Lockdown</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在容器底层强制封锁网卡出站流量，即使代码被提示注入试图通过 `curl` 外退密钥或建立反向 Shell，也会因网络中断而彻底失效。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">2. 严苛配额与只读防破坏 (Read-Only & Quotas)</span>
+                                <span>Resource Limits</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                挂载 `read_only=True` 阻断恶意的物理文件抹除，配合 `mem_limit="256m"` 物理隔离死循环炸弹对宿主机内存资源的侵占。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">3. 异步超时强杀 (container.kill())</span>
+                                <span>Deadlock Mitigation</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                主事件循环通过 `asyncio.wait_for` 监控耗时；一旦超时瞬间发送物理强杀指令（SIGKILL），并安全回收僵尸容器资源。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 4 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">4. non-root 低特权隔离 (user="nobody")</span>
+                                <span>Privilege Boundary</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                强制容器内代码以 Linux 极低权限用户（nobody）身份运行，规避任何潜在的 Docker 容器提权与内核逃逸漏洞。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>架构实战：可作为 Cloud / On-Prem Agent 物理代码解释器的底座模块</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Module 3 Capstone Conclusion / 模块三演练总结</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        永远用物理规则替代盲目信任！结合 <strong>网络切断、硬件配额限制、non-root 用户运行与超时强杀</strong>，构建原生的 Docker / MicroVM 执行引擎，是将可执行 Tool 安全引入生产工程的绝对基石。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块三演练：Docker 代码沙箱执行引擎</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员复盘模块三的沙箱落地：</span>
+                    “向学员总结：在模块三中，我们从零信任原则出发，探讨了从 Subprocess、Docker 到 MicroVM 的三层架构，以及 Bash 命令行审计、HITL 人工审批、超时强杀、凭证句柄和 Observation 清洗。Slide 30 这个代码示例就是全模块知识点合璧后的最佳生产参考。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 Docker 关键配置项：</span>
+                    “提示学员：重点看 `network_mode='none'`（强行禁网）、`read_only=True`（防止写坏文件系统）和 `user='nobody'`（低权限运行）。这三项配合 `asyncio.wait_for` 超时处理，能在宿主侧建立硬件级别的硬避雷针。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

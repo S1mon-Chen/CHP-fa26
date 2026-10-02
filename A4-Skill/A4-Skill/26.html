@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 26 - 读写分离与事务回滚：支持 dry_run 预演与 Git/DB Undo 操作</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                读写分离与事务回滚：支持 dry_run 预演与 Git/DB Undo 操作
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                赋予工具“悔棋与安全预演”能力：通过 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">dry_run 预飞分析</span> 与 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">事务快照自动 Undo 回滚</span>，在发生运行错误或逻辑越界时保障系统物理状态的绝对安全
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Transactional Runner Code vs Architectural Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Transactional Tool Execution Engine -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 md:p-6 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg shrink-0">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">事务型工具执行引擎</h3>
+                                <p class="text-xs text-emerald-800 font-mono">Transactional Tool Runner Code</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">Transactional Engine</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">class</span> <span class="text-blue-300">TransactionalToolRunner</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">execute_with_undo</span>(self, tool_call, context):
+        <span class="text-slate-500"># 1. 优先执行 dry_run 预演分析 (无物理副作用) ★</span>
+        <span class="text-purple-300">if</span> tool_call.args.get(<span class="text-amber-200">"dry_run"</span>, <span class="text-purple-300">True</span>):
+            preview = self.simulate_dry_run(tool_call)
+            <span class="text-purple-300">if</span> <span class="text-purple-300">not</span> preview.is_safe:
+                <span class="text-purple-300">raise</span> DryRunValidationError(preview.reason)
+            <span class="text-purple-300">return</span> preview.diff_summary  <span class="text-slate-500"># 仅向 LLM 展示修改影响范围</span>
+            
+        <span class="text-slate-500"># 2. 物理写入前捕获 undo 快照 (如 git stash / DB BEGIN) ★</span>
+        undo_snapshot = self.capture_undo_state(tool_call)
+        <span class="text-purple-300">try</span>:
+            <span class="text-purple-300">return</span> self.sandbox.execute(tool_call)
+        <span class="text-purple-300">except</span> Exception <span class="text-purple-300">as</span> err:
+            <span class="text-slate-500"># 3. 产生物理异常时瞬间自动触发 Rollback 回滚 ★</span>
+            self.rollback_transaction(undo_snapshot)
+            <span class="text-purple-300">return</span> <span class="text-amber-200">f"Observation: Execution failed and auto-rolled back: {err}"</span></code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>预演与事务锁双保证：</strong>让模型在真实写入前看清改动 Diff；一旦物理报错则自动抹除污染状态。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：将带有修改副作用的 Skill 包装为具备“原位原子恢复”能力的事务管道</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Engineering Pillars of Transactional Undo -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">读写分离与事务回滚的三大防线</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Transactional Defense Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Safety Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">1. dry_run 预飞分析 (Preflight Dry-Run)</span>
+                                <span>Preview Before Apply</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在数据库调用 `EXPLAIN` 或在 Git 执行 `git diff --check`。仅打印即将修改的影响范围，供模型与 HITL 确认无误后再进行写操作。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">2. 事务快照与自动 Undo (Auto Rollback)</span>
+                                <span>Atomic Restore</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                依赖数据库 `BEGIN...ROLLBACK` 或 Git `git checkout/stash` 暂存区。物理改动若触发单测失败，宿主环境瞬间撤销该 Turn 的全量变更。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">3. 读写物理管道分离 (Read/Write Separation)</span>
+                                <span>Replica vs Master Gate</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                将只读查询导向只读副本与轻量沙箱；将状态修改导向带有事务锁、Undo 日志与 HITL 审批卡扣的只写隔离宿主。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>实践参考：Cursor / Roo Code 的 Git Diff 预演与按需 Revert 回滚卡扣</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-emerald-100 text-emerald-800 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        允许 Agent 修改代码或数据库的前提是系统随时能够<strong>“一键撤销（Undo）”</strong>；通过构建 <code class="bg-slate-200 px-1 rounded text-emerald-800">dry_run</code> 预演与事务原子回滚管道，是将概率大模型引入生产环境运维与编程的关键技术防线。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">26</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[65%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (25.html <- 26.html -> 27.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="25.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">读写分离与事务回滚</span>
+            <a href="27.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="25.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="27.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 剖析 dry_run 预演与事务 Undo 的工程价值：</span>
+                    “向学员深入剖析：在使用 IDE 编程插件或数据库 Agent 时，当 AI 准备修改 5 个文件或者做 UPDATE SQL 操作，系统不应该直接覆盖硬盘文件。而是先开启 `dry_run` 生成物理 Diff，让开发者或沙箱单测检查。如果物理运行中报错，自动执行 `git checkout .` 撤销本次修改。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调读写分离架构：</span>
+                    “向学员强调：只读工具（SELECT、git diff、cat）可以毫无顾忌地高并发运行在副本环境；而修改类工具（UPDATE、patch_apply）必须包裹在带有撤销快照和卡扣的事务容器中，保证系统可随时‘悔棋’。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '27.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

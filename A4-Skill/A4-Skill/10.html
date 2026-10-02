@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 模块一小结与 Hook 实战：手写一个原生 Function Calling HTTP Request 封装器</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块一小结与 Hook 实战</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块一小结与 Hook 实战：手写一个原生 Function Calling HTTP Request 封装器
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                剥离 LangChain/LlamaIndex 等高层框架黑盒：用 Python 原生 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">requests 库</span> 50 行代码彻底打通：<span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Schema 注册 $\to$ Payload 组装 $\to$ tool_calls 解析 $\to$ 本地 Hook 执行 $\to$ 状态回载</span> 数据闭环
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Python Code vs Module 1 Synthesis) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Left Card: Python Code Hook Implementation -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-6 md:p-8 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-brands fa-python"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">原生 HTTP Function Call 驱动流</h3>
+                                <p class="text-xs text-blue-700 font-mono">Raw Python HTTP Request Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Hook Code</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] mb-3 space-y-1 shadow-inner overflow-x-auto leading-relaxed">
+                        <div class="text-purple-400">import requests, json</div>
+                        <br>
+                        <div class="text-slate-400"># 1. Local Tool Registry Hook Map</div>
+                        <div class="text-slate-300">TOOL_MAP = {<span class="text-amber-200">"get_user_email"</span>: <span class="text-emerald-300">lambda</span> user_id: <span class="text-amber-200">f"user_{user_id}@company.com"</span>}</div>
+                        <br>
+                        <div class="text-slate-400"># 2. Raw Request Function</div>
+                        <div class="text-purple-300">def</span> <span class="text-blue-300">run_tool_call_loop</span>(messages, tools):</div>
+                        <div class="text-slate-300 pl-3">payload = {<span class="text-amber-200">"model"</span>: <span class="text-amber-200">"deepseek-chat"</span>, <span class="text-amber-200">"messages"</span>: messages, <span class="text-amber-200">"tools"</span>: tools}</div>
+                        <div class="text-slate-300 pl-3">res = requests.post(<span class="text-amber-200">"https://api.deepseek.com/chat/completions"</span>, json=payload).json()</div>
+                        <div class="text-slate-300 pl-3">msg = res[<span class="text-amber-200">"choices"</span>][0][<span class="text-amber-200">"message"</span>]</div>
+                        <div class="text-slate-300 pl-3">messages.append(msg) <span class="text-slate-500"># Append Assistant Response</span></div>
+                        <br>
+                        <div class="text-slate-400 pl-3"># 3. Handle Tool Calls Array (Turn 1 Completion)</div>
+                        <div class="text-purple-300 pl-3">if</span> <span class="text-amber-200">"tool_calls"</span> <span class="text-purple-300">in</span> msg:</div>
+                        <div class="text-purple-300 pl-6">for</span> call <span class="text-purple-300">in</span> msg[<span class="text-amber-200">"tool_calls"</span>]:</div>
+                        <div class="text-slate-300 pl-9">args = json.loads(call[<span class="text-amber-200">"function"</span>][<span class="text-amber-200">"arguments"</span>])</div>
+                        <div class="text-emerald-400 pl-9">result = TOOL_MAP[call["function"]["name"]](**args) <span class="text-slate-500"># Local Hook Exec</span></div>
+                        <div class="text-slate-300 pl-9">messages.append({</div>
+                        <div class="text-slate-300 pl-12"><span class="text-amber-200">"role"</span>: <span class="text-amber-200">"tool"</span>, <span class="text-amber-200">"tool_call_id"</span>: call[<span class="text-amber-200">"id"</span>], <span class="text-amber-200">"content"</span>: str(result)</div>
+                        <div class="text-slate-300 pl-9">})</div>
+                        <div class="text-purple-300 pl-6">return</span> run_tool_call_loop(messages, tools) <span class="text-slate-500"># Turn 2 API Re-call</span></div>
+                        <div class="text-purple-300 pl-3">return</span> msg[<span class="text-amber-200">"content"</span>]</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>零框架黑盒依赖：</strong>展示了工具调用的底质就是基于递归/循环不断向 `messages` 追加 `role: "tool"` 并二次 POST 发起请求。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                    <span>核心：理解此 20 行核心 Hook，便掌握了所有 Agent 框架的底层引擎</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Module 1 Synthesis & Architectural Takeaways -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-6 md:p-8 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg shrink-0">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">模块一：核心知识图谱复盘</h3>
+                                <p class="text-xs text-emerald-700 font-mono">Module 1 Knowledge Synthesis</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">Module 1 Summary</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 采样约束</span>
+                                <span>Logit Masking 替代规则祈祷</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                从正则文本解析演进至底层 Softmax 层的 GBNF 文法掩码，实现 100% 格式无崩溃。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">2. 契约定义</span>
+                                <span>Schema Description 即微型 Prompt</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                JSON Schema / Pydantic 中的 `description` 与 `enum` 是压入采样层引导注意力的绝对锚点。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 状态对齐</span>
+                                <span>`tool_call_id` 是并发对齐锁</span>
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">
+                                依赖 4 角色消息队列与句柄强校验，实现并行工具调用 (Parallel Tool Calls) 与 RTT 3 倍加速。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>下一步：进入模块二，探索 Skill Schema 编写规范与 Pydantic 生态绑定</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        理解原生 HTTP Function Calling 消息轮替是剥离高层框架抽象的前提；工具调用的本质就是<strong>在 API 请求载荷与本地物理 Hook 之间建立强类型的无状态状态机循环</strong>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[25%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (09.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块一小结与原生 Hook 封装实战</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学员理解手写 HTTP 封装的意义：</span>
+                    “向学员强调：不要一上来就套 LangChain 或者 LlamaIndex！很多工程师用那些框架遇到 `tool_call_id mismatch` 或者 400 报错时毫无头绪，本质就是没吃透 HTTP Payload 的交互逻辑。手写这 20 行纯 Python requests 代码，能让你一眼看穿任何 Agent 框架的底层黑盒。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 总结模块一知识体系：</span>
+                    “向学员总结复盘：模块一我们深入解构了从最原始的正则解析到 Logit Masking 采样、4 角色消息队列、`tool_call_id` 句柄强锁以及 Parallel Tool Calls 并发加速。这些底层原语是接下来模块二学习 Pydantic Schema 编写与装饰器设计的硬基石。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

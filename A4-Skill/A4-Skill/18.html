@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 动态 Tool Schema 加载与上下文瘦身：解决 50+ 工具注入导致 Context 爆表问题</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- -->
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-filter-circle-dollar"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                动态 Tool Schema 加载与上下文瘦身：解决 50+ 工具注入导致 Context 爆表问题
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                应对 Tool Bloat（工具过载）对注意力的稀释：通过 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">意图路由 (Intent Router)</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">工具检索 (RAG-over-Tools)</span> 架构，二阶段按需抓取 Top-K Schema 压入 Context，降本 80% 并抹平误召回
+            </p>
+        </div>
+
+        <!-- -->
+        <!-- Content Grid (2 Columns: Code Pipeline vs Architectural Benefits) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Dynamic Tool Loading Python Implementation -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">RAG-over-Tools 二阶段加载引擎</h3>
+                                <p class="text-xs text-blue-700 font-mono">Dynamic Tool Schema Retrieval Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Dynamic Loading</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">from</span> typing <span class="text-purple-400">import</span> List
+<span class="text-purple-400">from</span> langchain_community.vectorstores <span class="text-purple-400">import</span> FAISS
+
+<span class="text-slate-400"># 1. 注册 50+ 企业全量技能元数据到工具向量库</span>
+tool_vector_store = FAISS.from_documents(ALL_50_TOOL_DOCS, embeddings)
+
+<span class="text-purple-300">def</span> <span class="text-blue-300">get_active_payload</span>(user_query: <span class="text-emerald-300">str</span>, top_k: <span class="text-emerald-300">int</span> = 3) -&gt; <span class="text-emerald-300">dict</span>:
+    <span class="text-slate-500"># 2. 第一阶段：意图语义路由，筛选 top_k 最相关工具</span>
+    relevant_docs = tool_vector_store.similarity_search(user_query, k=top_k)
+    active_schemas = [
+        TOOL_REGISTRY[doc.metadata[<span class="text-amber-200">"name"</span>]][<span class="text-amber-200">"parameters"</span>]
+        <span class="text-purple-300">for</span> doc <span class="text-purple-300">in</span> relevant_docs
+    ]
+    
+    <span class="text-slate-500"># 3. 第二阶段：仅向系统 Prompt 动态注入选中的 3 个 Schema ★</span>
+    <span class="text-purple-300">return</span> {
+        <span class="text-amber-200">"messages"</span>: [{<span class="text-amber-200">"role"</span>: <span class="text-amber-200">"user"</span>, <span class="text-amber-200">"content"</span>: user_query}],
+        <span class="text-amber-200">"tools"</span>: active_schemas  <span class="text-slate-500"># 提示词瘦身：15k tokens -&gt; 1.2k tokens!</span>
+    }</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>从 50 个瘦身到 3 个：</strong>每次 Completion 请求仅携带当次任务强相关的工具 Schema，大幅保护 Context Window。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-600"></i>
+                    <span>机制：RAG-over-Tools 将 N 个工具的选型复杂性降解为二次语义检索问题</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Dynamic Tool Loading -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-5 md:p-6 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-solid fa-sliders"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">动态工具加载的三大工程红利</h3>
+                                <p class="text-xs text-purple-700 font-mono">Dynamic Loading Benefits</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Context Slimming</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">1. 消除“注意力稀释” (Attention Focus)</span>
+                                <span>Zero Confusion</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                全量注入 50+ 工具会导致注意力集中在无关工具描述上（Lost in the Middle）。只留 3 个候选可使错唤召回率趋近于零。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">2. Token 成本与 TTFT 暴跌 (Cost & Latency)</span>
+                                <span>80%+ Token Saving</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                System Instructions 膨胀会剧烈增加首字延迟（TTFT）与 API 账单。二阶段动态截断可削减 80% 以上的静态 Schema 消耗。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-purple-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">3. 支撑 500+ 无上限插件扩展 (Infinite Scale)</span>
+                                <span>Scalable Skill Pool</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                允许企业将全量 RPC 微服务无上限注册进技能池，由路由网关负责按需按领域动态挂载，突破单次 Completion 载荷瓶颈。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>实践选型：Semantic Kernel / LangChain Tool Retriever / MCP Skill Gateway</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- -->
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        绝对不要把庞大的企业 API 字典一股脑推给大模型！构建 <strong>RAG-over-Tools 动态路由层（Intent Router）</strong>，实现“按需检索、动态挂载 Schema”，是支持企业级大规模 Agent 技能库扩展的必备工程防护壁垒。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[45%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">动态 Tool Schema 加载与上下文瘦身</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析 Tool Bloat 对系统的危害：</span>
+                    “向学员深入剖析：在企业实际接入时，经常有工程师把团队现有的 50 个甚至 100 个 OpenAPI 接口一次性都挂进 `tools` 数组发给 LLM。这不仅会导致单次 Prompt 消耗上万 Token、首字响应耗时增加 3 倍以上，更严重的是会引发注意力的极度稀释（Lost in the Middle），导致大模型混淆相似 API。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 RAG-over-Tools 解法：</span>
+                    “向学员介绍解决方案：利用 RAG 思想，对所有工具的 `description` 构建向量索引或意图路由器。当收到用户 Query 时，先用轻量语义检索抓取最匹配的 3~5 个工具，再把这 3 个 Schema 动态注入到 API Payload 里，完美解决容量与准确率瓶颈。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

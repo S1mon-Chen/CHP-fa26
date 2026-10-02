@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 34 - 大日志截断与剪枝 (Log Pruning)：防止 Pytest / Build 产生 10 万行日志挤爆 Context</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-scissors"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块四</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                大日志截断与剪枝 (Log Pruning)：防止 Pytest / Build 产生 10 万行日志挤爆 Context
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                保护有限的 Context Window：通过 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Stacktrace 核心提取</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">首尾双视窗截断 (Head/Tail Truncation)</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Token 预算感知中间件</span>，消杀海量无用日志带来的“注意力稀释”与费用爆表
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: LogPruner Engine Code vs Architectural Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: LogPruner Engine Code -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-5 md:p-6 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-solid fa-filter"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">LogPruner 智能剪枝引擎</h3>
+                                <p class="text-xs text-purple-800 font-mono">Log Pruner Middleware Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Log Pruner</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">import</span> re
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">LogPrunerEngine</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">prune_build_logs</span>(self, raw_logs: <span class="text-emerald-300">str</span>, max_lines: <span class="text-emerald-300">int</span> = 80) -&gt; <span class="text-emerald-300">str</span>:
+        lines = raw_logs.splitlines()
+        total_lines = len(lines)
+        <span class="text-purple-300">if</span> total_lines &lt;= max_lines:
+            <span class="text-purple-300">return</span> raw_logs  <span class="text-slate-500"># 未超行数阀门则原样放行</span>
+
+        <span class="text-slate-500"># 1. 正则提取关键的 Pytest / Build 失败堆栈 (FAILURES/ERROR) ★</span>
+        error_blocks = re.findall(
+            <span class="text-amber-200">r"(?:FAILURES|ERRORS|FAILED|Traceback).*?(?=\n\n|\Z)"</span>, 
+            raw_logs, re.DOTALL | re.IGNORECASE
+        )
+        
+        <span class="text-slate-500"># 2. 首尾双视窗截断：保留头 20 行、尾 50 行，中间压平 ★</span>
+        head = <span class="text-amber-200">"\n"</span>.join(lines[:20])
+        tail = <span class="text-amber-200">"\n"</span>.join(lines[-50:])
+        truncated = total_lines - 70
+        
+        extracted_summary = <span class="text-amber-200">"\n"</span>.join(error_blocks[:2])
+        <span class="text-purple-300">return</span> (
+            <span class="text-amber-200">f"{head}\n"</span>
+            <span class="text-amber-200 font-bold">f"/* ... [{truncated} lines truncated by LogPruner Engine] ... */\n"</span>
+            <span class="text-amber-200">f"/* Key Stacktrace Extracted: */\n{extracted_summary}\n"</span>
+            <span class="text-amber-200">f"/* Tail Logs: */\n{tail}"</span>
+        )</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>Token 瘦身 90%+：</strong>把几万行的控制台打印日志智能瘦身至 $<1000$ Tokens，精准保留关键报错行。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：严禁将未经剪枝的裸日志直接灌入 `role: "tool"` 的 Observation 中</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Log Pruning Architecture -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">大日志剪枝的三大工程防线</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Log Pruning Architecture Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Token Budget</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">1. 堆栈正则提纯 (Stacktrace Extraction)</span>
+                                <span>Targeted Extraction</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                通过正则或 AST 检索算法抓取 `FAILURES`, `ERROR`, `Traceback` 等核心块，剔除无价值的库安装进度条与编译 Log。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">2. 首尾双视窗截断 (Head/Tail Dual-Window)</span>
+                                <span>Dual-Window Retain</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                保留初始前 20 行命令参数与末尾 50 行退栈信息，确保命令行语义完整，折叠中间重复膨胀的漫长刷屏日志。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. Token 预算感知中间件 (Token-Budget Middleware)</span>
+                                <span>Observation Guard</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                设定 Observation 的硬 Token 预算（如 $<1500$ Tokens），一旦超标即刻触发剪枝管道，杜绝“Lost in the Middle”注意力稀释。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>实践选型：Cursor / Roo Code 在执行 pytest 与 npm test 时的日志压缩策略</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-800 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        海量杂乱日志是挤爆 Context Window 与稀释模型注意力的毒药！通过 <strong>首尾双视窗截断与 Stacktrace 正则提纯</strong>，将 Observations 压缩至 Token 预算边界内，是构建高吞吐 Agent 的硬指标。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">34</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (33.html <- 34.html -> 35.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="33.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">大日志截断与剪枝 (Log Pruning)</span>
+            <a href="35.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="33.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="35.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 讲授为什么日志剪枝是必备防线：</span>
+                    “向学员深入剖析：在自动化测试或代码编译场景下，一个 `pytest` 或 `mvn test` 往往会吐出上万行的冗余标准输出。如果毫不处理就直接作为 `role: 'tool'` 写入 Context，一方面会瞬间吃掉几万个 Token，造成数倍的费用爆表；另一方面会引发注意力稀释（Lost in the Middle），导致大模型反而找不到真正报错的代码行号。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 介绍首尾双视窗与 Stacktrace 提纯：</span>
+                    “提示学员：最佳解法分为两步——首先通过正则精准提取 `FAILURES` 和 `Traceback` 等报错块；其次采用‘首尾双视窗’，保留前 20 行命令 Header 与最后 50 行报错结尾，将中间上万行毫无价值的进度条压平。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '35.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

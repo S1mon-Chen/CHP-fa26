@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - 工具调用的超时控制 (Timeout) 与异步挂起 (Async Disconnecting)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                工具调用的超时控制 (Timeout) 与异步挂起 (Async Disconnecting)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                保障 Agent 主控循环高可用的物理命门：利用 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">asyncio 超时断路器</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">非阻塞异步挂起</span> 与 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">子进程/容器 SIGKILL 物理强杀</span>，防止耗时任务死锁算力引擎
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Async Timeout Code vs Timeout Engineering Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Async Timeout Engine Code -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-5 md:p-6 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-lg shrink-0">
+                                <i class="fa-solid fa-hourglass-half"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">异步超时断路器与强杀引擎</h3>
+                                <p class="text-xs text-amber-800 font-mono">Async Timeout & Kill Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-mono font-bold">Timeout Gate</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">import</span> asyncio
+
+<span class="text-purple-300">async def</span> <span class="text-blue-300">execute_tool_with_timeout</span>(tool_call, timeout_s: <span class="text-emerald-300">float</span> = 30.0) -&gt; <span class="text-emerald-300">str</span>:
+    <span class="text-purple-300">try</span>:
+        <span class="text-slate-500"># 1. 异步拉起子进程，主事件循环保持非阻塞挂起 ★</span>
+        proc = <span class="text-purple-300">await</span> asyncio.create_subprocess_exec(
+            *tool_call.cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        <span class="text-slate-500"># 2. 包裹 asyncio.wait_for 施加硬性超时阀门 ★</span>
+        stdout, stderr = <span class="text-purple-300">await</span> asyncio.wait_for(
+            proc.communicate(), timeout=timeout_s
+        )
+        <span class="text-purple-300">return</span> stdout.decode()
+        
+    <span class="text-purple-300">except</span> asyncio.TimeoutError:
+        <span class="text-slate-500"># 3. 超时强杀隔离子进程 (SIGKILL) 并回写 Observation ★</span>
+        <span class="text-purple-300">try</span>:
+            proc.kill()
+            <span class="text-purple-300">await</span> proc.wait()
+        <span class="text-purple-300">except</span> ProcessLookupError:
+            <span class="text-purple-300">pass</span>
+            
+        <span class="text-purple-300">return</span> <span class="text-amber-200">f"Observation: Execution timed out after {timeout_s}s and was killed."</span></code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>非阻塞自愈闭环：</strong>将 TimeoutError 直接转译为 Observation 反写给 LLM，触发模型重构高效算法。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-amber-200/60 text-xs text-amber-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                    <span>物理铁律：绝不允许任何未设置超时边界的同步阻塞函数（Sync Blocking Call）触碰 Agent 主循环</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Timeout Architecture -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">超时控制与异步挂起的三大工程支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Timeout Engineering Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Availability</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">1. 物理线程解锁与非阻塞挂起 (Async Suspend)</span>
+                                <span>Event Loop Unlocking</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在耗时编译、大型 pytest 或 API 请求期间，将任务挂起交由底层事件循环（`asyncio` / Tokio），释放 CPU 算力承接其他并发请求。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">2. 物理死锁与僵尸进程强杀 (SIGKILL Cleanup)</span>
+                                <span>Forced Tear-down</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                一旦达到超时阈值，必须向隔离子进程或 Docker 容器发送物理 `SIGKILL` 信号并做 `wait()` 回收，防止炸弹死循环成为后台僵尸进程。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">3. 长任务异步句柄与唤醒 (Async Disconnecting)</span>
+                                <span>Long-Running Callback</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                对于耗时几十分钟的高重任务，返回 `task_id` 句柄切断同步 HTTP 连接，待物理任务完成后通过 Webhook 唤醒 Agent 恢复推理。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>最佳实践：高频轻量工具设 5s，代码执行设 30s，超长任务改走异步任务队列</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-800 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        死锁是 Agent 生产系统的毒药！构建 <strong>非阻塞异步挂起与 SIGKILL 物理超时强杀机制</strong>，是保障大模型控制流在面对死循环代码和网络卡顿时依然能够保持高可用的关键护城河。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">工具调用的超时控制与异步挂起</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 剖析超时死锁给 Agent 带来的毁灭性影响：</span>
+                    “向学员深入剖析：大模型生成的 Python 代码里极容易包含死循环（如 `while True: pass`）或者阻塞式等待（如网络 socket 永不返回）。如果不加超时控制，整个 Agent 控制主线程就会被永远卡死在那个工具执行调用里。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 讲授异步强杀与自愈闭环：</span>
+                    “提示学员：通过 `asyncio.wait_for` 和 `proc.kill()`，不仅能将死锁任务强行强杀，还能把 `TimeoutError` 转化为标准的 Observation 反写给大模型（如 ‘Tool execution timed out after 30s’）。大模型读取报错后，在下轮对话里会自动尝试重构算法降低复杂度，实现真正的自愈闭环。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

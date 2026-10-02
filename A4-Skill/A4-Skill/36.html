@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 36 - Skill 评测（Tool Eval）：Pass@1 准确率与工具选择召回率 (Tool Choice F1) 评测基准</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块四</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Skill 评测（Tool Eval）：Pass@1 准确率与工具选择召回率 (Tool Choice F1) 评测基准
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                量化与守护工具调用的质量基线：通过 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">工具选择召回率 (Tool Choice F1)</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">入参精确匹配 (Pass@1 Rate)</span>，构建离线回归基准与 CI 质量卡扣
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Tool Eval Harness Code vs Three Core Metrics) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Tool Eval Evaluation Engine Implementation -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-vial-circle-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Tool Choice & Pass@1 评测引擎代码</h3>
+                                <p class="text-xs text-indigo-800 font-mono">Tool Eval Harness Code</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Eval Harness</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">class</span> <span class="text-blue-300">ToolEvalHarness</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">run_benchmark</span>(self, model, test_suite: <span class="text-emerald-300">list</span>[EvalSample]) -&gt; <span class="text-emerald-300">dict</span>:
+        tp, fp, fn, exact_param_matches = 0, 0, 0, 0
+
+        <span class="text-purple-300">for</span> sample <span class="text-purple-300">in</span> test_suite:
+            res = model.predict_tool_choice(sample.query)
+            pred_tool = res.tool_name
+            pred_args = res.tool_args
+
+            <span class="text-slate-500"># 1. 评测 Tool Choice 路由正确性 (F1 Score) ★</span>
+            <span class="text-purple-300">if</span> pred_tool == sample.expected_tool:
+                tp += 1
+                <span class="text-slate-500"># 2. 评测参数填充精确匹配度 (Pass@1) ★</span>
+                <span class="text-purple-300">if</span> pred_args == sample.expected_args:
+                    exact_param_matches += 1
+            <span class="text-purple-300">else</span>:
+                <span class="text-purple-300">if</span> pred_tool: fp += 1
+                <span class="text-purple-300">if</span> sample.expected_tool: fn += 1
+
+        f1 = 2 * tp / (2 * tp + fp + fn + 1e-9)
+        pass_at_1 = exact_param_matches / len(test_suite)
+        <span class="text-purple-300">return</span> {<span class="text-amber-200">"tool_choice_f1"</span>: f1, <span class="text-amber-200">"pass_at_1"</span>: pass_at_1}</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>自动化质量回归门控：</strong>在 CI/CD 中拦截由于 System Prompt 修改或模型微调带来的 Tool 路由与参数填错退化。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-indigo-600"></i>
+                    <span>物理铁律：没有客观 Tool Eval 评测集支持的提示词或工具修改均属于盲人摸象</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Core Pillars of Tool Eval Metrics -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-5 md:p-6 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg shrink-0">
+                                <i class="fa-solid fa-sliders"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Skill 评测的三大核心量化指标</h3>
+                                <p class="text-xs text-emerald-800 font-mono">3 Core Tool Eval Metrics</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">Metrics Spec</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Metric 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">1. 工具选择召回率 (Tool Choice F1)</span>
+                                <span>Selection Precision/Recall</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                评估模型在面临 50+ 工具时，能否精准命中目标工具，同时惩罚误唤醒（False Positive）与漏唤醒（False Negative）。
+                            </p>
+                        </div>
+
+                        <!-- Metric 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">2. 入参精确匹配度 (Pass@1 Accuracy)</span>
+                                <span>Schema & Argument Exact Match</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                衡量 1st-turn 生成的 JSON 入参是否无缺漏、满足强类型与枚举约束，且每个 key-value 完全符合期望标注。
+                            </p>
+                        </div>
+
+                        <!-- Metric 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-emerald-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">3. 物理执行端到端成功率 (E2E Exec Success)</span>
+                                <span>Sandbox Convergence Rate</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在真实物理隔离沙箱（Docker / e2b）中执行，评估在结合 Self-Correction 重试闭环后，任务在 $N$ 轮内成功收敛的概率。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>实践选型：SWE-bench / BFCL (Berkeley Function Calling Leaderboard)</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-800 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        没有量化评测的 Tool 优化只是主观臆测！构建包含 <strong>Tool Choice F1 与 Pass@1 参数精确匹配度的自动化 Tool Eval Harness</strong>，是确保企业级 Agent 系统在迭代中持续高可用与抗退化的核心工程凭据。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">36</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[90%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (35.html <- 36.html -> 37.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="35.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Skill 评测（Tool Eval）：Pass@1 准确率与 Tool Choice F1</span>
+            <a href="37.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="35.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="37.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析为何 Tool Eval 是工程守底线利器：</span>
+                    “向学员深入剖析：在企业实际维护 Agent 时，工程师经常会微调 System Prompt 或增加几个新 Tool。如果没有自动化 Eval 套件，改动非常容易引发意想不到的质量退化（如原先能对的工具现在选错了）。建立 Tool Choice F1 和 Pass@1 评测基准，能在 CI/CD 流水线中自动卡扣退化修改。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 介绍业界通用 Benchmark：</span>
+                    “提示学员：业界如伯克利 BFCL (Berkeley Function Calling Leaderboard) 和 SWE-bench 都是围绕 Tool Choice 召回率和代码单测 Pass@1 展开的。在企业侧，搭建一个 50~100 个典型测试 Query 的微型评测集即可覆盖绝大多数业务场景。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '35.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '37.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

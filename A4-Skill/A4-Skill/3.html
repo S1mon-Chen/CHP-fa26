@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 03 - Function Calling 的演进史：从 Regex/ReAct 文本解析到 Native Logit Masking 采样</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 4: Skill & Function Calling)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-timeline"></i>
+                <span>第 4 课：AI 原子能力与工具调用</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Function Calling 的演进史：从 Regex/ReAct 文本解析到 Native Logit Masking 采样
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构工具调用的技术进化：从 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">脆弱的非结构化正则提取</span> 演进至 <span class="text-blue-600 font-semibold underline decoration-blue-400 decoration-2 underline-offset-4">采样层的物理 Logit Masking 文法约束</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Generation 1: Text-Based Regex Parsing -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-6 md:p-8 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 text-xl shrink-0">
+                            <i class="fa-solid fa-code"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">第一代：文本解析与 ReAct 正则</h3>
+                            <p class="text-xs text-slate-500 font-mono">Unstructured Text & Regex Capture</p>
+                        </div>
+                    </div>
+
+                    <!-- Crash Example Code Block -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-xs mb-3 space-y-1 shadow-inner">
+                        <div class="text-rose-400">// 经典崩塌场景：未转义字符引发 json.loads() 崩溃</div>
+                        <div class="text-slate-400">Assistant Response:</div>
+                        <div class="text-amber-200">&lt;action&gt;{"func": "git_commit", "msg": "fix: "quote" issue"}&lt;/action&gt;</div>
+                        <div class="text-rose-400 text-[10px]">// Regex Match SUCCESS, but json.loads() throws JSONDecodeError! ❌</div>
+                    </div>
+
+                    <ul class="space-y-2.5 text-sm text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-xmark text-rose-500 mt-1 shrink-0"></i>
+                            <span><strong>极易受格式污染：</strong>代码块反引号、引号未转义或文本客套话会导致正则提取失效或反序列化崩溃。</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-xmark text-rose-500 mt-1 shrink-0"></i>
+                            <span><strong>高解析崩溃率（~15%-30%）：</strong>依赖 Prompt 里的自然语言约定，大模型随时可能漏写双引号或少写括号。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-rose-600 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>痛点：应用层需要编写海量复杂的补救正则与错误重试控制流。</span>
+                </div>
+            </div>
+
+            <!-- Generation 2: Native Logit Masking -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/40 p-6 md:p-8 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-xl shrink-0">
+                            <i class="fa-solid fa-microchip"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900">第二代：API 原生约束采样</h3>
+                            <p class="text-xs text-blue-700 font-mono">Logit Masking & Grammar-Based Decoding</p>
+                        </div>
+                    </div>
+
+                    <!-- Logit Masking Logic Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-xs mb-3 space-y-1 shadow-inner">
+                        <div class="text-emerald-400">// 物理层概率掩码：设定非法 Token 概率为 -Inf</div>
+                        <div class="text-blue-300">GBNF Grammar Rule: root ::= "{" "tool_calls" ":" "[" ... "]" "}"</div>
+                        <div class="text-slate-400">Logit Masking: Non-JSON Tokens Logit $\to -\infty$</div>
+                        <div class="text-emerald-300 text-[10px]">// Result: 0.00% Syntax Error! 物理保证 100% 合法 JSON ★</div>
+                    </div>
+
+                    <ul class="space-y-2.5 text-sm text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0"></i>
+                            <span><strong>文法树掩码（Grammar Masking）：</strong>在 Sampling 阶段屏蔽不符合 JSON BNF 范式的非法 Token。</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0"></i>
+                            <span><strong>结构化 Payload 注入：</strong>模型原生产出 `tool_calls` 载荷与 `finish_reason: "tool_calls"` 标志。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>突破：将格式合法性保障从 Prompt 约定下沉为采样层的物理约束。</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-blue-100 text-blue-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        原生 Function Calling 不再依赖模型“听话地输出 JSON”，而是将函数 Schema 提炼为 BNF 文法掩码，<strong>在 Sampling 物理层实现 100% 格式防崩溃</strong>，这是构建高吞吐 AI Agent 的关键演进。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">3</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[7.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (02.html <- 03.html -> 04.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="2.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Function Calling 的演进史</span>
+            <a href="4.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="2.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="4.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 剖析第一代与第二代的技术鸿沟：</span>
+                    “向学员深入剖析：第一代文本提取（如 Early ReAct）本质上是在 prompt 里写规则：‘请输出 XML 或 JSON’，然后应用层用 `re.search()` 去匹配。一旦用户或模型输出里包含了未转义的引号或多余括号，`json.loads()` 就会崩溃。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 解释 Logit Masking 原理：</span>
+                    “第二代 Native Function Calling（如 OpenAI / llama.cpp GBNF Grammar）是在 Transformer 的 **Softmax 采样层** 上施加算法。如果在生成 JSON 时当前应该输出双引号 `"`，算法会把所有非双引号 Token 的概率全部抹为 $-\infty$，从而在物理上消灭了语法错误。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '2.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
