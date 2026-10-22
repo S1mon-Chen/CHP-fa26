@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - 缓存与幂等模式 (Cache & Idempotency Pattern)：耗时 Skill 调用的缓存与状态快照</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-bolt-lightning"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                缓存与幂等模式 (Cache & Idempotency Pattern)：耗时 Skill 调用的缓存与状态快照
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                消杀高耗时与高计费调用的算力浪费：基于 <span class="text-cyan-700 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">SHA-256 确定性幂等键 (Idempotency Key)</span> 匹配与 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Observation 状态快照持久化</span>，在源码未改动时秒级命中缓存返回，降本 90% 并保障长链重试的平滑收敛
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Idempotent Cached Skill Code vs 3 Core Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Idempotent Cached Skill Implementation Code -->
+            <div class="group relative rounded-2xl border border-cyan-200 bg-cyan-50/30 p-5 md:p-6 soft-shadow transition hover:border-cyan-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-700 text-lg shrink-0">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">CachedVulnerabilityScanSkill 缓存实现</h3>
+                                <p class="text-xs text-cyan-800 font-mono">Idempotent Snapshot & Fast Cache Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-900 text-[11px] font-mono font-bold">Idempotency Pattern</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">import</span> hashlib, json
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">CachedVulnerabilityScanSkill</span>(BaseSkill):
+    <span class="text-purple-300">def</span> <span class="text-blue-300">__init__</span>(self, cache_store: RedisCache):
+        self.cache = cache_store
+        self.skill_version = <span class="text-amber-200">"v2.1"</span>
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">execute</span>(self, file_path: <span class="text-emerald-300">str</span>, rules: <span class="text-emerald-300">list</span>[<span class="text-emerald-300">str</span>]) -&gt; <span class="text-emerald-300">ScanResult</span>:
+        content = read_file(file_path)
+        <span class="text-slate-500"># 1. 计算文件哈希 + Skill版本 + 规则集的物理确定性 Key ★</span>
+        raw_key = <span class="text-amber-200">f"{content}:{self.skill_version}:{sorted(rules)}"</span>
+        cache_key = hashlib.sha256(raw_key.encode()).hexdigest()
+
+        <span class="text-slate-500"># 2. 检查缓存是否命中 (Zero Execution Time) ★</span>
+        cached_obs = self.cache.get(cache_key)
+        <span class="text-purple-300">if</span> cached_obs:
+            <span class="text-purple-300">return</span> ScanResult.from_json(cached_obs, is_cached=<span class="text-purple-300">True</span>)
+
+        <span class="text-slate-500"># 3. 未命中：触发物理重型 AST / Semgrep 静态扫描</span>
+        result = self._expensive_ast_scan(file_path, rules)
+        self.cache.set(cache_key, result.to_json(), ttl_seconds=<span class="text-emerald-300">86400</span>)
+        <span class="text-purple-300">return</span> result</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>计算零等待：</strong>重试或多轮推演中遭遇未变动源码时直接返回 Snapshot，响应耗时从 8.5 秒剧降至 2 毫秒。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-cyan-200/60 text-xs text-cyan-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：利用确定性输入 Hash 锁定 Observation 快照，杜绝重复计算与 Token 浪费</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Cache & Idempotency Pattern -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">缓存与幂等模式的三大核心支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">3 Core Pillars of Idempotency Pattern</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Idempotency Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-bold text-[10px]">1. 物理确定性幂等键 (SHA-256 Keying)</span>
+                                <span>Deterministic Keying</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                将源码内容、参数配置、底层扫描规则库 Hash 及 Skill 代码版本联合生成唯一 `Cache-Key`，避免因版本更新读取陈旧快照。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">2. 状态快照与观察透传 (Observation Persistence)</span>
+                                <span>Observation Snapshot</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                将复杂的 AST 语法树解析结果或微服务 RPC 返回完整序列化存入 Redis/PostgreSQL，即使多轮推演崩溃重启后亦能瞬间复原。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 变动失效与失效粒度 (Cache Invalidation)</span>
+                                <span>Granular Invalidation</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                绑定 Git Diff 变动感知；仅当目标文件内容物理更新或提交新 Commit 时才触发该节点的缓存失效，实现局部精确重算。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：学习上下文瘦身与记忆凝练模式 (Context Pruning Pattern) 的日志提纯</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-cyan-100 text-cyan-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        高耗时 Skill 不加缓存等于财务与延迟灾难！通过 <strong>缓存与幂等模式 (Cache & Idempotency Pattern) 锁定输入 Hash 与 Observation 快照</strong>，是确保大型 Agent 系统在高频重试与长依赖链条下维持高响应速度与低成本的黄金法则。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">16</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[40%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (15.html <- 16.html -> 17.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">缓存与幂等模式 (Cache & Idempotency Pattern)</span>
+            <a href="17.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="15.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="17.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 讲授 Cache & Idempotency Pattern 的必要性：</span>
+                    “向学员深入剖析：在实际 Agent 场景中，像 Tree-Sitter 语法解析、大型源码 AST 提取、代码漏洞静态扫描等 Skill 耗时可能长达数秒甚至数十分钟。如果在多轮推演或重试中每次都重新执行，系统响应会极度迟钝，同时产生巨大的计算开销。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调物理确定性 Key 与精确失效：</span>
+                    “提示学员：幂等缓存的灵魂在于 Cache Key 的设计！必须包含 `文件内容Hash + Skill代码版本 + 规则参数`。只要其中任何一项改变（如代码文件被修改），Key 就会更新并触发底层重新扫描；反之，若未修改则秒级命中快照，极大提升 Agent 整体流畅度。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

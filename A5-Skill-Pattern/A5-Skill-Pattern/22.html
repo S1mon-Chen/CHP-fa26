@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - 死循环与死锁检测器 (Infinite Loop Detection)：动作指纹与图环检测</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-arrows-spin"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                死循环与死锁检测器 (Infinite Loop Detection)：动作指纹与图环检测
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                斩断 Agent 无意义递归与资费暴刷的算力锁：基于 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">SHA-256 动作指纹哈希 (Fingerprint Hash)</span> 与 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">滑动窗口图环检测 (Graph Ring Detector)</span>，在连续 3 次产生相同动作指纹时强行截断，注入 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">“强制改变策略”反思 Prompt</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Code Implementation vs 3 Pillars of Loop Guard) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: ActionFingerprintGuard Implementation Code -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-5 md:p-6 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-lg shrink-0">
+                                <i class="fa-solid fa-fingerprint"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">ActionFingerprintGuard 实现</h3>
+                                <p class="text-xs text-rose-700 font-mono">Fingerprint Hash & Graph Ring Detector</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[11px] font-mono font-bold">Loop Guard</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">import</span> hashlib, json
+
+<span class="text-purple-300">class</span> <span class="text-blue-300">ActionFingerprintGuard</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">__init__</span>(self, max_repeated_threshold: <span class="text-emerald-300">int</span> = <span class="text-emerald-300">3</span>):
+        self.threshold = max_repeated_threshold
+        self.history_hashes = []
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">calculate_fingerprint</span>(self, tool_name: <span class="text-emerald-300">str</span>, args: <span class="text-emerald-300">dict</span>) -&gt; <span class="text-emerald-300">str</span>:
+        <span class="text-slate-500"># 1. 规范化 JSON 字段顺位并计算 SHA-256 动作指纹 ★</span>
+        raw_str = <span class="text-amber-200">f"{tool_name}:{json.dumps(args, sort_keys=True)}"</span>
+        <span class="text-purple-300">return</span> hashlib.sha256(raw_str.encode()).hexdigest()
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">inspect_step</span>(self, tool_name: <span class="text-emerald-300">str</span>, args: <span class="text-emerald-300">dict</span>) -&gt; <span class="text-emerald-300">GuardCheckResult</span>:
+        fp_hash = self.calculate_fingerprint(tool_name, args)
+        self.history_hashes.append(fp_hash)
+
+        <span class="text-slate-500"># 2. 检查尾部滑动窗口指纹重复频次 ★</span>
+        recent_tail = self.history_hashes[-self.threshold:]
+        <span class="text-purple-300">if</span> len(recent_tail) == self.threshold <span class="text-purple-300">and</span> len(set(recent_tail)) == <span class="text-emerald-300">1</span>:
+            <span class="text-slate-500"># 触发死循环：阻断物理执行，强刷策略反思 Prompt ★</span>
+            <span class="text-purple-300">return</span> GuardCheckResult(
+                is_loop=<span class="text-purple-300">True</span>,
+                action=<span class="text-amber-200">"BLOCK_AND_INJECT_REFLECTION"</span>,
+                prompt=<span class="text-amber-200">"SYSTEM ALERT: You called identical action 3 times! CHANGE STRATEGY!"</span>
+            )
+        <span class="text-purple-300">return</span> GuardCheckResult(is_loop=<span class="text-purple-300">False</span>)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>阻断物理无效耗算：</strong>在 Agent 尝试第 3 次调用一模一样的工具参数瞬间物理阻断，不给无效 RPC 执行机会。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-rose-200/60 text-xs text-rose-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-rose-600"></i>
+                    <span>核心：用确定性 Hash 指纹池监控 LLM 的非确定性行为，死锁发生时强行插干预</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Infinite Loop Detection Architecture -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">死循环与死锁检测的三大防护支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">3 Core Pillars of Loop Detection</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Loop Safeguards</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">1. 规范化 Hash 指纹计算 (SHA-256 Fingerprinting)</span>
+                                <span>Action Fingerprint</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                将 `tool_name` 连同 JSON 入参的排序序列化键值（`sort_keys=True`）压缩生成 64 位 Hash 指纹，消除 JSON 格式缩进差异的影响。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">2. 拓扑环与滑动窗口检测 (Ring & Cyclic Detection)</span>
+                                <span>Sliding Window Ring</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                不仅检测单一动作的连续重复，还能通过有向图环（A $\to$ B $\to$ A $\to$ B）检测多步骤交互的死锁拓扑环，防止间接循环。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">3. 渐进式强制打断与策略强修正 (Reflection Injection)</span>
+                                <span>Strategy Steering</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                第一次重复注入警告 Prompt，引导模型自愈修正；若模型连续 5 次仍无法跳出循环，触发 Circuit Breaker 强行退栈熔断。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：学习流量控频与配额熔断 (Rate Limiting & Cost Guard) 的财务防护线</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-rose-100 text-rose-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        死循环是无监管 Agent 的财务灾难！通过 <strong>动作指纹（Action Fingerprint Hash）与滑动窗口图环检测</strong> 在控制流外部建立硬性死锁熔断断路器，是保障生产级 Agent 7×24 安全运行的铁底线。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[55%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">死循环与死锁检测器 (Infinite Loop Detection)</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲授动作指纹与图环检测的切入点：</span>
+                    “向学员深入剖析：在实际生产环境中，死循环是大模型最大的痛点之一。比如大模型执行某命令报错，模型不改参数而是执着地重复执行同个命令，或者在 Tool A 与 Tool B 之间陷入交替调用的有向图死锁。死循环检测器（ActionFingerprintGuard）通过计算 SHA-256 指纹强行拔掉毒瘤。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调渐进式拦截与策略强介入：</span>
+                    “提示学员注意：检测到死循环时，不要立刻暴力关停 Agent。先注入 Warning 提示引导模型反思；如果连续 5 次依然死锁，再触发熔断机制，兼顾了自愈能力与资金安全。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

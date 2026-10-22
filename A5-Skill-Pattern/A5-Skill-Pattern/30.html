@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 模块三实战代码：手写一个带死锁熔断与状态快照的生产级 Skill 控制器</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块三演练总结</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块三实战代码：手写一个带死锁熔断与状态快照的生产级 Skill 控制器
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                鲁棒性工程实战终局合璧：手写封装融合 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">SHA-256 动作指纹死锁熔断</span>、<span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Token 硬预算卡扣</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">PII/AK/SK 脱敏管道</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">状态图 Persistence 恢复</span> 的生产级 `ProductionSkillController`
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: ProductionSkillController Code vs 4 Robustness Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: ProductionSkillController Implementation Code -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">ProductionSkillController 完整控制流</h3>
+                                <p class="text-xs text-indigo-800 font-mono">ProductionSkillController.py</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Production Engine</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">class</span> <span class="text-blue-300">ProductionSkillController</span>:
+    <span class="text-purple-300">def</span> <span class="text-blue-300">__init__</span>(self, registry, db_saver):
+        self.registry = registry
+        self.loop_guard = ActionFingerprintGuard(max_repeated_threshold=<span class="text-emerald-300">3</span>)
+        self.cost_guard = TokenBudgetAndRateLimitGuard(max_tokens=<span class="text-emerald-300">50000</span>, max_steps=<span class="text-emerald-300">10</span>)
+        self.sanitizer = ObservationSanitizerPipeline()
+        self.checkpoint_mgr = StateGraphCheckpointManager(db_saver)
+        self.error_formatter = StructuredErrorFormatter()
+
+    <span class="text-purple-300">async def</span> <span class="text-blue-300">execute_task_loop</span>(self, thread_id: <span class="text-emerald-300">str</span>, user_query: <span class="text-emerald-300">str</span>) -&gt; <span class="text-emerald-300">str</span>:
+        <span class="text-slate-500"># 1. 断点续传：恢复上一次崩溃处的最新 State Snapshot ★</span>
+        state = self.checkpoint_mgr.resume_or_init(thread_id, user_query)
+
+        <span class="text-purple-300">while</span> <span class="text-purple-300">not</span> state.is_finished:
+            <span class="text-slate-500"># 2. 硬配额卡扣：检查步数与 Token 算力预算 ★</span>
+            check_res = self.cost_guard.check_and_consume(state.current_tokens)
+            <span class="text-purple-300">if</span> <span class="text-purple-300">not</span> check_res.allowed:
+                <span class="text-purple-300">return</span> self._graceful_partial_report(state, check_res.reason)
+
+            action = <span class="text-purple-300">await</span> self.llm.predict_next_action(state.messages)
+            
+            <span class="text-slate-500"># 3. 动作指纹哈希：强行拦截连续重复死循环 ★</span>
+            loop_res = self.loop_guard.inspect_step(action.tool_name, action.args)
+            <span class="text-purple-300">if</span> loop_res.is_loop:
+                state.append_system_warning(loop_res.prompt)
+                <span class="text-purple-300">continue</span>  <span class="text-slate-500"># 注入 Warning 强引策略修正</span>
+
+            <span class="text-slate-500"># 4. 执行分发，结构化报错抓取与 PII/AK/SK 脱敏 ★</span>
+            <span class="text-purple-300">try</span>:
+                raw_obs = <span class="text-purple-300">await</span> self.registry.dispatch(action)
+                clean_obs = self.sanitizer.sanitize(raw_obs)
+            <span class="text-purple-300">except</span> Exception <span class="text-purple-300">as</span> raw_err:
+                clean_obs = self.error_formatter.format_exception(raw_err)
+
+            <span class="text-slate-500"># 5. 更新 Context 并将最新快照保存至持久库 (Redis/Postgres) ★</span>
+            state.update(action, clean_obs)
+            self.checkpoint_mgr.save_node_snapshot(thread_id, state)
+
+        <span class="text-purple-300">return</span> state.get_final_summary()</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>完整工程闭环：</strong>单文件聚合死锁熔断、预算控制、脱敏管道、结构化报错与断点续传，直接用于生产级 Agent。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>核心：用确定性系统控制器包裹非确定性 LLM 决策，筑牢企业级生产安全底线</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Four Core Robustness Subsystems in Controller -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-cubes-stacked"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">控制器四大鲁棒性防护子系统</h3>
+                                <p class="text-xs text-indigo-700 font-mono">4 Core Robustness Subsystems</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Control Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Subsystem 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">1. 动作指纹死锁检测 (Action Fingerprint Guard)</span>
+                                <span>Anti-Loop</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                通过 `SHA-256` Hash 监测尾部重复动作；连续 3 次相同调用时强行阻断并注入策略重导向 Prompt。
+                            </p>
+                        </div>
+
+                        <!-- Subsystem 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">2. 配额预算与优雅降级 (Cost Guard & Quota)</span>
+                                <span>Token & Step Caps</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                绑定 Max Steps ($N \le 10$) 与 Token 算力预算 ($T \le 50,000$)；触顶时触发熔断并导出 Partial Summary。
+                            </p>
+                        </div>
+
+                        <!-- Subsystem 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">3. 观察日志脱敏管道 (Observation Sanitizer)</span>
+                                <span>Secret & PII Redaction</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                拦截物理工具返回值，在写入 Message Context 前由正则与 NER 管道清洗抹除明文 AK/SK 密钥与客户 PII。
+                            </p>
+                        </div>
+
+                        <!-- Subsystem 4 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">4. 状态图 Checkpoint 恢复 (Graph Checkpointing)</span>
+                                <span>Persistence & Resume</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在每个控制转换点提取状态快照保存至 Redis/DB，服务器重启后通过 `thread_id` 实现秒级原位断点续传。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：开启模块四——评估驱动开发 (EDD) 与企业级 Capstone 实战演练</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Module 3 Conclusion / 模块三演练总结</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        生产级 Agent 控制器是系统稳定性的定海神针！通过 <strong>死锁熔断去重、算力预算卡扣、脱敏管道与状态快照恢复</strong> 的合力，将脆弱的推理过程收敛为绝对安全的工业级微服务。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块三演练：生产级 Skill 控制器</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员复盘模块三的终极合璧：</span>
+                    “向学员深入剖析：在模块三中，我们先后讲授了死循环哈希检测（ActionFingerprintGuard）、配额卡扣（CostGuard）、脱敏管道（Sanitizer）、断点快照（CheckpointManager）以及结构化报错（ErrorFormatter）。本 Slide 演示的 `ProductionSkillController` 将这 5 大核心机制无缝集成到了单任务循环中。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 总结生产级控制器的执纪原则：</span>
+                    “提示学员注意：大模型是不确定的，但控制器必须是绝对确定且高可靠的。通过这个代码模版，学员可以在真实的企业级 Java/Python 项目中零修改移植并保障 Agent 7×24 稳定运行。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

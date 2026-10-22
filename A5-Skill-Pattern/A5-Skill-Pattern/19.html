@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - 预演与回滚模式 (Dry-Run & Rollback Pattern)：事务锁、快照备份与原位 Undo</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                预演与回滚模式 (Dry-Run & Rollback Pattern)：事务锁、快照备份与原位 Undo
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                赋予写操作 Skill“安全预演”与“一键悔棋”能力：在物理修改前施加 <span class="text-amber-700 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Dry-Run 预飞校验</span>，物理写入前捕获 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Git Stash / DB 事务快照</span>，在单测抛错时自动触发 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">原位 Undo 物理撤销</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Code Implementation vs 3 Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: DryRunRollbackSkill Implementation Code -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-5 md:p-6 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 text-lg shrink-0">
+                                <i class="fa-solid fa-shield-cat"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">DryRunRollbackSkill 代码实现</h3>
+                                <p class="text-xs text-amber-800 font-mono">Transactional Dry-Run & Undo Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-900 text-[11px] font-mono font-bold">Dry-Run & Rollback</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">class</span> <span class="text-blue-300">DryRunRollbackSkill</span>(BaseSkill):
+    <span class="text-purple-300">def</span> <span class="text-blue-300">execute</span>(self, patch_diff: <span class="text-emerald-300">str</span>, dry_run: <span class="text-emerald-300">bool</span> = <span class="text-purple-300">True</span>) -&gt; <span class="text-emerald-300">SkillResult</span>:
+        <span class="text-slate-500"># 1. 预演逻辑 (Dry-run): 物理检查补丁冲突与语法树合法性 ★</span>
+        <span class="text-purple-300">if</span> dry_run:
+            <span class="text-purple-300">if</span> <span class="text-purple-300">not</span> self.git.apply_check(patch_diff):
+                <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"DRY_RUN_FAILED"</span>, error=<span class="text-amber-200">"Patch conflict"</span>)
+            <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"DRY_RUN_PASSED"</span>, diff_summary=...)
+
+        <span class="text-slate-500"># 2. 真实物理写入前：捕获 Git / DB 物理状态快照 (Snapshot) ★</span>
+        stash_id = self.git.create_snapshot_stash()
+        <span class="text-purple-300">try</span>:
+            self.git.apply_patch(patch_diff)
+            self.sandbox.run_pytest()  <span class="text-slate-500"># 在沙箱跑单测验证</span>
+            <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"SUCCESS"</span>)
+        <span class="text-purple-300">except</span> TestFailureError <span class="text-purple-300">as</span> err:
+            <span class="text-slate-500"># 3. 产生任何崩溃：原位触发 Undo 撤销回复物理原貌 ★</span>
+            self.git.rollback_stash(stash_id)
+            <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"ROLLED_BACK"</span>, error=<span class="text-emerald-300">str</span>(err))</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>零无意环境污染：</strong>Dry-run 校验不改物理文件；单测抛错自动执行 `git checkout .` 快速复原。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-amber-200/60 text-xs text-amber-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：预演看后果，写入存快照，出错原位 Undo，确保写操作 100% 可撤销</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Dry-Run & Rollback Pattern -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-clock-rotate-left font-bold"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">预演与回滚模式的三大核心支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">3 Core Pillars of Dry-Run & Rollback</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Rollback Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">1. 预演物理模拟 (Pre-flight Simulation)</span>
+                                <span>Dry-Run Check</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在数据库执行 `EXPLAIN` 或在 Git 执行 `git apply --check`。在无副作用的前提下提前校验语法合法性与修改冲突。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">2. 状态快照与原位 Undo (Snapshot & In-place Undo)</span>
+                                <span>State Rollback</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                绑定 Git Stash / 数据库 `BEGIN...ROLLBACK` 物理锁。一旦后续单元测试或规则校验失败，瞬间将物理状态撤销至更改前。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">3. 物理可撤销性屏障 (Reversibility Barrier)</span>
+                                <span>Write Security Gate</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                将不可撤销的动作（如删除第三方生产环境 S3 Bucket）隔离在允许范围之外，对所有有副作用的修改赋予确定性物理撤销能力。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：完成模块二演练，设计高并发容错重构 Skill</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        允许 Agent 拥有系统写权限的硬前提是<strong>物理可撤销性（Reversibility）</strong>！通过 <strong>预演与回滚模式 (Dry-Run & Rollback Pattern) 锁住修改前快照</strong>，是确保大模型在复杂代码库和生产数据库中开展改动时不污染物理环境的终极底线。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">预演与回滚模式 (Dry-Run & Rollback Pattern)</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 Dry-Run & Rollback Pattern 的核心工程保障：</span>
+                    “向学员深入剖析：在真实的代码重构与数据库运维场景中，我们之所以不敢让大模型自动做物理修改，核心原因在于担心‘修改后单测没跑通，但代码已经被搞乱了’。预演与回滚模式就是解决这一痛点的黄金方案。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调物理快照与原位撤销：</span>
+                    “提示学员：通过先走 `dry_run` 预演排除补丁冲突，再用 `git.create_snapshot_stash()` 在真实写入前抓取快照；只要物理修改后的沙箱单测失败，立刻原位触发 `rollback_stash()`，将工程完美撤销至修改前状态，做到安全无遗留。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

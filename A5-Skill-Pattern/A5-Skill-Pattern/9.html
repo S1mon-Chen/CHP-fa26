@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 09 - Spring AI 对 SKILL.md 的双模兼容与动态装载机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-brands fa-java text-rose-600"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块一</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Spring AI 对 SKILL.md 的双模兼容与动态装载机制
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                打通 Java 强类型与 Markdown 声明式契约的桥梁：借助 Spring AI <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">ResourcePatternResolver 装载器</span> 与 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">Skill Frontmatter 解析器</span>，实现 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Java Bean 工具</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">SKILL.md 双模兼容</span> 动态注入 Advisor 链
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Spring AI Dual-Mode Loader Code vs Architectural Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Java Code for Loading SKILL.md & Dynamic Advisor Registration -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-arrows-split-up-and-left"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Spring AI `SKILL.md` 动态解析与装载</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Dual-Mode Skill Registry & Advisor Chain</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Dual-Engine</span>
+                    </div>
+
+                    <!-- Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">@Configuration</span>
+<span class="text-purple-300">public class</span> <span class="text-blue-300">SkillRegistryConfig</span> {
+
+    <span class="text-purple-300">@Bean</span>
+    <span class="text-purple-300">public</span> SkillRegistry <span class="text-rose-300">springAISkillRegistry</span>(ResourcePatternResolver resolver) {
+        SkillRegistry registry = <span class="text-purple-300">new</span> SkillRegistry();
+        <span class="text-slate-500">// 1. 读取项目级与个人级 SKILL.md 规范 ★</span>
+        Resource[] resources = resolver.getResources(<span class="text-amber-200">"file:.claude/skills/**/SKILL.md"</span>);
+        <span class="text-purple-300">for</span> (Resource res : resources) {
+            SkillSpec spec = SkillMdParser.parse(res); <span class="text-slate-500">// 解析 YAML + MD</span>
+            registry.register(spec);
+        }
+        <span class="text-purple-300">return</span> registry;
+    }
+}
+
+<span class="text-slate-500">// 2. 在 ChatClient 调用时无缝混合挂载双模工具 ★</span>
+ChatResponse response = chatClient.prompt()
+    .advisors(<span class="text-purple-300">new</span> DynamicSkillAdvisor(skillRegistry)) <span class="text-slate-500">// 动态注入 SKILL.md 规范</span>
+    .functions(<span class="text-amber-200">"updateOrderStatusSkill"</span>)                  <span class="text-slate-500">// 绑定 Java 强类型 Bean</span>
+    .call();</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>前后端规范统一：</strong>前端 CLI（Claude Code）与后端 Spring AI 使用同一份 Git 托管的 `SKILL.md`。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：由 Advisor 链完成 `SKILL.md` 动态 Prompt 注入，由 Function 挂载 Java 强类型代码</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Dual-Mode Compatibility in Spring AI -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-layer-group"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Spring AI 双模兼容的三大架构支柱</h3>
+                                <p class="text-xs text-blue-700 font-mono">3 Core Pillars of Dual-Mode Compatibility</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Dual-Mode Spec</span>
+                    </div>
+
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">1. 双模统一注册表</span>
+                                    <span class="text-indigo-900 font-bold">Unified Skill Registry</span>
+                                </span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                Java `@Bean` 强类型 Function 与 Markdown `SKILL.md` 声明式规范并存，统一暴露给框架路由层与 LLM 门控。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">2. Advisor 链动态注入</span>
+                                    <span class="text-blue-900 font-bold">Dynamic Advisor Pipeline</span>
+                                </span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                利用 Spring `ResourcePatternResolver` 扫描 `.claude/skills/` 路径，将 `SKILL.md` 正文自动转换为 `SystemMessage` 动态干预推理。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px]">3. 跨平台与跨语言架构中台</span>
+                                    <span class="text-purple-900 font-bold">Cross-Platform Hub</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                一套 `SKILL.md` 文件既能被 Claude Code / Cursor CLI 本地直接运行，又能被后端的 Spring AI 框架解析吸纳，消除厂商锁定。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：小结模块一并开启模块二——企业级 Skill 设计模式网络</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        Spring AI 的双模装载架构实现了<strong>“Markdown 声明式规范”与“Java 原生类型系统”的无缝融合</strong>；团队维保的同一套 <code class="bg-slate-200 px-1 rounded text-indigo-800">SKILL.md</code> 既能在 IDE 插件端驱动 Agent 辅助编程，也能在后端 Spring 微服务中动态生效。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">09</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[22.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (08.html <- 09.html -> 10.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="8.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring AI 对 SKILL.md 的双模兼容</span>
+            <a href="10.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="8.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="10.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Spring AI 对 SKILL.md 的双模兼容理念：</span>
+                    “向学员深入剖析：在企业级 AI 中台里，前端 CLI（如 Claude Code/Cursor）使用 Markdown 的 `SKILL.md` 表达领域规范，而后端微服务（如 Java Spring Boot）则依赖强类型 Java Bean 工具。Spring AI 通过双模兼容机制，既能挂载 Java 原生 `Function<Req, Res>`，又能借助 `ResourceLoader` 自动读取 `SKILL.md` 注入 Advisor 链，打通前后端统一的 Agent 技能池。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 强调无厂商锁定的技能中台（Cross-Platform Skill Hub）：</span>
+                    “提示学员：看右侧的第三大支柱——这种双模设计意味着团队编写的一套 `SKILL.md` 规约，既可以在开发人员本地 CLI 工具中生效，也可以零修改装载进 Spring AI 微服务系统中，实现了真正的跨平台、跨语言技能共享。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

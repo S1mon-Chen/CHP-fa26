@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 03 - Claude Code 中的 Skill 作用域与生命周期：项目级 vs 个人级</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-folder-tree"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块一</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Claude Code 中的 Skill 作用域与生命周期：项目级 vs 个人级
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                兼顾团队工程约束与开发者个人效能：通过 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">项目级 (.claude/skills/)</span> 与 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">个人级 (~/.claude/skills/)</span> 双物理隔离层，配合 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">渐进式按需加载 (Progressive Disclosure)</span> 管理全生命周期
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Project vs Personal Scope & Progressive Disclosure Lifecycle) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Project Level vs Personal Level Scope -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-layer-group"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">Skill 物理存储与作用域隔离</h3>
+                                <p class="text-xs text-indigo-700 font-mono">Scope Isolation & Storage Paths</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Scope Spec</span>
+                    </div>
+
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <!-- Project-level Skill -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">项目级 Skill</span>
+                                    <span>Team Shared Standard</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-indigo-600 font-semibold">Git Committed</span>
+                            </div>
+                            <pre class="bg-slate-900 text-amber-200 rounded p-1.5 font-mono text-[10px]">.claude/skills/&lt;skill-name&gt;/SKILL.md</pre>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                随仓库代码提交 Git，对团队所有成员强生效。用于定义团队架构规约、Lint 代码规范检查、项目专有 CI 脚本集成。
+                            </p>
+                        </div>
+
+                        <!-- Personal-level Skill -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">个人级 Skill</span>
+                                    <span>Personal Preferences</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-blue-600 font-semibold">Cross-Project</span>
+                            </div>
+                            <pre class="bg-slate-900 text-amber-200 rounded p-1.5 font-mono text-[10px]">~/.claude/skills/&lt;skill-name&gt;/SKILL.md</pre>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                存储于本地 Home 目录，跨项目通用。用于开发者个人偏好的 Commit 格式化、特定调试助手或个性化 Workflow 工具。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-code-compare text-indigo-600"></i>
+                    <span>覆盖顺序：Enterprise (组织) &gt; Personal (个人) &gt; Project (项目)</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Progressive Disclosure Lifecycle -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-5 md:p-6 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-lg shrink-0">
+                                <i class="fa-solid fa-bars-staggered"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">渐进式加载生命周期 (Progressive Disclosure)</h3>
+                                <p class="text-xs text-blue-700 font-mono">3-Tier Progressive Load</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-mono font-bold">Token Saver</span>
+                    </div>
+
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <!-- Stage 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded-full bg-indigo-600 text-white font-mono font-bold text-[10px] flex items-center justify-center">1</span>
+                                    <span class="text-indigo-900 font-bold">启动摘要扫描 (Startup Registration)</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-emerald-700 font-bold">~100 Tokens/Skill</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                会话启动时，Agent 控制器仅预加载所有 Skill 的 `name` 与 `description` 到系统 Prompt 中作为路由网关。
+                            </p>
+                        </div>
+
+                        <!-- Stage 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded-full bg-blue-600 text-white font-mono font-bold text-[10px] flex items-center justify-center">2</span>
+                                    <span class="text-blue-900 font-bold">匹配正文加载 (Context Activation)</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-blue-700 font-bold">On Intent Match</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                当用户 Task 与描述命中时，才向 Context 中拉引读取完整的 `SKILL.md` 正文指令与操作步骤。
+                            </p>
+                        </div>
+
+                        <!-- Stage 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow space-y-0.5">
+                            <div class="font-bold text-slate-900 flex items-center justify-between">
+                                <span class="flex items-center gap-2">
+                                    <span class="w-4 h-4 rounded-full bg-emerald-600 text-white font-mono font-bold text-[10px] flex items-center justify-center">3</span>
+                                    <span class="text-emerald-900 font-bold">关联资源深挖 (Sub-rule Navigation)</span>
+                                </span>
+                                <span class="text-[10px] font-mono text-purple-700 font-bold">Lazy Loaded</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                仅在特定步骤需要时，才按需读取附带的脚本、参考样例 (reference.md) 或配套 Bash 脚本。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-blue-200/60 text-xs text-blue-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>下一步：实战编写一个符合标准的 SKILL.md 配置文件</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        划分<strong>项目级（以 Git 仓库维保）与个人级（跨项目偏好）作用域</strong>，兼顾了团队统一治理与个人灵活性；通过三层<strong>渐进式加载（Progressive Disclosure）</strong>，消杀未触发 Skill 对上下文窗口（Context Window）的无谓侵占。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">03</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[7.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (02.html <- 03.html -> 04.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="2.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Claude Code 中的 Skill 作用域与生命周期</span>
+            <a href="4.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="2.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="4.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析项目级 vs 个人级 Skill 作用域：</span>
+                    “向学员深入剖析：在 Claude Code 和 Agent Skills 生态中，Skill 具有明确的作用域（Scope）。存储在项目仓库 `.claude/skills/` 下的 SKILL.md 随 Git 提交，保证团队所有成员与 CI 流程拥有一致的 Agent 操作规范；而 `~/.claude/skills/` 则是开发者个人的私有偏好。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 讲授渐进式加载（Progressive Disclosure）：</span>
+                    “提示学员注意右侧的渐进式加载流程：如果安装了 30 个 Skill，如果不加控制，每次对话就会吃掉数万 Tokens。Claude Code 采用三层渐进加载，启动时仅用少量 Token（~100 tokens/skill）读取 `name` 和 `description`；只有当用户请求匹配该 Skill 意图时，才在运行时懒加载 `SKILL.md` 正文，彻底解决 Context Window 溢出问题。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '2.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

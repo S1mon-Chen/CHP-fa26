@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - 提示词与技能反模式 (Skill Anti-Patterns)：8 大经典坑点及重构避坑指南</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-ban"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块四</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                提示词与技能反模式 (Skill Anti-Patterns)：8 大经典坑点及重构避坑指南
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                斩断生产级 Agent 落地中的物理死穴：识别 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">工具过载、模糊参数、无保护写操作、死循环陷阱、裸日志灌入、无超时死锁、明文密钥与无 Eval 盲改</span> 8 大反模式，遵循标准化治理框架重构升级
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: 8 Anti-Patterns Catalog vs Refactoring Code Case) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Catalog of 8 Skill Anti-Patterns -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-5 md:p-6 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 text-lg shrink-0">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">8 大 Skill 经典反模式避坑清单</h3>
+                                <p class="text-xs text-rose-800 font-mono">Catalog of 8 Skill Anti-Patterns</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-900 text-[11px] font-mono font-bold">Anti-Patterns</span>
+                    </div>
+
+                    <!-- 8 Anti-Patterns List Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700 mb-3">
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">1. Over-Tooling (工具过载)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">一口气注入 50+ 微 API 导致注意力稀释。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">2. Vague Parameter (模糊参数)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">参数为 `data: str` 且缺失说明与示例。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">3. Unsafe Side-Effects (裸写风险)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">高危删库写操作缺失 HITL 与 Undo 快照。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">4. Infinite Loop Trap (死循环)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">缺少 SHA-256 动作指纹拦截与反思引导。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">5. Raw Log Overflow (裸日志)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">数万行控制台打印原封不动塞满 Context。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">6. No-Timeout Lock (无超时)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">无物理超时强杀，死锁整个 Agent 进程。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">7. Hardcoded Secrets (明文 Key)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">将 AK/SK 密码明文推给云端大模型 API。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow space-y-0.5">
+                            <strong class="text-rose-900 block text-[11px]">8. Eval-less Iteration (盲改)</strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">无测试基准凭主观试用微调，造成隐蔽退化。</p>
+                        </div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600 mt-0.5 shrink-0"></i>
+                            <span><strong>生产铁律：</strong>避开 8 大反模式是确保 Agent 系统高可靠与零事故落地的第一准则。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2.5 border-t border-rose-200/60 text-xs text-rose-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-shield-cat text-rose-600"></i>
+                    <span>核心：将脆弱的反模式工具重构为符合规则网关与安全门控的生产级 Skill</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Refactoring Anti-Pattern to Production-Grade Skill -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">反模式代码重构示范</h3>
+                                <p class="text-xs text-indigo-800 font-mono">Refactoring Anti-Pattern Code</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">Refactoring</span>
+                    </div>
+
+                    <!-- Python Code Comparison Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-slate-500"># ❌ BAD: 触犯模糊参数、无超时、盲写与无脱敏反模式</span>
+<span class="text-rose-400">@tool</span>
+<span class="text-purple-300">def</span> <span class="text-rose-300">execute_script</span>(cmd: <span class="text-emerald-300">str</span>):
+    <span class="text-purple-300">return</span> os.popen(cmd).read()  <span class="text-slate-500"># 无超时 + 任意命令注入 ❌</span>
+
+<span class="text-slate-500"># ✅ GOOD: 生产级重构（契约说明 + 超时强杀 + 审计 + 剪枝）★</span>
+<span class="text-emerald-400">@tool(
+    side_effect="STATE_CHANGING", 
+    requires_approval=True, 
+    supports_undo=True
+)</span>
+<span class="text-purple-300">async def</span> <span class="text-blue-300">execute_sanitised_cmd</span>(
+    cmd: <span class="text-emerald-300">str</span> = Field(description=<span class="text-amber-200">"Allowed git/build command only"</span>),
+    timeout_s: <span class="text-emerald-300">float</span> = Field(default=<span class="text-emerald-300">10.0</span>, le=<span class="text-emerald-300">30.0</span>)
+) -&gt; <span class="text-emerald-300">str</span>:
+    <span class="text-slate-500"># 1. AST 校验指令合法性 & 物理超时强杀 ★</span>
+    ast_auditor.verify_command(cmd)
+    raw_output = <span class="text-purple-300">await</span> sandbox.run_cmd(cmd, timeout_s=timeout_s)
+    
+    <span class="text-slate-500"># 2. PII / 密钥脱敏与日志首尾视窗提纯 ★</span>
+    clean_obs = SanitizerPipeline().sanitize(raw_output)
+    <span class="text-purple-300">return</span> LogPruningMiddleware().compress(clean_obs)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>四重重构增强：</strong>使用 Pydantic 注入契约说明、加上 AST 指令审查、隔离超时强杀与集成 Sanitizer 清洗。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2.5 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：进入 Capstone 实战演练——企业级 CI/CD 代码重构与安全审计 Agent 架构</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        避开 8 大反模式是构建高鲁棒性 Agent 系统的硬红线！通过 <strong>反模式治理与强契约重构</strong>，将脆弱的野野生 prompt 升级为具备自我保护、可监控与可评估性的工业级 Skill 体系。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">提示词与技能反模式 (8 大经典坑点及重构)</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲授 8 大 Skill 反模式的重要性：</span>
+                    “向学员深入剖析：在企业实际落地 AI Agent 时，很多开发者写出来的 Prompt 和 Skill 在体验测试时挺好，但一到生产环境就各种故障。这往往是因为他们踩中了 8 大典型反模式——比如盲目注入 50 个工具导致 Over-Tooling，或者没加物理超时导致死锁。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调重构治理范式：</span>
+                    “提示学员看右侧的代码重构案例：将裸脚本包装重构为打标 `side_effect="STATE_CHANGING"`，加上 Pydantic Field 说明、AST 指令审核、沙箱超时与 LogPruner 清洗，彻底解决生产隐患。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

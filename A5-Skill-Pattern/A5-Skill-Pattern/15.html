@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - 挂起与交互模式 (Human-in-the-Loop Pattern)：长生命周期状态机挂起与恢复</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 5: Skill Design Patterns & Robustness)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-user-check"></i>
+                <span>第 5 课：技能设计模式与鲁棒性工程 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                挂起与交互模式 (Human-in-the-Loop Pattern)：长生命周期状态机挂起与恢复
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                连接自主 Agent 与人类终极责任控制权的工程桥梁：当 Skill 涉及高危物理修改（生产 Patch、库表抹除）时，通过 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">状态序列化挂起 (Suspend)</span> 释放算力，等待人类操作员卡扣审批并支持 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">参数覆写与反序列化恢复 (Resume)</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: HITL Code Implementation vs 3 Core Pillars) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-6 grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Suspendable HITL Skill Implementation Code -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-5 md:p-6 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 text-lg shrink-0">
+                                <i class="fa-solid fa-pause"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">SuspendableHITLSkill 挂起恢复实现</h3>
+                                <p class="text-xs text-amber-800 font-mono">Long-Running Suspend & Resume Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-900 text-[11px] font-mono font-bold">HITL Pattern</span>
+                    </div>
+
+                    <!-- Python Code Box -->
+                    <pre class="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[10px] md:text-[11px] mb-3 shadow-inner overflow-x-auto leading-relaxed"><code><span class="text-purple-300">class</span> <span class="text-blue-300">SuspendableHITLSkill</span>(BaseSkill):
+    <span class="text-purple-300">def</span> <span class="text-blue-300">__init__</span>(self, state_store: StateStore):
+        self.state_store = state_store
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">execute</span>(self, task_id: <span class="text-emerald-300">str</span>, patch_diff: <span class="text-emerald-300">str</span>) -&gt; <span class="text-emerald-300">SkillResult</span>:
+        <span class="text-slate-500"># 1. 评估是否有高危写风险 (如生产环境代码修补) ★</span>
+        <span class="text-purple-300">if</span> is_high_risk_action(patch_diff):
+            <span class="text-slate-500"># 2. 序列化当前 Context 状态，写入 DB 挂起状态机 ★</span>
+            session = self.state_store.suspend(task_id, payload=patch_diff)
+            notify_human_operator(session.approval_url)
+            <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"SUSPENDED"</span>, ticket_id=session.id)
+            
+        <span class="text-slate-500"># 3. 未触发高危直接物理执行</span>
+        <span class="text-purple-300">return</span> self._apply_patch(patch_diff)
+
+    <span class="text-purple-300">def</span> <span class="text-blue-300">resume</span>(self, ticket_id: <span class="text-emerald-300">str</span>, decision: <span class="text-emerald-300">ApprovalDecision</span>) -&gt; <span class="text-emerald-300">SkillResult</span>:
+        <span class="text-slate-500"># 4. 人类审批通过/修改参数后反序列化恢复执行 ★</span>
+        ctx = self.state_store.load_and_resume(ticket_id)
+        <span class="text-purple-300">if</span> decision.is_approved:
+            <span class="text-purple-300">return</span> self._apply_patch(decision.final_patch <span class="text-purple-300">or</span> ctx.payload)
+        <span class="text-purple-300">return</span> SkillResult(status=<span class="text-amber-200">"REJECTED_BY_HUMAN"</span>)</code></pre>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span><strong>无活跃线程占用：</strong>状态挂起后将 Context 写入持久化存储（Redis/PostgreSQL），不阻塞服务器 CPU 与 HTTP 链接。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-amber-200/60 text-xs text-amber-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                    <span>核心：用异步反序列化恢复机制把人类责任卡扣嵌入 Agent 状态机循环</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Pillars of Human-in-the-Loop Pattern -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-5 md:p-6 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                                <i class="fa-solid fa-user-gear"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-base font-bold text-slate-900">挂起与交互模式的三大核心支柱</h3>
+                                <p class="text-xs text-indigo-700 font-mono">3 Core Pillars of Human-in-the-Loop</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[11px] font-mono font-bold">HITL Pillars</span>
+                    </div>
+
+                    <div class="space-y-3.5 text-xs text-slate-700">
+                        <!-- Pillar 1 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">1. 状态序列化与无占用挂起 (State Serialization & Suspend)</span>
+                                <span>Zero-Thread Blocking</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在高危动作前将 Agent 当前图指针、Memory 与工具入参推入状态存储库，退出线程循环，支持跨天与跨进程的异步恢复。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px]">2. 人类覆写与动态干预 (Modify & Resume)</span>
+                                <span>Human Override</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                审批流程支持 `[Approve]`, `[Reject]` 或 `[Modify Params]`，允许人类操作员在恢复执行前微调代码补丁或修正越界参数。
+                            </p>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div class="p-3 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-1">
+                            <div class="font-bold text-slate-900 flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">3. 责任边界卡扣与合规审计 (Compliance Audit Trace)</span>
+                                <span>Audit Trait</span>
+                            </div>
+                            <p class="text-slate-600 leading-relaxed text-[11px]">
+                                在数据库更新或生产代码部署前记录不可篡改的审批 Trace，明确划分自治 Agent 建议与人类授权决策的物理法律责任。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-indigo-200/60 text-xs text-indigo-900 font-mono flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：学习缓存与幂等模式 (Cache & Idempotency Pattern) 的高耗时 Skill 加速</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-amber-100 text-amber-700 text-lg shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-slate-500 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-sm font-medium text-slate-800">
+                        自治不等于失控！通过 <strong>挂起与交互模式 (Human-in-the-Loop Pattern) 的状态序列化与动态恢复</strong>，将人类责任控制权无缝嵌入 Agent 异步控制流，是 Agent 安全触碰生产环境高危写的硬前提。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[37.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">挂起与交互模式 (Human-in-the-Loop Pattern)</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 Human-in-the-Loop Pattern 的应用关卡：</span>
+                    “向学员深入剖析：在真实的企业级 Copilot 或自动重构 Agent 中，让大模型完全自主修改生产代码或抹除库表是极其危险的。挂起与交互模式（HITL）通过把当前图状态序列化写入 Redis/DB 库，挂起流程并通知审批者。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调动态干预与无占用恢复：</span>
+                    “提示学员：挂起时绝不是用 `while` 循环打死服务器线程！而是保存 Session 离线退出；当人类点击 Slack 审批卡片并校正了代码 Patch 后，调用 `resume()` 方法反序列化恢复图节点，实现极致的安全与资源节省。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
