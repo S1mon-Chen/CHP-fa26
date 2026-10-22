@@ -1,0 +1,504 @@
+{
+  "name": "Quan Expert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -336,
+        -192
+      ],
+      "id": "dbac3cc8-1640-454e-a788-66781201bf09",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        128,
+        -176
+      ],
+      "id": "b5dfbc07-3c53-49ac-82b4-5257997a7b15",
+      "name": "SerpAPI",
+      "credentials": {
+        "serpApi": {
+          "id": "i3RyH51uA62fH24p",
+          "name": "SerpAPI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "用于发送 GET 请求到 币安 网站获取比特币实时数据",
+        "url": "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        176
+      ],
+      "id": "41bbd9f3-3133-486e-9983-eac4dc19b1d0",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "请立即开始你的工作：调用你的 Google 搜索肢体双手 Limb工具，搜索最新的比特币新闻，并给出你专业的情绪评分。",
+        "options": {
+          "systemMessage": "-5 到 +5 市场情绪专家"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        -400
+      ],
+      "id": "21bdcf24-af3b-4397-a823-f9aef91a4309",
+      "name": "Ser Expert"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:9b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        176
+      ],
+      "id": "3711a026-7e40-48b3-9449-97a649ced869",
+      "name": "Tech Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "XC1Wo2phIN23EdMl",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:9b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        -176
+      ],
+      "id": "6b672521-f7b4-4fa0-ab40-7280cc28fc41",
+      "name": "Ser Analysis Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "XC1Wo2phIN23EdMl",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:9b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -80
+      ],
+      "id": "235b0ea6-e9bc-4325-8e37-2bc01e826a4a",
+      "name": "Chief Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "XC1Wo2phIN23EdMl",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ser_output }}{{ $json.tech_result }}",
+        "options": {
+          "systemMessage": "你现在不仅是一个首席策略师，还是一个完美的最终决策大模型。你接收到了触发运行的信号，请仔细阅读并综合汇总‘技术指标专家’提供的技术面报告（纯文本）和‘市场情绪专家’提供的市场情绪评分（整数）。基于这两个专家的分析，做出你最终的交易决策：买入、卖出或持有。请以清晰简洁的语言说明你的理由，并进行自我反思与规划存储，不要包含任何代码。",
+          "returnIntermediateSteps": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -256
+      ],
+      "id": "5cd4f9bd-c609-47b1-83a2-3e69ccf0bb84",
+      "name": "Policy Agent",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=你是一个数据提取专家。请阅读以下策略分析文本，从中提取出最终的交易决策（必须是 BUY、SELL、HOLD 之一）。\n\n请严格只返回如下格式的 JSON，不要包含任何 markdown 标记（如 ```json）或多余解释：\n{\n\"signal\": \"提取出来的信号\"\n}\n\n需要分析的文本：\n{{ $json.output }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        992,
+        -384
+      ],
+      "id": "edc4411f-3527-4093-bf66-0dcd2188a716",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "qwen3.5:9b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -192
+      ],
+      "id": "0689d642-7a0d-4bb0-b4bc-775fb0af9735",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "XC1Wo2phIN23EdMl",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        496,
+        -256
+      ],
+      "id": "19860fdc-ac2f-420b-9fd7-a8bf3fc61d8c",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "请立即开始你的工作：调用你的工具获取最新的比特币价格和成交量数据，然后根据这些数据给出你专业的技术分析报告。",
+        "options": {
+          "systemMessage": "你是一个金融技术指标专家。请读取输入的 JSON 格式的价格和成交量数据。你只需要输出一条对当前技术面（如强、中、弱）的简单描述和关键的技术指标状态总结，不要输出代码，只输出文本分析。"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        -32
+      ],
+      "id": "6b9c091f-7c61-4aff-9fb7-a307566dece7",
+      "name": "Index Expert"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1008,
+        -16
+      ],
+      "id": "5bb5b513-65f9-49a4-858c-0db6ab7c2baf",
+      "name": "Send Suggestion"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8a7e816f-58da-460f-8d8f-46d567aeb01b",
+              "name": "tech_result",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        -32
+      ],
+      "id": "0718f2f4-4f32-4552-aee3-5cdd37022ee4",
+      "name": "Edit Tech Field"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8dd7123a-24df-45eb-ad48-901c4c105f19",
+              "name": "ser_output",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        -400
+      ],
+      "id": "a766baf7-36b0-4ae9-ac92-dd9ea75a2a84",
+      "name": "Edit Ser Field"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        -384
+      ],
+      "id": "8b51ba3d-9f80-4e02-ba82-f9417fbbf191",
+      "name": "Send Action"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "SerpAPI": {
+      "ai_tool": [
+        [
+          {
+            "node": "Ser Expert",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "ai_tool": [
+        [
+          {
+            "node": "Index Expert",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tech Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Index Expert",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ser Analysis Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Ser Expert",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Index Expert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ser Expert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chief Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Policy Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ser Expert": {
+      "main": [
+        [
+          {
+            "node": "Edit Ser Field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Agent": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Suggestion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Send Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Policy Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Index Expert": {
+      "main": [
+        [
+          {
+            "node": "Edit Tech Field",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Suggestion": {
+      "main": [
+        []
+      ]
+    },
+    "Edit Ser Field": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Tech Field": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c5355db8-2a51-47b4-9ea1-c3efe2ddebba",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1236f5858179f85a9fe36f026e051c0b8ea39c5dd83cb0c8ee2b62cd8ebd37d7"
+  },
+  "id": "LwqDq4z0TJmK8KoQ",
+  "tags": []
+}

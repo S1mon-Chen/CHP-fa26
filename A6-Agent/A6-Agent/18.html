@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 实战代码 (3/3)：用 FastAPI/Uvicorn 将 LangGraph Agent 封装为企业级 HTTP /query 接口</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-server"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                实战代码 (3/3)：用 FastAPI/Uvicorn 将 LangGraph Agent 封装为企业级 HTTP /query 接口
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                将推演图打造成标准的 RESTful 微服务：编译 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LangGraph 状态图 (graph.compile())</span>，使用 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">FastAPI 暴露 @app.post("/query")</span> 异步接口，并通过 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">Uvicorn 部署为高性能服务</span>，供低代码网关 (n8n) 或 Web 前端无缝调用
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Graph Compilation & FastAPI Web Service Implementation) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: LangGraph StateGraph Assembly & Compilation -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 图节点组装与编译</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">agent_server.py (Part 5: StateGraph Assembly)</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Graph Compile</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 5.1 构建 StateGraph 图对象</div>
+                        <div class="text-slate-300">builder = StateGraph(EmailAgentState)</div>
+                        <br/>
+                        <div class="text-slate-400"># 注册离散节点</div>
+                        <div class="text-slate-300">builder.add_node(<span class="text-emerald-300">"classify"</span>, classify_intent_node)</div>
+                        <div class="text-slate-300">builder.add_node(<span class="text-emerald-300">"doc_search"</span>, doc_search_node)</div>
+                        <div class="text-slate-300">builder.add_node(<span class="text-emerald-300">"mcp_crm"</span>, mcp_crm_node)</div>
+                        <div class="text-slate-300">builder.add_node(<span class="text-emerald-300">"draft"</span>, draft_response_node)</div>
+                        <br/>
+                        <div class="text-slate-400"># 设定入口节点与条件路由边</div>
+                        <div class="text-slate-300">builder.set_entry_point(<span class="text-emerald-300">"classify"</span>)</div>
+                        <div class="text-cyan-300">builder.add_conditional_edges(<span class="text-emerald-300">"classify"</span>, route_intent_edge)</div>
+                        <div class="text-emerald-300">builder.add_edge(<span class="text-emerald-300">"draft"</span>, END)</div>
+                        <br/>
+                        <div class="text-indigo-400"># 5.2 编译可执行图对象 (Compile Graph)</div>
+                        <div class="text-purple-300">graph_executor = builder.compile()</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>图对象可重用：</strong>`graph_executor` 一经编译，线程安全且可高并发被多个 HTTP 请求重复 `invoke()` 调用。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>入口与终点明确：</strong>通过 `set_entry_point("classify")` 和指向 `END` 的边收敛整个处理拓扑。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-cubes text-indigo-600"></i>
+                    <span>核心：编译状态图，将其抽象为单一入参、确定输出的纯逻辑执行句柄</span>
+                </div>
+            </div>
+
+            <!-- Right Card: FastAPI Web Server & Uvicorn Deployment -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-bolt"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. FastAPI 暴露 /query 微服务</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">agent_server.py (Part 6: FastAPI & Uvicorn)</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">FastAPI Server</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 6.1 初始化 FastAPI 实例与 Pydantic 请求体</div>
+                        <div class="text-purple-300"><span class="text-cyan-300">from</span> fastapi <span class="text-cyan-300">import</span> FastAPI</div>
+                        <div class="text-purple-300"><span class="text-cyan-300">from</span> pydantic <span class="text-cyan-300">import</span> BaseModel</div>
+                        <br/>
+                        <div class="text-slate-300">app = FastAPI(title=<span class="text-emerald-300">"LangGraph Email Agent Service"</span>)</div>
+                        <br/>
+                        <div class="text-purple-300"><span class="text-cyan-300">class</span> QueryRequest(BaseModel):</div>
+                        <div class="text-slate-300 pl-3">email_content: <span class="text-cyan-300">str</span></div>
+                        <div class="text-slate-300 pl-3">sender_email: <span class="text-cyan-300">str</span></div>
+                        <br/>
+                        <div class="text-indigo-400"># 6.2 定义 POST /query REST 接口</div>
+                        <div class="text-purple-300">@app.post(<span class="text-emerald-300">"/query"</span>)</div>
+                        <div class="text-purple-300"><span class="text-cyan-300">async def</span> query_agent(req: QueryRequest):</div>
+                        <div class="text-slate-400 pl-3"># 传入 State 初值并触发图推演</div>
+                        <div class="text-slate-300 pl-3">init_state = {</div>
+                        <div class="text-slate-300 pl-6"><span class="text-emerald-300">"email_content"</span>: req.email_content,</div>
+                        <div class="text-slate-300 pl-6"><span class="text-emerald-300">"sender_email"</span>: req.sender_email</div>
+                        <div class="text-slate-300 pl-3">}</div>
+                        <div class="text-slate-300 pl-3">final_state = <span class="text-cyan-300">await</span> graph_executor.ainvoke(init_state)</div>
+                        <div class="text-cyan-300 pl-3">return {<span class="text-amber-300">"draft_response"</span>: final_state[<span class="text-emerald-300">"draft_response"</span>]}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>强类型请求校验：</strong>使用 Pydantic `QueryRequest` 保证入参 JSON 格式合法，自动生成 OpenAPI / Swagger 文档。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>支持原生 Async：</strong>使用 `ainvoke()` 避免阻塞 FastAPI 事件循环，最大化吞吐。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-terminal text-emerald-600"></i>
+                    <span>命令行启动：<code class="bg-emerald-100 text-emerald-900 px-1 rounded font-bold">uvicorn agent_server:app --host 0.0.0.0 --port 8000</code></span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Microservice Execution Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">FastAPI & LangGraph Microservice Deployment Pipeline / 微服务部署与调用流拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">FastAPI & Uvicorn Architecture</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-globe mr-1 text-indigo-400"></i>HTTP Client / n8n</div>
+                    <div class="text-[9px] text-slate-400">POST /query JSON</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>FastAPI Router</div>
+                    <div class="text-[9px] text-slate-400">Validate QueryRequest</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-purple-400"></i>graph_executor</div>
+                    <div class="text-[9px] text-slate-400">ainvoke(init_state)</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-paper-plane mr-1 text-cyan-400"></i>JSON Response</div>
+                    <div class="text-[9px] text-slate-400">{"draft_response": "..."}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>编译后的 LangGraph 图对象本身就是纯萃的业务逻辑微服务！</strong>用 FastAPI 与 Uvicorn 将其包装为 HTTP `/query` 接口，不仅能让 Agent 轻松对接前端或低代码可视化自动化网关 (n8n)，更实现了 AI 算法层与上游业务展示层的物理解耦。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[45%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">实战代码 (3/3)：用 FastAPI/Uvicorn 封装 HTTP /query 接口</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授微服务封装的实战要点：</span>
+                    “向学员深入剖析：在完成了节点与边的定义之后，我们需要将写好的 LangGraph Agent 变成企业里任何微服务都可以调用的 HTTP 接口。首先通过 `builder.compile()` 得到线程安全的 `graph_executor`。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 FastAPI + Uvicorn 的生产优势：</span>
+                    “提示学员注意：我们使用 FastAPI 声明 `QueryRequest` 参数结构，并在 `@app.post("/query")` 路由中调用 `await graph_executor.ainvoke(init_state)`。通过 `uvicorn agent_server:app --port 8000` 启动后，这个 API 就能被后续模块三讲到的 n8n 低代码网关直接反向代理调用！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 37 - 课程 Capstone 案例剖析 (2/3)：基于 MCP + RAG + Skill 的智能客服/IT工单自动处理 Agent 实战代码</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块四 Capstone (2/3)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                课程 Capstone 案例剖析 (2/3)：基于 MCP + RAG + Skill 的智能客服/IT工单自动处理 Agent 实战代码
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                智能工单 Agent 核心代码解构：看 Java <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">Spring AI 统筹调度 `ChatClient` (挂载 QA RAG Advisor & MCP Client)</span> 如何与 Python <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LangGraph 状态图微服务</span> 严丝合缝打通数据契约，实现受控自动化响应
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Java Spring AI Orchestrator vs Python LangGraph Engine) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Java Spring AI Orchestrator Code -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-4 md:p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-base shrink-0">
+                                <i class="fa-brands fa-java"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Spring AI 工单处理主控制服务</h3>
+                                <p class="text-[10px] text-rose-800 font-mono">TicketOrchestratorService.java (Port 8080)</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold">Spring AI Java</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-rose-400">// Spring AI 核心服务：挂载 RAG Advisor, MCP 节点与物理写 Skill</div>
+                        <div class="text-purple-300">@Service</div>
+                        <div class="text-slate-300">public class TicketOrchestratorService {</div>
+                        <div class="text-purple-300 pl-3">@Autowired private VectorStore vectorStore;</div>
+                        <div class="text-purple-300 pl-3">@Autowired private McpClient mcpJiraClient;</div>
+                        <br/>
+                        <div class="text-purple-300 pl-3">public TicketResponse processTicket(TicketRequest req) {</div>
+                        <div class="text-slate-300 pl-6">ChatClient client = ChatClient.builder(chatModel)</div>
+                        <div class="text-amber-300 pl-9">.defaultAdvisors(new QuestionAnswerAdvisor(vectorStore)) <span class="text-slate-500">// RAG 屏障</span></div>
+                        <div class="text-cyan-300 pl-9">.tools(new McpToolCallbackProvider(mcpJiraClient))    <span class="text-slate-500">// MCP 工具</span></div>
+                        <div class="text-rose-300 pl-9">.defaultFunctions("springRefundBean")                   <span class="text-slate-500">// @Transactional写动作</span></div>
+                        <div class="text-slate-300 pl-9">.build();</div>
+                        <br/>
+                        <div class="text-emerald-300 pl-6">return client.prompt().user(req.getIssue()).call().entity(TicketResponse.class);</div>
+                        <div class="text-slate-300 pl-3">}</div>
+                        <div class="text-slate-300">}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>能力无缝融合：</strong>单一次 `ChatClient` 调度同时注入了 RAG SOP 召回、Jira MCP 查单以及 `@Transactional` 物理退款操作。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>强类型 DTO 导出：</strong>使用 `.entity(TicketResponse.class)` 自动将结果转译为符合 API 契约的 Java 对象。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-rose-200/60 text-[11px] text-rose-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-rose-600"></i>
+                    <span>物理特性：物理写动作完全在 Java 物理事务切面保护下执行</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python LangGraph Reasoning Graph Code -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-brands fa-python"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. LangGraph 状态图复杂推演微服务</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">ticket_agent_graph.py (Port 8000)</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">LangGraph Python</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># LangGraph StateGraph: 处理复杂计算、路由与 Qwen2.5 本地推演</div>
+                        <div class="text-purple-300">class TicketAgentState(TypedDict):</div>
+                        <div class="text-slate-300 pl-3">ticket_id: str</div>
+                        <div class="text-slate-300 pl-3">issue_type: Literal["bug", "refund", "faq"]</div>
+                        <div class="text-slate-300 pl-3">sop_chunks: list[str]</div>
+                        <div class="text-slate-300 pl-3">mcp_jira_issue: dict | None</div>
+                        <div class="text-slate-300 pl-3">resolution_plan: str</div>
+                        <br/>
+                        <div class="text-indigo-400"># 组装状态图并设定条件边</div>
+                        <div class="text-slate-300">builder = StateGraph(TicketAgentState)</div>
+                        <div class="text-slate-300">builder.add_node("classify", classify_node)</div>
+                        <div class="text-slate-300">builder.add_node("rag_search", rag_search_node)</div>
+                        <div class="text-slate-300">builder.add_node("mcp_jira", mcp_jira_node)</div>
+                        <div class="text-cyan-300">builder.add_conditional_edges("classify", route_by_type_edge)</div>
+                        <div class="text-purple-300">graph_executor = builder.compile(checkpointer=MemorySaver())</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>状态图图环控制：</strong>由 `route_by_type_edge` 根据工单类型判定跳转路线，并在未决状态时循环重试。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>检查点快照：</strong>使用 `MemorySaver()` 支持随时被外部人机审批机制 `interrupt()` 挂起。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-diagram-next text-indigo-600"></i>
+                    <span>物理特性：暴露为 FastAPI /query REST API 供前端 n8n 反向代理</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Heterogeneous Data Contract & Execution Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">Capstone Heterogeneous Code Pipeline & Data Contract / Capstone 异构代码管道与契约握手拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Heterogeneous Code Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>1. n8n JSON Input</div>
+                    <div class="text-[9px] text-slate-400">Webhook POST Event</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-brands fa-java mr-1 text-rose-400"></i>2. Spring AI Service</div>
+                    <div class="text-[9px] text-slate-400">TicketRequest DTO</div>
+                </div>
+
+                <i class="fa-solid fa-arrows-left-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-brands fa-python mr-1 text-indigo-400"></i>3. LangGraph Engine</div>
+                    <div class="text-[9px] text-slate-400">TicketAgentState Execution</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-purple-400"></i>4. Side Effect Execution</div>
+                    <div class="text-[9px] text-slate-400">`@Transactional` DB & Jira MCP</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>代码层面的强契约对齐是构建企业级异构 Agent 系统落地的必然要求！</strong>通过在 Java 侧定义 Pydantic/DTO，在 Python 侧定义 `TypedDict State`，并在 MCP 侧绑定 JSON-RPC 2.0 协议，整个系统能够以高容错、高确定性的姿态处理复杂的工单排查任务。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">37</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[92.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (36.html <- 37.html -> 38.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="36.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-indigo-700 font-bold hidden md:inline"><i class="fa-solid fa-trophy mr-1"></i>Capstone (2/3)：智能工单 Agent 核心代码与契约集成</span>
+            <a href="38.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="36.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="38.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 剖析 Capstone 代码实现 (2/3)：</span>
+                    “向学员深入剖析：在看完上一页拓扑后，本页展示真实的端到端代码实现。左侧是 Java 侧的 `TicketOrchestratorService`，展现了 Spring AI `ChatClient` 如何通过 Advisor 链注入 RAG，通过 `McpToolCallbackProvider` 挂载 MCP 工具，并通过 `.defaultFunctions("springRefundBean")` 绑定数据库物理写事务。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析右侧 Python LangGraph 代码：</span>
+                    “提示学员注意右侧代码：Python 侧的 `ticket_agent_graph.py` 声明了强类型 `TicketAgentState`，定义了节点分类、RAG SOP 检索与 Jira MCP 工具调用，并通过条件边控制执行路由。两侧通过 HTTP REST 契约无缝对接。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '36.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '38.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

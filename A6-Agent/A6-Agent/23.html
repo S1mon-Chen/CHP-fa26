@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 23 - n8n 工作流核心概念：Trigger 触发器 (Schedule/Webhook/Chat) 与 Execution 引擎</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-bolt"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                n8n 工作流核心概念：Trigger 触发器 (Schedule/Webhook/Chat) 与 Execution 引擎
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                驱动事件驱动架构 (EDA) 的可视化起点：掌握 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Schedule (Cron 定时)</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Webhook (POST 回调)</span> 与 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">Chat Trigger (对话窗口)</span>，剖析 n8n <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Execution 执行引擎</span> 如何将物理事件转化为结构化数据流
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Trigger Categories vs Execution Engine Mechanism) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Trigger Nodes Taxonomy & Payload Structure -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-bolt-lightning"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 多形态 Trigger 触发器分类</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">Event Entry Points & Payload Normalization</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Event Ingestion</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-emerald-400"># 方式 1.1: Webhook Trigger (HTTP POST 入口)</div>
+                        <div class="text-slate-300">{ <span class="text-cyan-300">"headers"</span>: {...}, <span class="text-amber-300">"body"</span>: { <span class="text-emerald-300">"issue_id"</span>: <span class="text-emerald-300">"BUG-902"</span> } }</div>
+                        <br/>
+                        <div class="text-indigo-400"># 方式 1.2: Schedule Trigger (Cron 定时触发)</div>
+                        <div class="text-slate-300">{ <span class="text-cyan-300">"timestamp"</span>: <span class="text-emerald-300">"2026-08-17T09:00:00Z"</span>, <span class="text-cyan-300">"cron"</span>: <span class="text-emerald-300">"0 9 * * 1"</span> }</div>
+                        <br/>
+                        <div class="text-purple-400"># 方式 1.3: Chat / Form Trigger (交互式触发)</div>
+                        <div class="text-slate-300">{ <span class="text-cyan-300">"chatInput"</span>: <span class="text-emerald-300">"Please analyze API 504 logs"</span>, <span class="text-cyan-300">"sessionId"</span>: <span class="text-emerald-300">"sess_882"</span> }</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>标准化入参化：</strong>不论事件源来自 GitHub Webhook 还是 Cron 定时器，Trigger 统一将载荷转换为 JSON 数组。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>支持两重响应模式：</strong>Webhook 节点可选择“立即返回 200 OK”或“等待工作流结束返回最终 JSON”。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-satellite-dish text-emerald-600"></i>
+                    <span>定位：事件驱动架构 (EDA) 业务网关的物理第一站</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Execution Engine & State Machine Mechanism -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-gears"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. n8n Execution 执行引擎机制</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Workflow Execution Lifecycle & Mode Switch</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Execution Engine</span>
+                    </div>
+
+                    <!-- YAML / Terminal Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 2.1 Manual Test Mode (调试模式)</div>
+                        <div class="text-slate-300">Click "Execute Workflow" ──► Single Execution Log</div>
+                        <div class="text-slate-400"># 使用 Test Webhook URL 进行单步 Trace</div>
+                        <br/>
+                        <div class="text-indigo-400"># 2.2 Active Production Mode (生产模式)</div>
+                        <div class="text-emerald-300">Toggle "Active" = TRUE</div>
+                        <div class="text-slate-300">Background Worker Queue ──► Persistent Executions DB</div>
+                        <div class="text-slate-400"># 自动记录每次触发的 input/output 数据快照</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>节点状态隔离：</strong>每个节点的输出都是下一个节点的输入（`$input.first().json`），状态清晰透明。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>完整执行履历审计：</strong>支持对每一次历史 Execution 的运行耗时、节点入参和错误堆栈全盘回放。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-microchip text-indigo-600"></i>
+                    <span>核心：把复杂的异步事件转化成可被可视化节点平滑管道传输的 JSON 数据包</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Event-Driven Trigger to Execution Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">n8n Event-Driven Trigger to Execution Pipeline / 触发器与执行引擎流拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">EDA Ingestion Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>1. Trigger Source</div>
+                    <div class="text-[9px] text-slate-400">Webhook / Schedule / Chat</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code mr-1 text-indigo-400"></i>2. JSON Payload</div>
+                    <div class="text-[9px] text-slate-400">$input.first().json Normalization</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-gears mr-1 text-purple-400"></i>3. Execution Engine</div>
+                    <div class="text-[9px] text-slate-400">Active Worker Processing</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-cyan-400"></i>4. Execution History</div>
+                    <div class="text-[9px] text-slate-400">Audit Log & State Snapshot</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>Trigger 节点是低代码 Agent 接入事件驱动架构（EDA）的网关入口！</strong>不管是定时任务（Cron）、外部回调（Webhook）还是交互对话（Chat），n8n 执行引擎都能将其标准化为强类型 JSON 载荷，为下游 AI 节点的推演提供纯萃的数据源。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">23</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[57.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (22.html <- 23.html -> 24.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="22.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">n8n 工作流核心概念：Trigger 触发器与 Execution 引擎</span>
+            <a href="24.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="22.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="24.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲授 Trigger 触发器在 EDA 架构中的角色：</span>
+                    “向学员深入剖析：在低代码工作流引擎中，一切执行都始于 Trigger 节点。无论是每周一上午 9 点运行的 Schedule Cron，还是响应第三方 GitHub / Slack 回调的 Webhook，或者是前端嵌入的 Chat 窗口，Trigger 的核心使命就是将异构物理事件归一化为标准的 `$input.first().json` 载荷。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 Test Mode 与 Production Active 模式：</span>
+                    “提示学员注意右侧代码：在开发阶段，我们使用‘Execute Workflow’单步调试；而在生产环境中，必须将工作流右上角的‘Active’开到 True，此时后台 Worker 线程池会监听物理端口并将每次触发完整存入 Execution DB 备查。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '22.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

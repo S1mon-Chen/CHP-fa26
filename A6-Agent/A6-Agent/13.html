@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - LangGraph 核心设计哲学 (2/3)：共享状态 (Shared State Design) 与原始数据存留原则</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-hard-drive"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                LangGraph 核心设计哲学 (2/3)：共享状态 (Shared State Design) 与原始数据存留原则
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                Thinking in LangGraph 核心原则（Step 3）：构建可推演状态图的共享记忆体——明确界定 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Include in State（跨节点持久化字段）</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Don't Store（现场派生数据）</span>，并恪守 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Raw Data Principle（存留原始数据）</span>，严禁在 State 中存储格式化 Prompt
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Include vs Don't Store Rules & TypedDict Code Specification) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Shared State Boundary & Principles -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-memory"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">State 设计边界：存什么 vs 不存什么</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Include in State vs Don't Store Principles</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">State Boundary</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <!-- Include in State -->
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0"><i class="fa-solid fa-check mr-1"></i>Include</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">需要跨节点持久化的数据：</strong>
+                                <span class="text-slate-600 text-[11px]">原始邮件数据、意图分类结果、开销巨大的 RAG 文档 Chunk、CRM 客户信息与草稿。</span>
+                            </div>
+                        </div>
+
+                        <!-- Don't Store -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0"><i class="fa-solid fa-xmark mr-1"></i>Don't Store</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">随时可现场计算/推导的数据：</strong>
+                                <span class="text-slate-600 text-[11px]">节点内部的临时计算结果、中间渲染的长度计数与单次工具临时参数，按需现场计算。</span>
+                            </div>
+                        </div>
+
+                        <!-- Raw Data Principle -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0"><i class="fa-solid fa-database mr-1"></i>Raw Data</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">原始数据存留原则 (Keep State Raw)：</strong>
+                                <span class="text-slate-600 text-[11px]">仅存结构化 JSON/Dict，绝不存预拼接的 Prompt 模版或提示词字符串，Prompt 渲染放在 Node 内部。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>核心：干净的 Raw State 保证了图节点的独立单测性与 Prompt 渲染的现场确定性</span>
+                </div>
+            </div>
+
+            <!-- Right Card: EmailAgentState Code Implementation -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">EmailAgentState 代码规范实现</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">TypedDict State Implementation</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python TypedDict</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400">// 客服邮件 Agent 强类型共享 State 定义</div>
+                        <div class="text-slate-300"><span class="text-purple-300">class EmailClassification</span>(TypedDict):</div>
+                        <div class="text-slate-300 pl-3">intent: <span class="text-cyan-300">Literal["question", "bug", "billing", "feature"]</span></div>
+                        <div class="text-slate-300 pl-3">urgency: <span class="text-cyan-300">Literal["low", "medium", "high", "critical"]</span></div>
+                        <div class="text-slate-300 pl-3">summary: <span class="text-emerald-300">str</span></div>
+                        <br/>
+                        <div class="text-slate-300"><span class="text-purple-300">class EmailAgentState</span>(TypedDict):</div>
+                        <div class="text-slate-400 pl-3"># 1. 原始邮件 Raw Data (不可逆数据)</div>
+                        <div class="text-slate-300 pl-3">email_content: <span class="text-emerald-300">str</span></div>
+                        <div class="text-slate-300 pl-3">sender_email: <span class="text-emerald-300">str</span></div>
+                        <div class="text-slate-400 pl-3"># 2. 结构化分类与开销巨大的外部检索产物</div>
+                        <div class="text-slate-300 pl-3">classification: <span class="text-amber-300">EmailClassification | None</span></div>
+                        <div class="text-slate-300 pl-3">search_results: <span class="text-cyan-300">list[str] | None</span> <span class="text-slate-500"># Raw Doc Chunks</span></div>
+                        <div class="text-slate-300 pl-3">customer_history: <span class="text-purple-300">dict | None</span> <span class="text-slate-500"># Raw CRM Data</span></div>
+                        <div class="text-slate-400 pl-3"># 3. 生成内容与消息链</div>
+                        <div class="text-slate-300 pl-3">draft_response: <span class="text-emerald-300">str | None</span></div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>完全静态可推导：</strong>TypeScript 或 Python `TypedDict` 提供完美的编译期类型补全与提示。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零字符串污染：</strong>State 中绝对看不到 `f"System: Hello {name}"`，所有格式化统统留在 Node 内。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-cubes text-indigo-600"></i>
+                    <span>架构原则：状态库仅仅充当“结构化事实数据库”，而非“格式化文本文档”</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Shared State Flow & Raw Data Transformation Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">Shared State Data Lifecycle & On-Demand Prompt Rendering Topology / 共享状态数据流与现场渲染拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Step 3 Principles</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-envelope mr-1 text-indigo-400"></i>Raw User Email</div>
+                    <div class="text-[9px] text-slate-400">Input JSON / Event</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-purple-400"></i>EmailAgentState</div>
+                    <div class="text-[9px] text-slate-400">Raw Data Storage (No Prompts)</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-wand-magic-sparkles mr-1 text-cyan-400"></i>Node Prompt Render</div>
+                    <div class="text-[9px] text-slate-400">On-demand Prompt Assembly</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-emerald-400"></i>LLM / Action Update</div>
+                    <div class="text-[9px] text-slate-400">Return Typed Partial Dict</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>干净的共享状态 (Shared State) 是保证 LangGraph 节点幂等与独立可测试的关键！</strong>绝对不要将格式化好的 Prompt 文本注入 State 存留。在 State 中仅保留纯粹的结构化原始数据 (Raw Data)，并在节点触发时现场装配 Prompt，能极大减少上下文污染与状态膨胀。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[32.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">LangGraph 核心设计哲学 (2/3)：共享状态与原始数据存留</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Thinking in LangGraph 核心哲学（Step 3 共享状态）：</span>
+                    “向学员深入剖析：根据 LangGraph 官方指南 Step 3: Design your state。State 是图状态机中所有 Node 均可读取与写入的共享内存。在设计 State 时，首先要区分哪些数据需要 Include in State（如原始邮件、搜索出的算法 Chunk、分类结果），哪些数据 Don't Store（现场可推导的衍生字段）。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 Raw Data Principle（原始数据原则）：</span>
+                    “提示学员注意：LangGraph 非常倡导 Keep state raw，format prompts on-demand。绝不能把格式化好的 Prompt 文本或者带指示语的拼装字符串存进 State！State 只存干净的结构化原始数据（Raw Data），具体节点的 Prompt 渲染放在 Node 内部去完成。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

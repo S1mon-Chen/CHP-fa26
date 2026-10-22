@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - n8n 与后端 LangGraph 服务联动：Webhook -> HTTP Request -> JS Code -> Respond 组合拓扑</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-diagram-next"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                n8n 与后端 LangGraph 服务联动：Webhook -> HTTP Request -> JS Code -> Respond 组合拓扑
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                低代码网关与高代码算法大脑的终极物理缝合：由 n8n <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Webhook 节点接收外网事件</span>，经 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">HTTP Request 代理调用 FastAPI LangGraph 微服务</span>，通过 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Code (JS) 节点格式化数据</span> 并最终由 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Respond to Webhook 吐出结果</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Low-Code Gateway Proxy vs JavaScript Data Normalization) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: n8n Gateway Proxy Mechanism -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. n8n 代理与微服务解耦机制</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Webhook Ingestion & HTTP Request Proxy</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">API Gateway</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 1.1 Webhook Trigger 配置</div>
+                        <div class="text-slate-300">HTTP Method: <span class="text-emerald-300">POST</span></div>
+                        <div class="text-slate-300">Path: <span class="text-amber-300">/v1/agent-gateway</span></div>
+                        <div class="text-slate-300">Response Mode: <span class="text-purple-300">"Using 'Respond to Webhook' Node"</span></div>
+                        <br/>
+                        <div class="text-indigo-400"># 1.2 HTTP Request 节点 (反向代理微服务)</div>
+                        <div class="text-slate-300">URL: <span class="text-cyan-300">http://localhost:8000/query</span> <span class="text-slate-500"># 模块二 LangGraph</span></div>
+                        <div class="text-slate-300">Body Parameters (JSON): {</div>
+                        <div class="text-slate-300 pl-3"><span class="text-emerald-300">"email_content"</span>: <span class="text-amber-300">"{{ $json.body.message }}"</span>,</div>
+                        <div class="text-slate-300 pl-3"><span class="text-emerald-300">"sender_email"</span>: <span class="text-amber-300">"{{ $json.body.sender }}"</span></div>
+                        <div class="text-slate-300">}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>流量与算法彻底解耦：</strong>n8n 处理复杂的公网 OAuth 鉴权、跨域与通知，后端 LangGraph 专注强类型状态图。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>同步阻塞等待：</strong>选择 `Respond to Webhook` 节点，保持长连接等待后端 LangGraph 状态图计算完毕后吐出。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                    <span>物理特性：利用 HTTP 代理抹平跨语言（Node.js 网关 $\to$ Python/Java 微服务）墙</span>
+                </div>
+            </div>
+
+            <!-- Right Card: JS Data Normalization & Execution Trace -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code font-bold"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. JS 数据提纯与 4-Node 端到端 Trace</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Code Node Normalization & Response Output</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">4-Node Pipeline</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-purple-400">// 2.1 Code (JavaScript) 节点转换逻辑</div>
+                        <div class="text-slate-300"><span class="text-cyan-300">const</span> raw = $input.first().json;</div>
+                        <div class="text-slate-300"><span class="text-cyan-300">return</span> [{</div>
+                        <div class="text-slate-300 pl-3">json: {</div>
+                        <div class="text-slate-300 pl-6">status: <span class="text-emerald-300">"success"</span>,</div>
+                        <div class="text-slate-300 pl-6">reply: raw.draft_response,</div>
+                        <div class="text-slate-300 pl-6">intent: raw.classification?.intent || <span class="text-amber-300">"UNKNOWN"</span>,</div>
+                        <div class="text-slate-300 pl-6">timestamp: <span class="text-cyan-300">new</span> Date().toISOString()</div>
+                        <div class="text-slate-300 pl-3">}</div>
+                        <div class="text-slate-300">}];</div>
+                        <br/>
+                        <div class="text-purple-400">// 2.2 Respond to Webhook 响应前端 (HTTP 200)</div>
+                        <div class="text-emerald-300">Respond Body: "{{ $json }}"</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零代码+低代码拼接：</strong>在 JavaScript 节点中安全清洗内部字段（脱敏/重命名），向外部吐出标准的客户 API 契约。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>极致的可视化 Trace：</strong>在 n8n 执行画布上，可清晰查看 Webhook 接收、后端 HTTP 返回与 JS 转换的每一帧数据。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
+                    <span>核心：使用 JS Code 节点抹平微服务内部 JSON 结构与外部 API 规范的差异</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Visual 4-Node Integration Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">n8n Gateway & LangGraph Microservice 4-Node Combination Topology / 4 节点反向代理拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Visual Gateway Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-indigo-400"></i>1. Webhook Trigger</div>
+                    <div class="text-[9px] text-slate-400">POST /v1/agent-gateway</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-server mr-1 text-cyan-400"></i>2. HTTP Request</div>
+                    <div class="text-[9px] text-slate-400">POST localhost:8000/query</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code mr-1 text-purple-400"></i>3. Code (JavaScript)</div>
+                    <div class="text-[9px] text-slate-400">Transform JSON Schema</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-paper-plane mr-1 text-emerald-400"></i>4. Respond to Webhook</div>
+                    <div class="text-[9px] text-slate-400">HTTP 200 Final Output</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>将异构代码微服务包裹在低代码可视化网关之后，是构建高扩展 AI 应用的最佳工程模式！</strong>用 n8n 充当最外层的 Webhook 入口与 HTTP 代理，不仅让前端接入和三方回调变得极其敏捷，还能完整保留 LangGraph 在后端处理复杂状态图与大模型推演的刚性能力。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">n8n 与后端 LangGraph 服务联动：4 节点拓扑</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授低代码与高代码架构缝合：</span>
+                    “向学员深入剖析：请大家将 Slide 18 与本页 Slide 结合看。在 Slide 18 中，我们用 FastAPI + LangGraph 跑通了 `http://localhost:8000/query` 接口。到了本页，我们在 n8n 中通过 HTTP Request 节点代理调用该接口，搭建出了标准的 4-Node 组合拓扑！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 JS Code 节点的隔离作用：</span>
+                    “提示学员注意右侧代码：后端 LangGraph 返回的原始数据字段可能是 `draft_response` 和 `classification`，但给前端用户吐出时，我们用 JavaScript Code 节点重构为 `reply` 和 `status`。这种数据降维和隔离，极大保障了微服务内部状态的安全性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

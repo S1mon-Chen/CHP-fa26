@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 34 - Spring AI 整合 RAG (VectorStore & Advisor)：将企业私有知识库作为 Agent 的感知与记忆屏障</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-book-bookmark"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块四</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Spring AI 整合 RAG (VectorStore & Advisor)：将企业私有知识库作为 Agent 的感知与记忆屏障
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                搭建企业私有知识防幻觉感知障壁：将 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">`VectorStore` (PGVector / Qdrant)</span> 与 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">`QuestionAnswerAdvisor`</span> 注入 Spring AI <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">`ChatClient` 拦截链</span>，在前置感知阶段召回领域 SOP 事实，实现零幻觉的自主推演与受控决策
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: VectorStore & QA Advisor Config vs Grounded Execution Trace) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Spring AI VectorStore & QA Advisor Config -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Spring AI `VectorStore` 与 `Advisor` 配置</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">QuestionAnswerAdvisor & VectorStore Injection</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">RAG Advisor</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-purple-400">// 1.1 声明式构建注入 QuestionAnswerAdvisor 的 ChatClient</div>
+                        <div class="text-purple-300">@Bean</div>
+                        <div class="text-slate-300">public ChatClient ragAgentClient(ChatClient.Builder builder, VectorStore vectorStore) {</div>
+                        <div class="text-slate-300 pl-3">return builder</div>
+                        <div class="text-amber-300 pl-6">.defaultAdvisors(</div>
+                        <div class="text-amber-300 pl-9">new QuestionAnswerAdvisor(vectorStore, SearchRequest.builder()</div>
+                        <div class="text-amber-300 pl-12">.topK(3)</div>
+                        <div class="text-amber-300 pl-12">.similarityThreshold(0.7)</div>
+                        <div class="text-amber-300 pl-12">.build())</div>
+                        <div class="text-amber-300 pl-6">)</div>
+                        <div class="text-slate-300 pl-6">.defaultFunctions("springRefundBean")</div>
+                        <div class="text-slate-300 pl-6">.build();</div>
+                        <div class="text-slate-300">}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>前置透明拦截：</strong>`QuestionAnswerAdvisor` 在请求发送前拦截用户 Prompt，自动向 PGVector/Qdrant 搜索，把 Relevant Chunks 压入 Prompt。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零代码侵入业务：</strong>开发人员调 `chatClient.prompt().user("...")` 时无需手写任何 VectorStore 搜索逻辑。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                    <span>物理特性：在 AOP 切面层为 Agent 推演提供只读事实记忆网，根治无中生有</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Grounded Execution Trace & Anti-Hallucination -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-file-shield"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 事实感知先行与防幻觉推演 Trace</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">Fact Grounding & Anti-Hallucination Trace</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Execution Trace</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-emerald-400"># 2.1 用户提问：“订单导出报 504 错误怎么排查？”</div>
+                        <div class="text-slate-300">[QuestionAnswerAdvisor] Intercept ──► Query VectorStore (PGVector)</div>
+                        <div class="text-slate-400"> Recalled SOP Chunks:</div>
+                        <div class="text-slate-300 pl-3">1. "Check Nginx proxy_read_timeout in billing.conf"</div>
+                        <div class="text-slate-300 pl-3">2. "Scale HikariCP max-lifetime if timeout exceeds 30s"</div>
+                        <br/>
+                        <div class="text-indigo-400"># 2.2 Agent 基于 Recalled Chunks 展开准确 ReAct 推演</div>
+                        <div class="text-amber-300">[ChatClient Agent] "Based on SOP Chunk #1 & #2, executing diagnostic..."</div>
+                        <div class="text-emerald-300"> Success: "Prevented non-standard config speculation!"</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>事实约束防护：</strong>强制大模型基于物理文档 Chunk 进行推理，防止盲目“猜测”非标准命令导致生产事故。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>多向量库无缝对接：</strong>Spring AI `VectorStore` 抽象类天然支持 PGVector、Qdrant、Milvus 与 Pinecone。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-to-dot text-emerald-600"></i>
+                    <span>核心：把离散的企业架构与 SOP 文档转化为 Agent 可随时调用的事实神经屏障</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Spring AI RAG Perception Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Spring AI RAG Perception Pipeline Topology / Spring AI RAG 感知管道拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">RAG Advisor Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-comments mr-1 text-indigo-400"></i>1. User Prompt</div>
+                    <div class="text-[9px] text-slate-400">ChatClient Entry Point</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-filter mr-1 text-purple-400"></i>2. QuestionAnswerAdvisor</div>
+                    <div class="text-[9px] text-slate-400">Pre-Invocation Interceptor</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-cyan-400"></i>3. VectorStore Search</div>
+                    <div class="text-[9px] text-slate-400">PGVector / Qdrant Top-K</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-emerald-400"></i>4. Grounded Agent ReAct</div>
+                    <div class="text-[9px] text-slate-400">Grounded Task Reasoning</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>RAG 是 Spring AI Agent 的第一级物理感知屏障！</strong>通过将 `QuestionAnswerAdvisor` 挂载至 `ChatClient` 拦截链，Spring AI 能够在前置感知阶段强行注入私有 SOP 事实，根治大模型臆造非标运维与业务指令的幻觉风险。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">34</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (33.html <- 34.html -> 35.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="33.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring AI 整合 RAG：将私有知识库作为感知与记忆屏障</span>
+            <a href="35.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="33.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="35.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 讲授 Spring AI Advisor 整合 RAG 的要点：</span>
+                    “向学员深入剖析：请大家注意 Slide 32（Advisor Chain）与本页的联系。在 Spring AI 中，我们可以通过 `QuestionAnswerAdvisor` 将 `VectorStore` 挂载到 `ChatClient` 上。这样在用户发出 Prompt 的前置拦截阶段，系统就会自动检索企业知识库中的 SOP 文档并压入上下文。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 剖析右侧防幻觉推演 Trace：</span>
+                    “提示学员看右侧代码：当用户询问‘504 错误排查’时，`QuestionAnswerAdvisor` 拦截并从 PGVector 中召回了 Nginx read_timeout 和 DB pool 的 2 条 SOP 规范。Agent 基于这些事实展开答复，根治了凭空臆造非标指令引发生产事故的幻觉风险。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '35.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

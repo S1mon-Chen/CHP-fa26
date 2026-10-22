@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - LangGraph 核心设计哲学 (3/3)：条件边 (Conditional Edges) 与死循环图环控制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-route"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块二</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                LangGraph 核心设计哲学 (3/3)：条件边 (Conditional Edges) 与死循环图环控制
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                Thinking in LangGraph 核心原则（Step 4 & 5）：利用有向图的动态边驱动控制流转向——使用 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">条件边 (add_conditional_edges)</span> 评估 State 数据进行动态分支路由，并建立 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">递归深度限制 (recursion_limit)</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">显式收敛终点 (END)</span> 彻底防止死循环
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Routing & Cycle Safeguards vs Code Implementation) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Conditional Routing & Cycle Prevention Mechanics -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code-fork"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">条件路由与图环（Cycles）治理机理</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Conditional Edges & Loop Safeguards</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Routing Principles</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <!-- Dynamic Routing -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">1. Dynamic Edge</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">条件边动态评估 (add_conditional_edges)：</strong>
+                                <span class="text-slate-600 text-[11px]">节点执行完毕后，路由函数接收当前 State 纯函数推导，决定跳转至哪一个下级节点。</span>
+                            </div>
+                        </div>
+
+                        <!-- Explicit Converge -->
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">2. Exit Gate</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">显式收敛出口 (END Node)：</strong>
+                                <span class="text-slate-600 text-[11px]">状态满足终局判定时（如重构完成、邮件已发），路由函数必须显式指向 `END` 节点退出图。</span>
+                            </div>
+                        </div>
+
+                        <!-- Recursion Limit -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">3. Loop Guard</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">图环死锁硬熔断 (recursion_limit)：</strong>
+                                <span class="text-slate-600 text-[11px]">配置框架级 `recursion_limit=10`，若图节点循环触发次数超标强行中断，防止 Token 爆刷。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-spin text-indigo-600"></i>
+                    <span>原则：用确定性的 Python 条件路由代码收敛模型非确定性的自由跳转</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Conditional Edges -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">条件边与图图组装 Python 代码实现</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">LangGraph Conditional Edges Assembly</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400">// 1. 动态条件边路由评估函数</div>
+                        <div class="text-purple-300">def route_intent_edge(state: EmailAgentState) -&gt; str:</div>
+                        <div class="text-slate-300 pl-3">intent = state["classification"]["intent"]</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">if</span> intent == "question": <span class="text-emerald-300">return "doc_search"</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">elif</span> intent == "bug": <span class="text-emerald-300">return "bug_track"</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">return</span> <span class="text-amber-300">"human_review"</span> <span class="text-slate-500"># 复杂或计费工单走人工</span>
+                        <br/>
+                        <div class="text-indigo-400">// 2. 构建状态图并绑定条件边与终止卡扣</div>
+                        <div class="text-slate-300">builder = StateGraph(EmailAgentState)</div>
+                        <div class="text-slate-300">builder.add_node("classify", classify_intent_node)</div>
+                        <div class="text-slate-300">builder.add_node("doc_search", doc_search_node)</div>
+                        <div class="text-slate-300">builder.add_node("draft", draft_reply_node)</div>
+                        <div class="text-cyan-300 pl-3">builder.add_conditional_edges("classify", route_intent_edge)</div>
+                        <div class="text-emerald-300 pl-3">builder.add_edge("draft", END) <span class="text-slate-500"># 显式指向 END 节点</span></div>
+                        <br/>
+                        <div class="text-slate-400">// 3. 编译并配置递归图环限制 (Recursion Limit)</div>
+                        <div class="text-slate-300">app = builder.compile(checkpointer=MemorySaver())</div>
+                        <div class="text-slate-300">app.invoke(input, config={<span class="text-amber-300">"recursion_limit": 10</span>})</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>灵活映射：</strong>`route_intent_edge` 既可返回节点名称字符串，也可配合字典 `path_map` 映射分支。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>防死锁兜底：</strong>`recursion_limit` 物理确保即使路由函数写错发生无限循环，也能在指定步数强杀抛错。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>工程突破：将复杂的 ReAct 循环或 Reflexion 自修复控制流降维为确定性的图边规则</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Conditional Edges Routing & Cycle Safeguards Diagram Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Conditional Edges Dynamic Routing & Cycle Protection Topology / 条件边路由与图环控制拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Step 4 & 5 Principles</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-play mr-1 text-indigo-400"></i>START Node</div>
+                    <div class="text-[9px] text-slate-400">Initial State Trigger</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-fork mr-1 text-purple-400"></i>Conditional Edge</div>
+                    <div class="text-[9px] text-slate-400">Evaluate State Intent</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-rotate-right mr-1 text-amber-400"></i>Cycle / Retry Loop</div>
+                    <div class="text-[9px] text-slate-400">Checked by Recursion Limit</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-flag-checkered mr-1 text-emerald-400"></i>END Node</div>
+                    <div class="text-[9px] text-slate-400">Converge & Finalize Result</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>条件边 (Conditional Edges) 是驯服 Agent 状态转化的刚性轨道！</strong>绝对不要允许模型毫无控制地在节点间漫游。通过纯 Python 路由函数判断 State、明确划分显式 `END` 终点，并在图编译层挂载 `recursion_limit` 硬防护，能够完美根除生产环境智能体死循环的后顾之忧。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">14</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[35%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (13.html <- 14.html -> 15.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">LangGraph 核心设计哲学 (3/3)：条件边与死循环图环控制</span>
+            <a href="15.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="13.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="15.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Thinking in LangGraph 核心哲学（Step 4 & 5 条件边）：</span>
+                    “向学员深入剖析：根据 LangGraph 指南 Step 4 & 5，构建 Agent 图系统的最后一关就是连接 Node 之间的 Edge。其中最关键的是 `add_conditional_edges`，它接受一个以 State 为参数的纯函数，动态计算下一步跳转的目标节点。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调图环治理与 `recursion_limit`：</span>
+                    “提示学员注意：有向有环图（Cycles）虽然带来了自我修正能力，但也引入了死循环的风险。我们要通过两重防线治理：一是路由函数必须在状态收敛时指向 `END` 节点；二是在 `invoke()` 配置中设置 `recursion_limit=10`，兜底强杀陷入死循环的图状态机。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

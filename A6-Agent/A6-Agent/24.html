@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - n8n AI Agent 节点解构：Chat Trigger + Agent Node + LLM Model + Memory + Tools 组合</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-cubes-stacked"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                n8n AI Agent 节点解构：Chat Trigger + Agent Node + LLM Model + Memory + Tools 组合
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 n8n 可视化 AI Agent 的“插槽化 (Sub-Socket) 组网范式”：以 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">AI Agent 节点</span> 为调度中枢，物理插接 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Model (Groq / Ollama)</span>、<span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">Memory (Window Buffer)</span> 与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Tools (MCP / RAG / Custom API)</span>，实现免代码拖拽组装受控智能体
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Sub-socket Anatomy vs ReAct Orchestration) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: AI Agent Node Sub-socket Anatomy -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-puzzle-piece"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. n8n AI Agent 插槽化 (Sub-socket) 架构</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Sub-Node Socket Binding Topology</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Canvas Sockets</span>
+                    </div>
+
+                    <!-- Terminal / Canvas Schema Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-purple-400"># [n8n AI Agent Node] - 插槽绑定伪代码</div>
+                        <div class="text-slate-300">AgentNode: <span class="text-emerald-300">"Tools Agent"</span> {</div>
+                        <div class="text-slate-300 pl-3">socket_model: <span class="text-indigo-300">GroqChatModel("llama-3.3-70b")</span>,</div>
+                        <div class="text-slate-300 pl-3">socket_memory: <span class="text-cyan-300">WindowBufferMemory(k=10)</span>,</div>
+                        <div class="text-slate-300 pl-3">socket_tools: [</div>
+                        <div class="text-amber-300 pl-6">MCPClientTool("jira-mcp-server"),</div>
+                        <div class="text-amber-300 pl-6">VectorStoreTool("qdrant-rag"),</div>
+                        <div class="text-amber-300 pl-6">CustomHttpRequestTool("fastapi-agent-8000")</div>
+                        <div class="text-slate-300 pl-3">]</div>
+                        <div class="text-slate-300">}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>极简拖拽拼装：</strong>Model/Memory/Tools 节点不是独立工作流步骤，而是通过底部专用 Socket 物理“插”入 Agent 主节点。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>灵活切换模型：</strong>无需修改任何下游 Tool 代码，直接将 Model Socket 从 Groq 切换为本地 Ollama 即刻生效。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-sitemap text-purple-600"></i>
+                    <span>物理特性：利用子插槽组网，解耦推演大脑、上下文记忆与物理工具</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Execution & Expression Mapping -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code-compare"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. ReAct 思考循环与参数表达式</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Agentic Execution Loop & $fromAI()</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Execution Mechanics</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 2.1 Agent 节点自动 ReAct 思考循环</div>
+                        <div class="text-slate-300">Prompt ──► LLM Model Socket ──► Decide Tool Call</div>
+                        <div class="text-emerald-300">Tool Socket Execution ──► Return Observation ──► Repeat</div>
+                        <br/>
+                        <div class="text-indigo-400"># 2.2 n8n 魔法表达式：动态获取 AI 提取参数</div>
+                        <div class="text-amber-300">{{ $fromAI("issue_id", "The BUG ticket ID to query") }}</div>
+                        <div class="text-slate-400"># 自动生成工具入参 Schema 并充当运行时取值注入器</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>`$fromAI()` 魔法表达式：</strong>自动向 LLM 描述入参语义，并在模型生成 JSON 时反向抽取绑定至 HTTP Request 节点。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零代码 ReAct 闭环：</strong>Tool 运行日志无需手写解析，n8n 自动将返回值包装为 Observation 喂给 Model 插槽。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-wand-magic-sparkles text-indigo-600"></i>
+                    <span>核心：使用 `$fromAI()` 实现无缝的 AI 参数自动对齐与结构化提纯</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Canvas Node Connection Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">n8n AI Agent Sub-Node Socket Connection Topology / n8n AI Agent 子节点插槽组网拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Visual Agent Canvas</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-comments mr-1 text-emerald-400"></i>1. Chat Trigger</div>
+                    <div class="text-[9px] text-slate-400">User Input Entry</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-2/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-indigo-400"></i>2. AI Agent Central Node</div>
+                    <div class="flex justify-around text-[9px] text-slate-300 mt-1 border-t border-indigo-800/80 pt-1">
+                        <span class="text-purple-300">Model Socket</span>
+                        <span class="text-cyan-300">Memory Socket</span>
+                        <span class="text-amber-300">Tools Socket</span>
+                    </div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-paper-plane mr-1 text-purple-400"></i>3. Response Output</div>
+                    <div class="text-[9px] text-slate-400">Structured Chat / Webhook</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>n8n 的插槽组网模式将复杂 Agent 的物理构成打散为标准可插拔模块！</strong>通过在 AI Agent 节点下方插接 LLM Model、Memory 与 Tools 插槽，配合 `$fromAI()` 表达式提取参数，开发者可以用极致的拖拽效率搭建出兼具大模型推演与微服务调用的可视化 Agent。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">n8n AI Agent 节点解构：Sub-socket 插槽组网与 $fromAI()</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 剖析 n8n 画布上的 AI Agent 插槽结构：</span>
+                    “向学员深入剖析：在 n8n 中，AI Agent 节点是一个复合型节点。请大家注意它底部的三个 Socket（插槽）：Model Socket 连接 Groq 或 Ollama 模型；Memory Socket 连接 Window Buffer；Tools Socket 连接 MCP 或 HTTP 工具。这种插槽化设计与我们模块二讲的离散节点思想高度吻合。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 `$fromAI()` 魔法表达式：</span>
+                    “提示学员注意右侧代码：在 n8n HTTP Request 节点中，如果我们想动态获得大模型抽取的参数（比如工单 ID），只需写入 `{{ $fromAI("issue_id", "The bug ticket ID") }}`。n8n 会自动将其转化为工具调用的 JSON Schema 描述并反向抽取给 HTTP 请求注入！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

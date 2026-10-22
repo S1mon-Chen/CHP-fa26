@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - 智能体记忆系统 (Memory Architecture)：Short-term Context vs Long-term Episodic Memory</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-hard-drive"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块一</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                智能体记忆系统 (Memory Architecture)：Short-term Context vs Long-term Episodic Memory
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 Agent 的双层记忆分层机制：结合由 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Context Window & 运行 State 构成的短期工作记忆 (Working Memory)</span>，与基于 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Vector DB / 知识图谱构成的长期情境记忆 (Episodic Memory)</span>，实现跨会话的经验累积与个性化对齐
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Short-term Context vs Long-term Memory) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Short-term Memory (Working Memory / Context Window) -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-memory"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">短期工作记忆 (Short-Term Working Memory)</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Context Window · In-Session Active State</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">In-Memory</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1.5 leading-relaxed overflow-x-auto">
+                        <div class="text-indigo-400">// 短期 Context State 缓冲池 (受窗口大小限制)</div>
+                        <div class="text-slate-300">Active Thread: <span class="text-amber-200 font-bold">"thread_8902_refactor"</span></div>
+                        <div class="text-slate-400">├─ Messages: [UserPrompt, Thought_1, Action_1, Obs_1]</div>
+                        <div class="text-slate-400">├─ Graph State: {current_node: "BugTrack", retry_cnt: 1}</div>
+                        <div class="text-rose-400">└─ Pruning Policy: Sliding Window (TTL = Session End)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700 mt-3">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>即时情境锁定：</strong>保存当前会话的多轮对话 Message 列表、工具中间 Observation 以及 LangGraph 节点状态。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>易失性与容量门限：</strong>受 Transformer Context Window 限制，随会话结束销毁，需靠剪枝中间件压缩。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-bolt text-indigo-600"></i>
+                    <span>定位：保障当前单一工单推演的局部逻辑一致性与上下文连贯</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Long-term Episodic Memory (Cross-session Experience Base) -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">长期情境记忆 (Long-Term Episodic Memory)</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Vector DB / Knowledge Graph · Cross-Session Base</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Persistent</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1.5 leading-relaxed overflow-x-auto">
+                        <div class="text-purple-400">// 跨会话向量召回历史成功经验 (Episodic Store)</div>
+                        <div class="text-cyan-300">Query: <span class="text-slate-300">"How to fix 504 Gateway Timeout in Billing?"</span></div>
+                        <div class="text-emerald-300">Recall Score: <span class="text-amber-300">0.94</span> (From session_2025_11)</div>
+                        <div class="text-slate-300">└─ Injected Experience: <span class="text-amber-200">"In past, scaling DB pool to 300 resolved 504."</span></div>
+                        <div class="text-purple-300">└─ User Preference: "Prefers Python fixes over Shell scripts"</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700 mt-3">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>经验与成功模式持久化：</strong>将历史任务中的 Reflexion 反思记忆、重构经验与用户偏好存入向量库。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>免微调 (Training-Free) 进化：</strong>在发起新推演前，通过 RAG 语义检索注入历史最佳实践，实现运行时成长。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-brain text-purple-600"></i>
+                    <span>定位：给予 Agent 跨会话学习能力，避免相同错误在不同工单里重复发生</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Memory Architecture Diagram Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Agent Memory Interaction Topology / 智能体双层记忆协同拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Memory Engine</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-user mr-1 text-indigo-400"></i>User Input</div>
+                    <div class="text-[9px] text-slate-400">Task / Query</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-magnifying-glass mr-1 text-purple-400"></i>Episodic Recall</div>
+                    <div class="text-[9px] text-slate-400">Retrieve Vector DB Experience</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-microchip mr-1 text-emerald-400"></i>Working Memory</div>
+                    <div class="text-[9px] text-slate-400">Active State + Context Window</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-amber-400"></i>LLM Brain</div>
+                    <div class="text-[9px] text-slate-400">Synthesize & Execute</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>长期情境记忆 (Episodic Memory) 是赋予 Agent 跨会话进化的唯一通道！</strong>短期记忆（Context Window）保证单个工单处理不走样，而长期记忆通过向量库储存历史犯错与修复教训，使得 Agent 无需频繁微调即可越用越聪明。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">智能体记忆系统：Short-term Context vs Long-term Episodic Memory</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授智能体双层记忆系统：</span>
+                    “向学员深入剖析：Agent 的记忆系统可以精准划分为 Working Memory（短期工作记忆）与 Episodic Memory（长期情境记忆）。短期记忆是当前的上下文窗口与 LangGraph 状态图，负责当前任务的推演；而长期记忆依托向量数据库与知识图谱，跨会话保存历史成功方案。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 结合右侧 504 故障召回案例：</span>
+                    “提示学员看右侧的终端 Trace：当用户抛出一个新的 504 报错时，Agent 在推理前先向长期记忆向量库发起召回，发现了上个月处理同类故障时‘将数据库连接池扩容到 300 即可修复’的成功经验，直接避免了二次走弯路。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - n8n 与 MCP 深度集成：挂载 MCP Client 节点直连跨系统 Server 资源</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-circle-nodes"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块三</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                n8n 与 MCP 深度集成：挂载 MCP Client 节点直连跨系统 Server 资源
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                在 n8n 可视化画布中实现 Anthropic Model Context Protocol (MCP) 标准接入：通过挂载 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">MCP Client Tool 节点</span> 无缝握手远程 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Jira / GitHub / PostgreSQL MCP Servers</span>，解锁零硬编码的动态工具感知（`tools/list`）与跨系统安全调度
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: MCP Client Node Mechanism vs Distributed Handshake Trace) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: n8n MCP Client Sub-Node Mechanism -->
+            <div class="group relative rounded-2xl border border-cyan-200 bg-cyan-50/30 p-4 md:p-5 soft-shadow transition hover:border-cyan-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-600 text-base shrink-0">
+                                <i class="fa-solid fa-plug-circle-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. n8n MCP Client 子节点挂载机制</h3>
+                                <p class="text-[10px] text-cyan-800 font-mono">Dynamic Tool Discovery & Transports</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-800 text-[10px] font-mono font-bold">MCP Sub-Node</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-cyan-400"># [n8n MCP Client Tool Socket] 配置范例</div>
+                        <div class="text-slate-300">MCPClientToolNode: <span class="text-emerald-300">"mcp-jira-bridge"</span> {</div>
+                        <div class="text-slate-300 pl-3">transport: <span class="text-amber-300">"sse"</span>, <span class="text-slate-500"># 支持 SSE 或 Stdio 模式</span></div>
+                        <div class="text-slate-300 pl-3">url: <span class="text-indigo-300">"http://mcp-jira-server:3000/sse"</span>,</div>
+                        <div class="text-slate-300 pl-3">headers: { <span class="text-emerald-300">"Authorization"</span>: <span class="text-emerald-300">"Bearer {{ $credentials.mcp_key }}"</span> }</div>
+                        <div class="text-slate-300">}</div>
+                        <br/>
+                        <div class="text-cyan-400"># 动态握手过程：向 AI Agent 暴露工具集</div>
+                        <div class="text-slate-300">1. Client 触发 <span class="text-purple-300">tools/list</span> ──► 拉取 Jira API 描述</div>
+                        <div class="text-slate-300">2. 自动格式化为大模型熟悉的 Function Schema 放入 Tools 插槽</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零硬编码 API 适配：</strong>只要远程服务实现了 MCP Server 协议，n8n AI Agent 节点即可自动识别其所有函数。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>多传输管道支持：</strong>同时支持本地 Docker 进程的 `Stdio` 管道与跨网络微服务的 `SSE (Server-Sent Events)` 协议。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-cyan-200/60 text-[11px] text-cyan-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-split-up-and-left text-cyan-600"></i>
+                    <span>物理特性：把离散的第三方工具调用归一化为标准的 MCP 协议神经触角</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Distributed Cross-System Handshake Trace -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 跨系统 MCP 物理调度与执行 Trace</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Cross-System Handshake & Side-Effect Guard</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Distributed Trace</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 2.1 用户请求：“检查 GitHub PR #102 并创建 Jira Bug”</div>
+                        <div class="text-slate-300">[n8n Agent] ──► <span class="text-amber-300">MCP Client (GitHub SSE)</span>: call_tool("get_pr_diff", {id: 102})</div>
+                        <div class="text-slate-400"> Observation: "NullPointerException at OrderController.java:42"</div>
+                        <br/>
+                        <div class="text-indigo-400"># 2.2 ReAct 推理后跨系统调度第二个 MCP Server</div>
+                        <div class="text-slate-300">[n8n Agent] ──► <span class="text-emerald-300">MCP Client (Jira SSE)</span>: call_tool("create_issue", {...})</div>
+                        <div class="text-emerald-300"> Success: "Created Ticket BUG-8901 in Jira"</div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>协议级身份隔离：</strong>n8n 托管 MCP 凭证密钥，LLM 大脑仅能接触工具结构而无法直接触碰环境变量中的原始 Token。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>异构系统打通：</strong>一个低代码 Agent 节点可插接无限个 MCP Client，瞬间打通 GitHub、Jira、GitLab 与物理数据库。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                    <span>核心：消除 OAuth 与 REST API 适配冗余，实现可视化 Agent 的分布式工具互联</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Visual Topology Diagram Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-cyan-300">n8n Visual AI Agent & MCP Distributed Server Architecture / n8n 可视化 MCP 分布式架构</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">MCP Distributed Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-indigo-400"></i>n8n AI Agent Node</div>
+                    <div class="text-[9px] text-slate-400">Central ReAct Loop</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-plug mr-1 text-cyan-400"></i>MCP Client Sub-node</div>
+                    <div class="text-[9px] text-slate-400">tools/list Auto-Discovery</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-arrows-left-right mr-1 text-amber-400"></i>Stdio / SSE Transports</div>
+                    <div class="text-[9px] text-slate-400">Standardized JSON-RPC 2.0</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-server mr-1 text-emerald-400"></i>Remote MCP Servers</div>
+                    <div class="text-[9px] text-slate-400">Jira / GitHub / PostgreSQL</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>MCP 协议为低代码工作流编排打通了标准化的神经触角！</strong>通过在 n8n 中挂载 MCP Client 节点，低代码智能体能够以零硬编码的优雅姿态无缝驾驭全网分布式 MCP Server 资源，实现高内聚、易扩展的企业级 AI 自动流。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">25</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[62.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (24.html <- 25.html -> 26.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">n8n 与 MCP 深度集成：挂载 MCP Client 节点直连跨系统 Server</span>
+            <a href="26.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="24.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="26.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 讲授低代码与 MCP 协议结合的意义：</span>
+                    “向学员深入剖析：在过去的低代码平台中，如果我们要连接一个第三方 API，通常需要手动配置 OAuth、编写大量的自定义 HTTP Request 标头。而有了 MCP 协议后，n8n 只需要挂载一个 MCP Client Tool 节点，然后输入远程 Server 的 SSE URL，系统就能通过 `tools/list` 自动列出所有可用函数！”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析右侧跨系统跨服务 Trace：</span>
+                    “提示学员看右侧的执行 Trace：同一个 n8n AI Agent 节点，先通过 MCP 调 GitHub Server 获取 PR 代码差异，接着推演发现 Bug 后，立马通过另一个 MCP Client 调 Jira Server 创建工单。这种‘零硬编码’的协议级握手，极大地提升了低代码 Agent 的扩展边界。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '24.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '26.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

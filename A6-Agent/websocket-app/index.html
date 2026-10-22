@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSocket 消息推送</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .status {
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    
+    .status.connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    
+    .status.disconnected {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    
+    .message-box {
+      background-color: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      min-height: 300px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    
+    .message {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f8f9fa;
+      border-left: 4px solid #007bff;
+      border-radius: 4px;
+    }
+    
+    .message-time {
+      color: #666;
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+    
+    .message-content {
+      color: #333;
+      word-wrap: break-word;
+    }
+    
+    .test-form {
+      margin-top: 20px;
+      padding: 20px;
+      background-color: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .test-form input,
+    .test-form textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .test-form button {
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .test-form button:hover {
+      background-color: #0056b3;
+    }
+    
+    .clear-btn {
+      background-color: #dc3545;
+    }
+    
+    .clear-btn:hover {
+      background-color: #c82333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>WebSocket 消息推送</h1>
+    
+    <div id="status" class="status disconnected">
+      未连接
+    </div>
+    
+    <h2>接收到的消息：</h2>
+    <button onclick="clearMessages()" class="clear-btn" style="margin-bottom: 10px; padding: 8px 16px;">清空消息</button>
+    <div id="messageBox" class="message-box">
+      <p style="color: #999; text-align: center;">暂无消息</p>
+    </div>
+    
+    <div class="test-form">
+      <h2>发送测试消息</h2>
+      <input type="text" id="title" placeholder="标题">
+      <textarea id="content" rows="3" placeholder="内容"></textarea>
+      <button onclick="sendMessage()">发送</button>
+    </div>
+  </div>
+  
+  <script>
+    const ws = new WebSocket(`ws://${window.location.host}`);
+    const statusEl = document.getElementById('status');
+    const messageBox = document.getElementById('messageBox');
+    
+    ws.onopen = () => {
+      statusEl.textContent = '已连接';
+      statusEl.className = 'status connected';
+    };
+    
+    ws.onclose = () => {
+      statusEl.textContent = '未连接';
+      statusEl.className = 'status disconnected';
+    };
+    
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      displayMessage(message);
+    };
+    
+    function displayMessage(message) {
+      if (messageBox.querySelector('p')) {
+        messageBox.innerHTML = '';
+      }
+      
+      const messageEl = document.createElement('div');
+      messageEl.className = 'message';
+      
+      const time = new Date().toLocaleString('zh-CN');
+      messageEl.innerHTML = `
+        <div class="message-time">${time}</div>
+        <div class="message-content">${JSON.stringify(message, null, 2)}</div>
+      `;
+      
+      messageBox.insertBefore(messageEl, messageBox.firstChild);
+    }
+    
+    async function sendMessage() {
+      const title = document.getElementById('title').value;
+      const content = document.getElementById('content').value;
+      
+      try {
+        const response = await fetch('/api/message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ title, content, timestamp: new Date().toISOString() })
+        });
+        
+        const result = await response.json();
+        alert('发送成功：' + JSON.stringify(result));
+        
+        document.getElementById('title').value = '';
+        document.getElementById('content').value = '';
+      } catch (error) {
+        alert('发送失败：' + error.message);
+      }
+    }
+    
+    function clearMessages() {
+      messageBox.innerHTML = '<p style="color: #999; text-align: center;">暂无消息</p>';
+    }
+  </script>
+</body>
+</html>

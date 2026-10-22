@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - 模块二导论：为什么复杂 Agent 需要状态图 (State Graph) 编排控制流</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块二导论</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块二导论：为什么复杂 Agent 需要状态图 (State Graph) 编排控制流
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                从线性 Sequential Chain 向有向有环图 (Directed Cyclic Graph) 的控制流工程跨越：克服传统 Pipeline 无法处理 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">状态回溯与图环（Loops）</span> 的缺陷，利用 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LangGraph 状态图 (State Graph)</span> 将离散节点与共享 State 建立在刚性物理控制网之上
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Linear Pipeline Risks vs LangGraph State Graph) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Traditional Linear Pipeline Limitations -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-4 md:p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-base shrink-0">
+                                <i class="fa-solid fa-timeline"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">传统线性 Pipeline / Chain 的物理困境</h3>
+                                <p class="text-[10px] text-rose-800 font-mono">Linear / Sequential DAG Limitations</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold">Fragile Flow</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3">
+                        <div class="text-slate-400">// 传统线性 Chain: 假定单向无环</div>
+                        <div class="text-slate-300">chain = prompt | llm | output_parser</div>
+                        <div class="text-rose-400">// 困境 1: 遇到错误无法环回（No Loops）</div>
+                        <div class="text-rose-400">// 困境 2: 缺乏跨节点共享 Memory 状态存储</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>无法表达环路 (Cycles)：</strong>真实工单（如“草拟 $\to$ 人类驳回 $\to$ 重新修改”）需要图环，线性链直接崩退。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>状态丢失与断点失失效：</strong>长生命周期中无 Checkpoint 持久化，中途服务器重启导致推演状态全盘清零。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-rose-200/60 text-[11px] text-rose-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                    <span>痛点：线性 Chain 适用于简单的 FAQ 问答，但在复杂工单排查中极易死锁爆发</span>
+                </div>
+            </div>
+
+            <!-- Right Card: LangGraph State Graph Engine -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-diagram-project"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">LangGraph 状态图 (State Graph) 控制力</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Directed Cyclic Graph & Shared State</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Stateful Agent</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3">
+                        <div class="text-indigo-400">// LangGraph 核心哲学: Nodes + Edges + Shared State</div>
+                        <div class="text-slate-300">builder = StateGraph(EmailAgentState)</div>
+                        <div class="text-cyan-300">builder.add_conditional_edges("draft", route_func)</div>
+                        <div class="text-emerald-300">app = builder.compile(checkpointer=MemorySaver())</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>显式离散节点 (Discrete Nodes)：</strong>把 Agent 拆解为 LLM/Data/Action/Human 单一职责节点。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>图环控制 (Cycles & Conditions)：</strong>用代码定义的条件边收敛模型的自由跳转，支持无限次自愈与纠偏。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass-drafting text-indigo-600"></i>
+                    <span>工程突破：平衡自主权 (Agency) 与控制力 (Control)，防止模型陷入无限死循环</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Linear Chain vs State Graph Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Control Flow Engineering Transition / 控制流工程演进图谱</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">LangGraph Design Paradigm</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/3">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-arrow-right-long mr-1 text-rose-400"></i>1. Linear Chain</div>
+                    <div class="text-[9px] text-slate-400">Step 1 ──► Step 2 ──► Step 3 (No Return)</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/3">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-rotate-right mr-1 text-indigo-400"></i>2. State Graph Loop</div>
+                    <div class="text-[9px] text-slate-400">Node A ──► Node B ◄──► Re-eval (Cycles)</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/3">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-floppy-disk mr-1 text-emerald-400"></i>3. Checkpointed Graph</div>
+                    <div class="text-[9px] text-slate-400">Node + Shared State + Interrupt()</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>状态图 (State Graph) 是驯服大模型非确定性决策的刚性容器！</strong>单纯将任务硬编码为单向 Chain 极其脆弱；通过将 Agent 抽象为离散节点（Nodes）、共享状态（State）与条件图环（Cyclic Edges），既赋予了大模型足够自主的排查空间，又在工程侧筑牢了不崩溃的安全围栏。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">11</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[27.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (10.html <- 11.html -> 12.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块二导论：为什么复杂 Agent 需要状态图编排控制流</span>
+            <a href="12.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="10.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="12.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员开启模块二（Python/LangGraph 状态图）：</span>
+                    “向学员深入剖析：在模块一中，我们解构了 Agent 的认知理论与基础设施。从模块二开始，我们将手把手编写 Python 代码。首先要探讨的就是 LangChain 团队为何要推出 LangGraph：因为在面对真实复杂的客服邮件或故障诊断时，单向的 Sequential Chain（如 A $\to$ B $\to$ C）一旦遇到异常无法做图环回溯。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 讲授 Thinking in LangGraph 核心点：</span>
+                    “提示学员注意右侧的 State Graph：LangGraph 的核心思想在于 Balance control with agency（在模型自治与代码控制力之间取得平衡）。通过将 Agent 拆解为离散节点（Nodes）、共享状态（Shared State）以及有向有环转换（Edges），我们获得了对 Agent 行为的绝对控制力。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

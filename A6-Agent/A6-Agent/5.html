@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 05 - 自主推理范式 (2/3)：Plan-and-Solve / Plan-and-Execute 复杂任务分层拆解</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 6: Agent Architecture & Reasoning Engine)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-list-check"></i>
+                <span>第 6 课：智能体架构与自主决策引擎 · 模块一</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                自主推理范式 (2/3)：Plan-and-Solve / Plan-and-Execute 复杂任务分层拆解
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构长链条复杂任务的解耦治理模式：克服纯 ReAct 易出现的“局部迷失与目标漂移”，引入 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">宏观规划器 (Macro Planner)</span> 生成全局 DAG 拓扑图，配合 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">微观执行器 (Micro Executor)</span> 逐项调度，并在遇到不可预期阻碍时动态触发 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Re-Planning 动态重规划闭环</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Paradigm Mechanics vs Execution Trace) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Plan-and-Execute Core Mechanism -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-sitemap"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">Plan-and-Execute 架构分层解耦</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Macro Planning + Micro Execution</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Paradigm Core</span>
+                    </div>
+
+                    <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+                        在步骤大于 5 步的长链条任务中（如“Java 遗留系统重构”或“跨服务诊断”），ReAct 往往因为每步注意力被局部 Observation 牵引而丢失终局目标。Plan-and-Execute 采用双层结构：
+                    </p>
+
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">1. Macro Planner</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">宏观规划引擎 (Planner)：</strong>
+                                <span class="text-slate-600 text-[11px]">将终局目标（Ultimate Goal）拆解为包含顺序、依赖与并行关系的结构化 Task Queue / DAG 图。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">2. Micro Executor</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">微观执行引擎 (Executor)：</strong>
+                                <span class="text-slate-600 text-[11px]">专注当前单个子 Task（如“读取配置文件”），结合 ReAct 调工具，完成后向 Planner 提交产物。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">3. Dynamic Replanner</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">动态重规划 (Replanning Loop)：</strong>
+                                <span class="text-slate-600 text-[11px]">当某个子 Task 失败或环境变化时，Planner 重新评估剩余步骤，裁剪或重新生成 Task DAG。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-to-eye text-indigo-600"></i>
+                    <span>特点：大局观（Planner）与脚踏实地（Executor）解耦，抗长链条漂移</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Java Legacy Refactoring Plan-and-Execute Trace -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code-merge"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">旧版 Java 模块重构案例 Trace 剖析</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Plan-and-Execute Refactoring Cycle</p>
+                            </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Refactoring DAG</span>
+                    </div>
+
+                    <!-- Terminal Trace Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1.5 leading-relaxed overflow-x-auto">
+                        <div class="text-slate-400">// Task: "Refactor OrderService.java to Spring Boot 3"</div>
+                        
+                        <div class="text-indigo-300"><span class="text-slate-500">[Planner]</span> Initial Plan Generated:</div>
+                        <div class="text-slate-300 pl-2">├─ Task 1: Scan AST dependencies & SQL calls [COMPLETED]</div>
+                        <div class="text-slate-300 pl-2">├─ Task 2: Replace javax.* with jakarta.* namespace [RUNNING]</div>
+                        <div class="text-slate-300 pl-2">├─ Task 3: Migrate MyBatis XML to Spring Data JPA [PENDING]</div>
+                        <div class="text-slate-300 pl-2">└─ Task 4: Run Docker container unit tests [PENDING]</div>
+                        
+                        <div class="border-t border-slate-800 my-1"></div>
+
+                        <div class="text-amber-300"><span class="text-slate-500">[Executor]</span> Running Task 2...</div>
+                        <div class="text-rose-300">└─ Error: Missing javax.persistence.Entity replacement map!</div>
+
+                        <div class="border-t border-slate-800 my-1"></div>
+
+                        <div class="text-cyan-300"><span class="text-slate-500">[Replanner]</span> Error detected! Injecting Task 2.1:</div>
+                        <div class="text-emerald-300">└─ Injected: "Fetch Jakarta Migration RAG Docs" -> Retry Task 2 -> Re-run DAG!</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700 mt-2.5">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>全局控制：</strong>遇到意外错误时，Planner 能够全局注入依赖项（Task 2.1），而不是盲目在错误点死循环。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-diagram-next text-purple-600"></i>
+                    <span>工程优势：将大任务的 Tokens 消耗与状态树清晰打散，降低单次 LLM 上下文压力</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Plan-and-Execute Architecture Diagram Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Plan-and-Execute Control Architecture / 规划与执行双核控制拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Wang et al., 2023 / LangChain Planner</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-lightbulb mr-1 text-indigo-400"></i>User Goal</div>
+                    <div class="text-[9px] text-slate-400">Complex Long-horizon</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-sitemap mr-1 text-purple-400"></i>Macro Planner</div>
+                    <div class="text-[9px] text-slate-400">Generate Task DAG</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>Micro Executor</div>
+                    <div class="text-[9px] text-slate-400">Run Single Sub-Task</div>
+                </div>
+
+                <i class="fa-solid fa-rotate-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-arrows-rotate mr-1 text-amber-400"></i>Re-Planner</div>
+                    <div class="text-[9px] text-slate-400">Update Remaining DAG</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 md:p-3.5 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>宏观规划 (Planner) 与微观执行 (Executor) 解耦，是驯服大模型长链条注意力漂移的唯一工程解！</strong>在面对步骤大于 5 步的复杂工单或重构时，单靠 ReAct 会因为上下文过载而“走一步看一步”最终偏离主题；而 Plan-and-Execute 确保了全局图拓扑永远处于可控状态。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">05</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[12.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (4.html <- 5.html -> 6.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">自主推理范式 (2/3)：Plan-and-Execute 复杂任务分层拆解</span>
+            <a href="6.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="4.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="6.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Plan-and-Execute 的动机：</span>
+                    “向学员深入剖析：ReAct 范式在单步或 2-3 步的小任务中表现完美，但是在应对涉及 5 步以上的代码重构或跨服务排查时，随着 Observation 增长，大模型很容易‘走着走着就忘了出发的目的’。这就是注意力漂移（Attention Drift）。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析分层与 Re-Planner 的价值：</span>
+                    “提示学员注意右侧的 Java 重构案例：Planner 在初始时生成 4 个子任务，当 Executor 在 Task 2 遇到未知错误时，并没有盲目重试，而是抛给 Re-Planner，全局插播了 Task 2.1 查阅 RAG 文档，从而优雅拯救了整体执行链路。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

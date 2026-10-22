@@ -1,0 +1,195 @@
+{
+  "name": "Demo: My first AI Agent in n8n - BookStore",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# User message\n{{ $json.message }}",
+        "options": {
+          "systemMessage": "="
+        }
+      },
+      "id": "dc19a4bc-4eca-4e7b-bc28-d72e7c511148",
+      "name": "Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        592,
+        32
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        656,
+        240
+      ],
+      "id": "7068b68e-ee54-401f-bf10-596c0c32e5e9",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "http://127.0.0.1:8001/mcp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        816,
+        240
+      ],
+      "id": "598746d1-dc5f-45c7-85e9-063297bd9e99",
+      "name": "MCP Client"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:7b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        512,
+        240
+      ],
+      "id": "3f897e52-77b1-4230-814f-4c2830da6ddf",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "XC1Wo2phIN23EdMl",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "booksearch",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        32
+      ],
+      "id": "51a05dfd-b720-457c-a2da-b095b687e5f0",
+      "name": "Webhook",
+      "webhookId": "72fdbff1-7d25-48e1-8628-8fe2351e1a55"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"sessionId\": \"{{ $json.body.sessionId || $uuid() }}\",\n  \"message\": \"{{$json.body.Question}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        320,
+        32
+      ],
+      "id": "e0029959-e93a-4030-9a23-3cf7b2aeb9d1",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={\n  \"Answer\": \"{{ $json.output}}\"\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        944,
+        32
+      ],
+      "id": "d0dbdc00-b95c-4358-a8a0-178d5dfa7c6e",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "96e1d27a-203e-40ca-87be-cd088912c400",
+  "meta": {
+    "templateId": "self-building-ai-agent",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1236f5858179f85a9fe36f026e051c0b8ea39c5dd83cb0c8ee2b62cd8ebd37d7"
+  },
+  "id": "s3INT8L5JOCvx2im",
+  "tags": []
+}
