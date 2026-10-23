@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 23 - OpenAI Swarm 与 Handoffs 机制：transfer_to_agent 动态交接原理</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-arrows-split-up-and-left"></i>
+                <span>第 7 课：控制流工程 · 模块三多智能体蜂群</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                OpenAI Swarm 与 Handoffs 机制：<span class="text-cyan-600 font-mono">transfer_to_agent</span> 动态交接原理
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构极简智能体交接原语：剖析 OpenAI Swarm 如何通过把 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">Agent 转移降维为 Tool 函数返回</span>，实现零中心路由负担的动态 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Handoff 交接协议</span>，结合宿主控制循环（Host Loop）完成无缝接力
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Handoff Function Abstraction vs Swarm Host Control Loop) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Function-based Handoff Abstraction -->
+            <div class="group relative rounded-2xl border border-cyan-200 bg-cyan-50/30 p-4 md:p-5 soft-shadow transition hover:border-cyan-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-600 text-base shrink-0">
+                                <i class="fa-solid fa-code font-bold"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Handoff（交接）函数抽象</h3>
+                                <p class="text-[10px] text-cyan-800 font-mono">Agent-as-a-Tool Handoff Abstraction</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-800 text-[10px] font-mono font-bold">Agent as Tool</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-cyan-400"># 将 Agent B 包装为 Agent A 的原生 Tool 工具函数</div>
+                        <div class="text-purple-300">billing_agent = Agent(name=<span class="text-emerald-300">"Billing Agent"</span>, instructions=<span class="text-emerald-300">"..."</span>)</div>
+                        <br/>
+                        <div class="text-cyan-400">def transfer_to_billing_agent():</div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"""Transfer user query directly to specialized billing agent."""</span></div>
+                        <div class="text-emerald-300 pl-3">return billing_agent <span class="text-slate-500"># 直接返回目标 Agent 实例！</span></div>
+                        <br/>
+                        <div class="text-purple-300">triage_agent = Agent(</div>
+                        <div class="text-slate-300 pl-3">name=<span class="text-emerald-300">"Triage Agent"</span>,</div>
+                        <div class="text-slate-300 pl-3">functions=[transfer_to_billing_agent]</div>
+                        <div class="text-purple-300">)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>极其简洁的工程语法：</strong>无需定义复杂的 JSON Schema，仅需将返回 Agent 对象的 Python 函数声明为工具即可。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>模型自主决定交接时机：</strong>LLM 根据用户对话上下文，自动决定何时触发 `transfer_to_billing_agent()`。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-cyan-200/60 text-[11px] text-cyan-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-split-up-and-left text-cyan-600"></i>
+                    <span>物理本质：把高级别的 Agent 路由降维为普通 Tool Calling 函数返回</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Swarm Host Control Loop -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-rotate text-base"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Swarm 宿主控制循环 (Host Loop)</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Active Agent Pointer Mutation & Context Continuity</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Host Loop</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 宿主循环内捕获 Tool 返回值并动态修改 active_agent 指针</div>
+                        <div class="text-purple-300">while True:</div>
+                        <div class="text-slate-300 pl-3">response = active_agent.get_completion(messages)</div>
+                        <div class="text-cyan-300 pl-3">if response.tool_calls:</div>
+                        <div class="text-slate-300 pl-6">tool_res = execute_tool(response.tool_calls[0])</div>
+                        <div class="text-amber-300 pl-6">if isinstance(tool_res, Agent):</div>
+                        <div class="text-emerald-300 pl-9 font-bold">active_agent = tool_res  # 修改当前激活 Agent 指针！</div>
+                        <div class="text-slate-500 pl-9">messages.append({"role": "tool", "content": "Transferred."})</div>
+                        <div class="text-slate-300 pl-3">else:</div>
+                        <div class="text-slate-300 pl-6">break</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>指针无缝切换（Pointer Mutation）：</strong>宿主环境监听到返回物为 Agent 类型，原位将 `active_agent` 切换为新 Agent。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>上下文平滑续接：</strong>消息队列（`messages`）被完整继承，新 Agent 直接读取前置 Agent 的对话与工具结果。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：建立在 Python 宿主循环上的可切换状态机指针</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Handoff Execution & Agent Pointer Switch Pipeline Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-cyan-300">OpenAI Swarm Handoff & Active Agent Pointer Switch Topology / Handoff 交接拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Swarm Handoff Pattern</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/5">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-user mr-1 text-indigo-400"></i>1. User Input</div>
+                    <div class="text-[9px] text-slate-400">"Check my refund status"</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/5">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-user-gear mr-1 text-purple-400"></i>2. Triage Agent</div>
+                    <div class="text-[9px] text-slate-400">Triggers `transfer_to_billing()`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/5">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-rotate mr-1 text-cyan-400"></i>3. Host Loop Switch</div>
+                    <div class="text-[9px] text-slate-400">`active_agent = billing`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-2/5">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-user-check mr-1 text-emerald-400"></i>4. Billing Agent Responds</div>
+                    <div class="text-[9px] text-slate-400">Executes Billing Instructions with Clean Context</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>把智能体之间的指挥权转移解构为普通的函数返回 (<code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">transfer_to_agent()</code>)，是极简蜂群架构最优雅的工程抽象！</strong>这种设计免去了复杂的中央路由 Agent 的推理负担，让决策交接自然发生在大模型对特定专业工具调用的选择之中。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">23</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[57.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (22.html <- 23.html -> 24.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="22.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">OpenAI Swarm 与 Handoffs 机制：transfer_to_agent 动态交接原理</span>
+            <a href="24.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="22.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="24.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 剖析 OpenAI Swarm 的极简 Handoff 抽象：</span>
+                    “向学员深入剖析：OpenAI Swarm 框架最惊艳的设计，就是它把复杂的智能体交接（Handoff）降维成了普通的 Tool 工具函数。你不需要定义额外的路由节点，只要写一个 `transfer_to_billing_agent()` 函数，并在里面 `return billing_agent`。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 讲授宿主循环 (Host Loop) 里的指针切换：</span>
+                    “提示学员看右侧代码：宿主环境在 Python 的 `while True` 循环里，一旦检查到工具调用的返回对象是一个 `Agent` 实例，它就会自动将 `active_agent` 指针替换为新的 Agent。下一轮循环时，系统就会使用新 Agent 的 `instructions` 和专属工具集继续推演，同时完整继承消息上下文。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '22.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

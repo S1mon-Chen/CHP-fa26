@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 模块三小结与多 Agent 蜂群架构选型与红线法则</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-compass"></i>
+                <span>第 7 课：控制流工程 · 模块三总结与落地指南</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块三小结与多 Agent 蜂群架构选型与红线法则
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                全盘归纳多智能体蜂群与状态树编排架构：融会贯通 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">蜂群拓扑 (Supervisor/Hierarchical)</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">状态树隔离机制</span>，凝炼生产级 5 大蜂群系统架构红线法则
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Module 3 Technical Synthesis vs 5 Swarm Redline Rules) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Module 3 Technical Architecture Synthesis -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-layer-group"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 模块三四大核心蜂群技术原语复盘</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Module 3 Swarm Technical Primitives</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">4 Primitives</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Topologies</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">三类蜂群控制拓扑：</strong>
+                                <span class="text-slate-600 text-[11px]">Supervisor 中心主管、Hierarchical 多级树状与 Peer-to-Peer 对等 Handoff 网络。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">State Isolation</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">状态树边界隔离与归约：</strong>
+                                <span class="text-slate-600 text-[11px]">精简全局 Global State，将子 Agent 的推演草稿约束在私有 Sub-State 内。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">Loop Guards</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">死锁震荡与成本风暴拦截：</strong>
+                                <span class="text-slate-600 text-[11px]">融合 Max Swarm Turns、Ping-Pong 乒乓交接检测与硬性 Token 预算切断。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-bold text-[10px] shrink-0">Message Bus</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">异构通信协议与事件总线：</strong>
+                                <span class="text-slate-600 text-[11px]">强类型 `CrossAgentMessage` 契约打通 Python、Java 与 Node.js 蜂群接入。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                    <span>物理本质：把全能大 Agent 拆解为强类型、受控路由的多微智能体图网络</span>
+                </div>
+            </div>
+
+            <!-- Right Card: 5 Multi-Agent Swarm Redline Rules -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-shield-cat"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 生产级多 Agent 蜂群 5 大红线法则</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">5 Swarm Production Architecture Redlines</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">5 Redlines</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700">
+                        <!-- Rule 1 -->
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">1. 坚持微型 Agent 专有化 (Micro-Agent Specialization)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">拒绝全能通用 Agent；单个 Agent 的工具注入不得超过 5 个，保持极其干净的专属 Prompt。</p>
+                        </div>
+
+                        <!-- Rule 2 -->
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">2. 强制状态隔离写回 (Isolated State Boundaries)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">子 Agent 的思考与代码草稿禁止泄露至全局 State；仅通过 Reducer 归约写回核心产物。</p>
+                        </div>
+
+                        <!-- Rule 3 -->
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">3. 严禁盲目采用无中心 P2P 自由交接 (Explicit Handoff)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">严肃工程系统首选 Supervisor 或 Hierarchical 拓扑；仅在受限分诊流中使用 P2P Handoff。</p>
+                        </div>
+
+                        <!-- Rule 4 -->
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">4. 必须挂载外层死锁熔断器 (Ping-Pong & Budget Guards)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">配置 `swarm_loop_guard` 监控乒乓死锁（A-B 循环）与全局 Token 费用配额，超标强杀降级。</p>
+                        </div>
+
+                        <!-- Rule 5 -->
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">5. 跨语言解耦采用强类型 DTO 消息契约 (Schema Decoupling)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">异构蜂群通过 JSON/Pydantic `CrossAgentMessage` 与 Redis/RabbitMQ 事件总线解耦网关。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrow-right text-purple-600"></i>
+                    <span>下一步：进入模块四《沙箱容器与确定性测试 Harness (Slides 31-40)》</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Multi-Agent Swarm Production Governance Matrix Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Multi-Agent Swarm Production Architecture & Governance Matrix / 蜂群架构生产治理矩阵</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Module 3 Governance Matrix</span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left font-mono text-[11px]">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400">
+                            <th class="py-1.5 px-3">架构维度 / Aspect</th>
+                            <th class="py-1.5 px-3 text-indigo-300">Supervisor 中心架构</th>
+                            <th class="py-1.5 px-3 text-purple-300">Hierarchical 多级树架构</th>
+                            <th class="py-1.5 px-3 text-cyan-300">Peer-to-Peer 极简 Handoff</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">主要适用场景 / Primary Use-case</td>
+                            <td class="py-1.5 px-3 text-indigo-300">严肃企业级工单流（代码/审查/测试）</td>
+                            <td class="py-1.5 px-3 text-purple-300">超大型跨领域软件重构与多部门流水线</td>
+                            <td class="py-1.5 px-3 text-cyan-300">轻量在线客服分诊与极简 POC 验证</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">状态治理 / State Management</td>
+                            <td class="py-1.5 px-3 text-indigo-300">主管统一归约与写回 Global State</td>
+                            <td class="py-1.5 px-3 text-purple-300">子图分层隔离，局部 Sub-State 自动销毁</td>
+                            <td class="py-1.5 px-3 text-cyan-300">全局长对话 `messages` 完整传递</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">死锁与成本控制 / Guardrail</td>
+                            <td class="py-1.5 px-3 text-indigo-300">主管持锁裁决，极难发生无线震荡</td>
+                            <td class="py-1.5 px-3 text-purple-300">各子主管层级收敛与熔断</td>
+                            <td class="py-1.5 px-3 text-cyan-300">强挂载 Ping-Pong Guard & Max Turns 锁</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>多智能体蜂群的本质是分而治之，而不是混乱的群体辩论！</strong>通过严格的拓扑选择（Supervisor/Hierarchical）、专有化微型 Agent 设计、隔离状态树与硬性 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">swarm_loop_guard</code> 熔断器，架构师能将复杂的协同网络控制在确定性与高吞吐的安全边界内。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块三小结与多 Agent 蜂群架构选型与红线法则</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 总结模块三：多智能体蜂群与状态树编排：</span>
+                    “向学员深入总结：大家请看模块三的整体全景。我们从为什么行业从单 Agent 转向 Multi-Agent Swarms 出发，讲授了 3 种拓扑结构、OpenAI Swarm 的极简 Handoff 机制、全局与局部状态树隔离、对抗性辩论（Debate）与死锁拦截卡扣，最后对比了三大主流框架。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 5 大多 Agent 生产落地方针：</span>
+                    “提示学员注意右侧的 5 大红线法则：1. 微型 Agent 专有化（工具不超过 5 个）；2. 隔离状态树（局部草稿不污染全局）；3. 显式 Handoff 与路线判定；4. 外层 `swarm_loop_guard` 监控乒乓死锁与费用；5. 强类型 DTO 消息总线。做到了这五点，你的蜂群系统就能在高并发下平稳运行！接下来模块四我们将进入《沙箱容器与确定性测试 Harness》！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

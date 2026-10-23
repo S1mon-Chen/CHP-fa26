@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 人类状态覆写 (State Overriding)：恢复前手动干预修改 State (update_state)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-user-pen"></i>
+                <span>第 7 课：控制流工程 · 模块二状态持久化与人机挂起</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                人类状态覆写 (State Overriding)：恢复前手动干预修改 State (<span class="text-amber-600">update_state</span>)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                实现真正的人机混合智能 (Hybrid Human-AI Intelligence)：剖析如何在 HITL 挂起断点利用 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">app.update_state() 物理篡改/修补状态</span>，结合 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">as_node 伪装节点来源</span> 重建图转换轨迹，并无缝触发 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">app.invoke(None) 原位唤醒</span> 后续节点
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: update_state Mechanics vs Human Editing in HITL) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: app.update_state() API Specification -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 md:p-5 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-base shrink-0">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. `update_state()` 物理覆写机制</h3>
+                                <p class="text-[10px] text-amber-800 font-mono">State Patching & Node Identity Spoofing</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">State Overriding Spec</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-amber-400"># 1. 获取会话最新的隔离句柄 Config</div>
+                        <div class="text-slate-300">config = {<span class="text-amber-300">"configurable"</span>: {<span class="text-amber-300">"thread_id"</span>: <span class="text-emerald-300 font-bold">"ticket_8902"</span>}}</div>
+                        <br/>
+                        <div class="text-amber-400"># 2. 人类审批人在打断恢复前，直接更新物理状态字典</div>
+                        <div class="text-purple-300">app.update_state(</div>
+                        <div class="text-slate-300 pl-3">config,</div>
+                        <div class="text-emerald-300 pl-3 font-bold">{"refund_amount": 100, "reason": "CS Manager Approved $100 Limit"},</div>
+                        <div class="text-amber-300 pl-3 font-bold">as_node="human_review_node"  <span class="text-slate-500"># 伪装该写操作出自指定节点</span></div>
+                        <div class="text-purple-300">)</div>
+                        <br/>
+                        <div class="text-amber-400"># 3. 传入 None 原位唤醒，图引擎将读取被人类覆写后的 State 重新计算</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">invoke</span>(<span class="text-cyan-300 font-bold">None</span>, config=config)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-amber-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>增量覆盖与 Reducer 应用：</strong>更新内容与现有快照合并；对于含有 `Annotated[list, add]` 的字段按照归约规则追加。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-amber-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>`as_node` 伪装作用：</strong>告知图引擎“该状态由指定节点产出”，决定后续条件边（Conditional Edges）的下级跳转分支。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-amber-600"></i>
+                    <span>物理本质：建立在持久化 Checkpoint 上的状态强行修改与指针校正</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Human Editing & Draft Correction in HITL -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-user-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 生产场景：大模型生成物的人类二次纠偏</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">LLM Artifact Revision & Human Safeguard</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Hybrid Human-AI</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 场景示例：人类审核并直接修补大模型生成的 SQL 补丁草稿</div>
+                        <div class="text-slate-300">snapshot = app.<span class="text-cyan-300">get_state</span>(config)</div>
+                        <div class="text-slate-500"># 发现大模型生成的 SQL 漏掉了 WHERE 索引条件，人类人工修补：</div>
+                        <div class="text-slate-300">bad_sql = snapshot.values[<span class="text-amber-300">"generated_sql"</span>]</div>
+                        <div class="text-emerald-300">fixed_sql = bad_sql + <span class="text-amber-300">" WHERE tenant_id = 'prod_01'"</span></div>
+                        <br/>
+                        <div class="text-indigo-400"># 将纠偏后的安全 SQL 覆写回 State 字典</div>
+                        <div class="text-purple-300">app.update_state(config, {<span class="text-amber-300">"generated_sql"</span>: fixed_sql})</div>
+                        <div class="text-indigo-400"># 放行执行物理写数据库节点</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">invoke</span>(<span class="text-cyan-300 font-bold">None</span>, config=config)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>超越二元“批准/拒绝”：</strong>人类不仅能点 Approve/Reject，还能直接当编辑（Editor），修补代码、调整参数、校正提示词。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>版本快照自动审计：</strong>每次 `update_state` 均会生成全新的 `checkpoint_id`，留下人类干预的完整审计履历。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>物理本质：人类智慧与大模型自动化推理的高效融合控制通道</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- State Overriding & Resumption Lifecycle Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">State Overriding & Resumption Lifecycle Topology / 状态覆写与唤醒恢复拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">State Overriding Pattern</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-pause mr-1 text-indigo-400"></i>1. HITL Interrupted</div>
+                    <div class="text-[9px] text-slate-400">State Frozen & Stashed</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-user-pen mr-1 text-amber-400"></i>2. Human `update_state`</div>
+                    <div class="text-[9px] text-slate-400">Patch Draft / Parameters</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-floppy-disk mr-1 text-purple-400"></i>3. New Checkpoint</div>
+                    <div class="text-[9px] text-slate-400">Auditable Version Saved</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-play mr-1 text-emerald-400"></i>4. `invoke(None)` Resume</div>
+                    <div class="text-[9px] text-slate-400">Execute Next Nodes Safe</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>人类状态覆写 (State Overriding) 是实现人机协同闭环的最高级防线！</strong>通过调用 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">app.update_state()</code>，架构师赋予人类在关键打断点修改大模型生成草稿或安全参数的能力，以 100% 可控的物理姿态将人工纠偏注入自动化推理流。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">人类状态覆写 (State Overriding)：恢复前手动干预修改 State</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 State Overriding (状态覆写) 机制：</span>
+                    “向学员深入剖析：在第 14 页我们讲了 HITL 打断。但如果人类在审核时，发现大模型生成的 SQL 补丁缺了一个索引条件，或者生成的客服回复草稿用词不够妥当，人类不仅希望能点‘批准’，更希望能直接当编辑（Editor）把它改对——这就是 `update_state`。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 `as_node` 伪装与恢复运行：</span>
+                    “提示学员看右侧代码：我们可以调用 `app.update_state(config, {"generated_sql": fixed_sql}, as_node="human_review")`。这相当于告诉图引擎‘这是经过人工节点修正后的状态’。接着调用 `app.invoke(None, config)`，图引擎就会带着人类修补后的安全数据继续推演后续节点，实现了真正的‘人机混合智能’。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

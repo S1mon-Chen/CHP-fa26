@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 03 - 状态图 (State Graph) 核心架构：State、Nodes 与 Transitions 关系解构</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>第 7 课：控制流工程 · 模块一图工程</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                状态图 (State Graph) 核心架构：State、Nodes 与 Transitions 关系解构
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 LangGraph / Workflows 的三大数学物理组件：用强类型 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Shared State (共享状态)</span> 承载上下文变迁，用单一职责的 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Nodes (离散计算节点)</span> 隔离计算与副作用，用纯函数 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Transitions / Edges (有向边)</span> 路由图状态流动
+            </p>
+        </div>
+
+        <!-- Content Grid (3 Pillars of State Graph) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+            
+            <!-- Card 1: Shared State -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Shared State (共享状态)</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">TypedDict / Pydantic Contract</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">State Memory</span>
+                    </div>
+
+                    <!-- Pseudo Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3">
+                        <div class="text-indigo-400">// 全局单源真理数据契约</div>
+                        <div class="text-purple-300">class AgentState(TypedDict):</div>
+                        <div class="text-slate-300 pl-3">messages: Annotated[list, add]</div>
+                        <div class="text-slate-300 pl-3">generated_code: str</div>
+                        <div class="text-slate-300 pl-3">test_errors: str | None</div>
+                        <div class="text-slate-300 pl-3">retry_count: int</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>全局单源真理 (SSOT)：</strong>充当图运行时的唯一上下文集市，节点间不直接传递对象，只读写 State。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>归约器 (Reducers)：</strong>支持追加（`add`）、合并与覆盖更新机制，防止并发修改数据丢失。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-memory text-indigo-600"></i>
+                    <span>物理本质：图运行时的持久化内存数据快照（State Snapshot）</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Nodes -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-cube"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Nodes (离散计算节点)</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Pure Python Functions / Handlers</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Discrete Functions</span>
+                    </div>
+
+                    <!-- Pseudo Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3">
+                        <div class="text-purple-400">// 接收 State，仅返回局部修改</div>
+                        <div class="text-purple-300">def write_code_node(state: AgentState):</div>
+                        <div class="text-slate-300 pl-3">code = llm.generate(state["messages"])</div>
+                        <div class="text-cyan-300 pl-3">return {</div>
+                        <div class="text-slate-300 pl-6">"generated_code": code,</div>
+                        <div class="text-slate-300 pl-6">"retry_count": state["retry_count"] + 1</div>
+                        <div class="text-cyan-300 pl-3">}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>单一职责原理 (SRP)：</strong>每一个 Node 仅完成一项确定操作（如推理、调工具、跑测试、写 DB）。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>增量写补丁 (Partial Mutation)：</strong>Node 返回局部字典，框架自动将其与 Shared State 进行智能 Merge。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-gears text-purple-600"></i>
+                    <span>物理本质：接收状态并输出增量变更补丁的纯函数运算单元</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Transitions / Edges -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-route"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">3. Transitions (有向边与路由)</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">Normal & Conditional Edges</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Control Edges</span>
+                    </div>
+
+                    <!-- Pseudo Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-3 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3">
+                        <div class="text-emerald-400">// 确定性边与条件边路由</div>
+                        <div class="text-slate-300">builder.add_edge("START", "write")</div>
+                        <div class="text-purple-300">def route_eval(state: AgentState):</div>
+                        <div class="text-slate-300 pl-3">if state["test_errors"]: return "write"</div>
+                        <div class="text-slate-300 pl-3">return "END"</div>
+                        <div class="text-cyan-300">builder.add_conditional_edges("eval", route_eval)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>普通边 (Normal Edges)：</strong>无条件直接推进指针（如 A $\to$ B）。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>条件边 (Conditional Edges)：</strong>读取当前 State，依靠 Python 纯函数推导动态决定下一个 Node 或向 `END` 收敛。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-emerald-600"></i>
+                    <span>物理本质：决定状态流转指针（Pointer）跳转方向的控制逻辑</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Topology Diagram Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">State Graph Interaction Topology / 状态图三大核心组件交互拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">State-Machine Mechanics</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-2 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-indigo-400"></i>1. Shared State</div>
+                    <div class="text-[9px] text-slate-400">Global Dict (Single Source of Truth)</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-cube mr-1 text-purple-400"></i>2. Node Execution</div>
+                    <div class="text-[9px] text-slate-400">Read State & Output Partial Patch</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-route mr-1 text-emerald-400"></i>3. Conditional Edge</div>
+                    <div class="text-[9px] text-slate-400">Eval State -> Route Next Node / END</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>把业务逻辑打散为纯函数节点（Nodes），把流转控制留给有向边（Edges），把上下文传递收敛至强类型状态（State）！</strong>这种解耦保证了每一个 Node 都可以独立单测与替换，而控制流完全由清晰的有向边与条件函数接管。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">03</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[7.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (2.html <- 3.html -> 4.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="2.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">状态图 (State Graph) 核心架构：State、Nodes 与 Transitions</span>
+            <a href="4.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="2.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="4.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 状态图三大三大物理要素讲授重点：</span>
+                    “向学员深入剖析：为什么 LangGraph 和 LlamaIndex Workflows 都会抽象这三要素？首先，State 相当于共享数据库（Shared Memory）；Node 相当于无状态微服务函数；Edge 相当于 API 路由。Node 读取 State 算完后返回 Partial Dict，再由 Edge 决定下一个调哪个 Node。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 Partial State Mutation（局部状态修改）：</span>
+                    “重点引导学员注意 Node 函数的输入输出：Node 的输入是读全局全量 State，但输出仅需返回发生改变的局部字典（例如 `{'retry_count': 1}`）。这种设计降低了 Node 的编写复杂度，也是图状态机实现增量更新（Reducers）的核心支撑。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '2.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - 长生命周期工作流引擎融合：LangGraph + Temporal / Cadence</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-network-wired"></i>
+                <span>第 7 课：控制流工程 · 模块二状态持久化与企业架构融合</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                长生命周期工作流引擎融合：LangGraph + Temporal / Cadence
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                突破单图边界构建跨微服务持久化基础设施：解构如何将 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LangGraph 动态 AI 思考图</span> 封装为 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Temporal 强一致 Activity 节点</span>，结合 Temporal 工业级分布式持久化执行（Durable Execution）、跨月定时器与 Saga 事务回滚，实现高可用 AI 微服务
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Macro Industrial Engine vs Micro AI Reasoning Graph) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Macro vs Micro Division of Labor -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-server"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 宏观工作流与微观 AI 图分工架构</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Temporal Macro-Orchestration & LangGraph Micro-Reasoning</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Hybrid Pattern</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Temporal 宏观引擎</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">分布式长作业持久化 (Durable Execution)：</strong>
+                                <span class="text-slate-600 text-[11px]">负责跨微服务 Saga 事务、跨月定时调度（Timers）、心跳存活与跨语言（Java/Go/Python）调用。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">LangGraph 微观大脑</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">非确定性图状态推演 (AI State Graph)：</strong>
+                                <span class="text-slate-600 text-[11px]">封装在 Temporal Activity 内部，专职处理 ReAct 思考循环、RAG 向量检索与 Tool 参数补全。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">优势叠加</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">强强联合：</strong>
+                                <span class="text-slate-600 text-[11px]">避免单独使用 LangGraph 搞定分布式锁与微服务死锁，同时避免 Temporal 难以表达动态 LLM 归约图。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-cubes text-purple-600"></i>
+                    <span>物理本质：将 AI 状态图沉淀为工业级分布式微服务网格的单一无状态 Activity 节点</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Temporal Activity Integration Code -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Activity 封装与 Temporal Workflow 代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Wrapping StateGraph inside @activity.defn</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Integration Spec</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 1. 将 LangGraph 编译图定义封装为 Temporal Activity 节点</div>
+                        <div class="text-purple-300">from temporalio import activity, workflow</div>
+                        <br/>
+                        <div class="text-purple-300">@activity.defn</div>
+                        <div class="text-slate-300"><span class="text-cyan-300">async def</span> <span class="text-emerald-300">run_langgraph_agent_activity</span>(params: dict) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3">config = {<span class="text-amber-300">"configurable"</span>: {<span class="text-amber-300">"thread_id"</span>: params[<span class="text-amber-300">"ticket_id"</span>]}}</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">return await</span> langgraph_app.<span class="text-cyan-300">ainvoke</span>(params[<span class="text-amber-300">"input"</span>], config=config)</div>
+                        <br/>
+                        <div class="text-indigo-400"># 2. Temporal 宏观工作流控制：调用 AI Activity 并挂载跨天定时器与 Saga 回滚</div>
+                        <div class="text-purple-300">@workflow.defn</div>
+                        <div class="text-slate-300"><span class="text-cyan-300">class</span> <span class="text-emerald-300 font-bold">EnterpriseTicketWorkflow</span>:</div>
+                        <div class="text-slate-300 pl-3"><span class="text-purple-300">@workflow.run</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">async def</span> <span class="text-cyan-300">run</span>(self, ticket: dict) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-6">ai_res = <span class="text-cyan-300">await</span> workflow.<span class="text-cyan-300">execute_activity</span>(</div>
+                        <div class="text-slate-300 pl-9">run_langgraph_agent_activity, ticket,</div>
+                        <div class="text-slate-300 pl-9">start_to_close_timeout=timedelta(seconds=<span class="text-cyan-300">300</span>)</div>
+                        <div class="text-slate-300 pl-6">)</div>
+                        <div class="text-slate-300 pl-6"><span class="text-cyan-300">await</span> workflow.<span class="text-cyan-300">sleep</span>(timedelta(days=<span class="text-cyan-300">7</span>)) <span class="text-slate-500"># Temporal 支持跨数月定时器！</span></div>
+                        <div class="text-slate-300 pl-6"><span class="text-cyan-300">return</span> ai_res</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>无限超时与定时睡眠（跨月 Sleep）：</strong>Temporal 原生支持 `workflow.sleep(days=30)`，挂起时不消耗任何物理 CPU，解决 HTTP 超时痛点。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>Saga 事务补偿机制：</strong>若 AI 推理完成后物理结算出错，Temporal 可自动触发逆向 Activity 执行数据撤销与补偿。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-spin text-indigo-600"></i>
+                    <span>物理本质：以持久化事件重放（Event Sourcing Replay）驾驭高风险 AI 事务</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Temporal + LangGraph Integration Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Temporal Distributed Orchestration + LangGraph Reasoning Topology / 融合网络拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Enterprise AI Architecture</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-network-wired mr-1 text-indigo-400"></i>1. Client Trigger</div>
+                    <div class="text-[9px] text-slate-400">Start Temporal Workflow</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-server mr-1 text-purple-400"></i>2. Temporal Orchestrator</div>
+                    <div class="text-[9px] text-slate-400">Durable Timer & Saga Locks</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-amber-400"></i>3. LangGraph Activity</div>
+                    <div class="text-[9px] text-slate-400">Micro AI Reasoning & RAG</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-emerald-400"></i>4. Enterprise Settlement</div>
+                    <div class="text-[9px] text-slate-400">Saga Compensated Write</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>将 Temporal 的宏观持久化能力与 LangGraph 的微观 AI 图推演相结合，是构建超大规模分布式 Agent 的终极范式！</strong>Temporal 解决分布式锁、跨语言编排与跨月定时器，LangGraph 专注图环循环思考与 Tool 路由，彻底打通企业级 AI 微服务落地的最后公里。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">长生命周期工作流引擎融合：LangGraph + Temporal / Cadence</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 剖析工业级引擎（Temporal）与 AI 图引擎（LangGraph）的融合：</span>
+                    “向学员深入剖析：在大型企业级应用中，单纯用 LangGraph 搞定跨微服务分布式锁、跨语言调用（比如 Java 业务调 Python AI）或长达数月的任务调度是非常困难的。Temporal 提供了工业级 Durable Execution，我们可以将 LangGraph 封装为 Temporal 的一个无状态 Activity 节点。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 Saga 补偿与跨月 Sleep：</span>
+                    “提示学员看右侧代码：Temporal Workflow 可以使用 `workflow.sleep(timedelta(days=30))`。在这个过程中不占用任何物理线程与 CPU 资源。若 AI Activity 在后半段物理结算失败，Temporal 还能自动触发逆向 Saga 补偿 Activity 撤销前置写操作，实现了高吞吐与强一致性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

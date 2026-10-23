@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {empty,accept,derive,label} from '../web/state.mjs';
+const s=empty();
+const proposed={event:{seq:1,decision_round:1,call_id:'a',type:'action_proposed'},data:{original_call:{function:{name:'read_document',arguments:{document_id:'x'}}}}};
+assert.equal(accept(s,proposed),true);assert.equal(accept(s,proposed),false);
+accept(s,{event:{seq:2,decision_round:1,call_id:'a',type:'tool_rejected',error_code:'DOCUMENT_NOT_ALLOWED'}});
+assert.equal(derive(s).calls[0].executed,false);assert.equal(derive(s).calls[0].decision,'拒绝');
+assert.equal(derive(s).rows.length,2);
+accept(s,{event:{seq:3,decision_round:1,call_id:'a',type:'tool_observation'},data:{result:{ok:false,error:{code:'DOCUMENT_NOT_ALLOWED'}}}});
+assert.equal(Object.keys(derive(s).evidence).length,0);
+assert.equal(label('replay'),'历史轨迹回放');
+console.log('PASS: frontend sequence deduplication, ordered state, refusal != execution, replay label');

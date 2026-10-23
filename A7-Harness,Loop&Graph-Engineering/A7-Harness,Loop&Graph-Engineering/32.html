@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - 隔离执行沙箱技术：E2B、Modal、Docker 与 Firecracker MicroVM</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-box-archive"></i>
+                <span>第 7 课：控制流工程 · 模块四沙箱容器</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                隔离执行沙箱技术：E2B、Modal、Docker 与 Firecracker MicroVM
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构 Coding Agent 的物理执行底座：对比 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Docker 容器级隔离</span>、<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Firecracker / gVisor KVM 硬件级 MicroVM</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">E2B / Modal 云端 Serverless 沙箱</span>，掌握毫秒级启动与用后即焚的沙箱选型指南
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: 4 Sandbox Paradigms vs E2B Integration Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: 4 Sandbox Isolation Paradigms -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 md:p-5 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-base shrink-0">
+                                <i class="fa-solid fa-cubes"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 四类沙箱技术隔离级别与特质</h3>
+                                <p class="text-[10px] text-amber-800 font-mono">4 Sandbox Isolation Paradigms Compared</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">4 Paradigms</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">Docker</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">传统 Linux 容器隔离：</strong>
+                                <span class="text-slate-600 text-[10px]">共享宿主内核，生态极其成熟；但共享 Kernel 存在漏洞逃逸（Escape）风险，冷启动 1-3 秒。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Firecracker</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">KVM 硬件级 MicroVM (AWS 底层)：</strong>
+                                <span class="text-slate-600 text-[10px]">精简 Hypervisor 提供绝对内核隔离，支持毫秒级（&lt; 5ms）极速拉起，属于 E2B 底层物理引擎。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">E2B</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">LLM 专有代码执行沙箱云：</strong>
+                                <span class="text-slate-600 text-[10px]">原生提供 Python / JS SDK，内置文件挂载、终端命令交互与端口暴露，极简集成 Agent。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-bold text-[10px] shrink-0">Modal</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Serverless 算力与 GPU 沙箱：</strong>
+                                <span class="text-slate-600 text-[10px]">强于高并发云端 Serverless Python 脚本与 GPU 深度学习环境挂载。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-cat text-amber-600"></i>
+                    <span>物理本质：根据安全逃逸风险与启动耗时，在内核隔离与硬件虚拟化间取舍</span>
+                </div>
+            </div>
+
+            <!-- Right Card: E2B Python Sandbox SDK Integration Code -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. E2B Sandbox SDK 集成与用后即焚代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">E2B Code Interpreter SDK Integration</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">E2B SDK</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 1. 使用 E2B 物理沙箱隔离运行 LLM 生成的代码</div>
+                        <div class="text-purple-300">from e2b_code_interpreter import Sandbox</div>
+                        <br/>
+                        <div class="text-purple-300">def execute_agent_code_in_sandbox(generated_code: str):</div>
+                        <div class="text-slate-500 pl-3"># ⚡ 毫秒级实例化云端完全隔离的 MicroVM 沙箱</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">with</span> Sandbox() <span class="text-cyan-300">as</span> sbx:</div>
+                        <div class="text-slate-500 pl-6"># 执行代码并获取物理运行结果与错误堆栈</div>
+                        <div class="text-emerald-300 pl-6 font-bold">execution = sbx.run_code(generated_code)</div>
+                        <br/>
+                        <div class="text-cyan-300 pl-6">if</div>
+                        <div class="text-slate-300 pl-9">execution.error:</div>
+                        <div class="text-rose-400 pl-12">return {"status": "FAIL", "error": execution.error.traceback}</div>
+                        <div class="text-emerald-300 pl-6 font-bold">return {"status": "SUCCESS", "logs": execution.logs.stdout}</div>
+                        <div class="text-slate-500 pl-3"># 💥 `with` 作用域退出时沙箱瞬间物理销毁 (Ephemeral)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>毫秒级启动与释放：</strong>`with Sandbox()` 上下文管理器确保用后即焚，零残留危险磁盘脏状态。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>原生抓取终端 Log 与 Traceback：</strong>直接抓取 stdout/stderr 并转译为 Agent 下一步决策的 Observation。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：通过简单的 SDK 函数将不可信代码推向专门的云端 MicroVM 隔离集群</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sandbox Technology Architectural Decision Matrix Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">Sandbox Technology Selection Matrix / 沙箱技术选型矩阵</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Sandbox Selection Matrix</span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left font-mono text-[11px]">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400">
+                            <th class="py-1.5 px-3">沙箱方案 / Sandbox</th>
+                            <th class="py-1.5 px-3 text-amber-300">Docker 容器</th>
+                            <th class="py-1.5 px-3 text-indigo-300">Firecracker MicroVM</th>
+                            <th class="py-1.5 px-3 text-purple-300">E2B 云沙箱</th>
+                            <th class="py-1.5 px-3 text-cyan-300">Modal / Serverless</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">启动延迟 / Startup Latency</td>
+                            <td class="py-1.5 px-3 text-amber-300">1 - 3 秒 (较慢)</td>
+                            <td class="py-1.5 px-3 text-indigo-300">&lt; 5 毫秒 (极快)</td>
+                            <td class="py-1.5 px-3 text-purple-300">100 - 300 毫秒 (云端)</td>
+                            <td class="py-1.5 px-3 text-cyan-300">500 - 1000 毫秒</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">隔离安全级别 / Isolation Level</td>
+                            <td class="py-1.5 px-3 text-amber-300">中 (共享宿主 Kernel)</td>
+                            <td class="py-1.5 px-3 text-indigo-300">极高 (KVM 硬件级隔离)</td>
+                            <td class="py-1.5 px-3 text-purple-300">极高 (Firecracker 底座)</td>
+                            <td class="py-1.5 px-3 text-cyan-300">高 (gVisor / Container)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">Agent 集成难度 / SDK Integration</td>
+                            <td class="py-1.5 px-3 text-amber-300">需自建 Docker API 封装</td>
+                            <td class="py-1.5 px-3 text-indigo-300">需自建 KVM/API 管理器</td>
+                            <td class="py-1.5 px-3 text-purple-300">极简 (Python / JS 原生 SDK)</td>
+                            <td class="py-1.5 px-3 text-cyan-300">简单 (Decorator API)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>根据启动延迟与隔离安全需求决定沙箱技术选型！</strong>对于本地私有化部署，可基于 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">Firecracker / gVisor</code> 构建 KVM 级物理沙箱集群；对于快速云端落地与敏捷开发，推荐首选开箱即用的 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">E2B SDK</code>。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[80%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">隔离执行沙箱技术：E2B、Modal、Docker 与 Firecracker MicroVM</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 4 类沙箱隔离技术：</span>
+                    “向学员深入剖析：上一页我们讲了为什么需要隔离沙箱。现在市场上主流的沙箱方案有 4 种——传统的 Docker（虽然简单，但共享内核存在逃逸风险）、AWS 开源的 Firecracker MicroVM（硬件虚拟化，毫秒级启动）、E2B（专为大模型打造的云沙箱 SDK）以及 Modal。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 E2B SDK 的极简集成方式：</span>
+                    “提示学员看右侧代码：在真实代码开发中，E2B 提供了极其优雅的 Python SDK——只需 `with Sandbox() as sbx:`，在作用域内运行代码、抓取报错，退出作用域后容器瞬间自动彻底销毁，真正实现了‘用后即焚’的安全防护！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

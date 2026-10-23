@@ -1,0 +1,190 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A7 课件 × 课程检索 Agent 代码分析</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#1c2940;font:18px/1.7 system-ui,-apple-system,sans-serif}header,main,footer{max-width:1160px;margin:auto;padding:32px}header{padding-top:64px}h1{font-size:40px;line-height:1.25}h2{font-size:27px}h3{font-size:19px}.tag{color:#17695d;font-weight:700}.pages{background:#eaf0ff;padding:16px;border-left:4px solid #4568ae}article{background:white;border:1px solid #d7e0eb;border-radius:15px;padding:30px;margin:24px 0}pre{font:15px/1.6 ui-monospace,monospace;overflow:auto;background:#17243a;color:#e4eefb;padding:18px;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere}a{color:#245fa0}.observe{border-top:1px solid #ddd;padding-top:15px}nav a{display:inline-block;margin:5px 12px 5px 0}.note{background:#fff1d7;padding:20px;border-radius:10px}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #ccd5e0;padding:12px}@media print{body{background:white;font-size:12px}header,main,footer{padding:10px}article{break-inside:avoid}pre{background:#eee;color:black;font-size:10px}nav{display:none}}@media(max-width:650px){header,main{padding:18px}h1{font-size:30px}article{padding:18px}}
+</style><header><div class="tag">COURSE RETRIEVAL AGENT · 代码导读</div><h1>从课件主题，找到代码与演示</h1><p>A7 — Harness, Loop &amp; Graph Engineering · 40 页课件对应表</p><p>页码按课件 ZIP 中 1.html—40.html 与页面编号核对。下面按教学主题列出真实源码摘录、位置、演示命令与观察点。命令在项目根目录、激活 .venv 后运行。</p><div class="note">本项目是单 Agent、显式 Python 循环与只读资料工具。课件中的 LangGraph、HITL、Checkpoint、Fork、多 Agent、MicroVM 不属于已实现能力。HTML 独立离线打开，无 CDN，不执行展示的代码。</div><nav><a href="#item-1">01 职责分离：模型提出，Harness 决定，工具执行</a><a href="#item-2">02 观察驱动的检索闭环</a><a href="#item-3">03 状态与强类型契约</a><a href="#item-4">04 只读 Data 工具与不可变资料快照</a><a href="#item-5">05 透明关键词检索</a><a href="#item-6">06 Guard：固定工具注册表与权限校验</a><a href="#item-7">07 动作指纹与无进展熔断</a><a href="#item-8">08 业务预算与显式退出</a><a href="#item-9">09 传输重试与总期限</a><a href="#item-10">10 答案验证与一次修复</a><a href="#item-11">11 证据登记与来源审计</a><a href="#item-12">12 资料不足也是正常结束</a><a href="#item-13">13 持久轨迹与内容哈希</a><a href="#item-14">14 历史回放而非重新运行</a><a href="#item-15">15 scripted 与 replay 的区别</a><a href="#item-16">16 真实统计与人工语义评测</a><a href="#item-17">17 网页订阅真实事件</a><a href="#item-18">18 明确恢复边界</a></nav></header><main><article id="item-1"><div class="tag">条目 01 · 直接对应</div><h2>职责分离：模型提出，Harness 决定，工具执行</h2><p class="pages">第 01 页｜课程导论：从自由 Agent 漫游向硬核控制流工程的跨越<br>第 04 页｜离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点</p><p>装配层复用同一 Harness；网页与 CLI 没有各自实现一套决策循环。</p><h3>对应代码</h3><p><a href="../app/runner.py">app/runner.py</a> · 第 43 行起 · 源码摘录</p><pre>  43  def _execute(question,config,settings_path,runs,mode,scenario,run_id,settings):
+  44      model=OllamaClient(config) if mode==&#x27;live&#x27; else ScriptedModel(scenario)
+  45      def factory():
+  46          actual=settings or Settings.model_validate_json(Path(settings_path).read_text())
+  47          return service_factory(Path(settings_path).absolute().parent,actual,mode,scenario,model)()
+  48      return Harness(config,factory,model,runs,mode,scenario,run_id=run_id).run(question)</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario single</pre><p class="observe">应观察：观察提议、允许、实际执行三段卡片。</p></article><article id="item-2"><div class="tag">条目 02 · 概念对应：显式 Python 循环，不是 LangGraph</div><h2>观察驱动的检索闭环</h2><p class="pages">第 02 页｜为什么 DAG 无法满足 Agent？从无环图向有向有环图 (DCG) 的演进<br>第 05 页｜条件边 (Conditional Edges) 动态路由：用纯函数收敛大模型的自由跳转</p><p>while 循环根据 tool_calls 选择执行工具或最终输出；工具结果作为下一轮消息。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 220 行起 · 源码摘录</p><pre> 220      def run(self,question):
+ 221          status=&#x27;TOOL_ERROR&#x27;;code=None
+ 222          messages=[{&#x27;role&#x27;:&#x27;system&#x27;,&#x27;content&#x27;:SYSTEM},{&#x27;role&#x27;:&#x27;user&#x27;,&#x27;content&#x27;:question}]
+ 223          write_json(self.log.folder/&#x27;config.json&#x27;,{&#x27;log_version&#x27;:LOG_VERSION,&#x27;protocol&#x27;:PROTOCOL,
+ 224              &#x27;mode&#x27;:self.mode,&#x27;scenario&#x27;:self.scenario,&#x27;agent&#x27;:self.config.model_dump(),&#x27;question&#x27;:question})
+ 225          self.emit(&#x27;INIT&#x27;,&#x27;started&#x27;,mode=self.mode,scenario=self.scenario)
+ 226          try:
+ 227              self.remaining()
+ 228              with bounded(self.remaining()):self.service=self.factory()
+ 229              self.snapshot_id=self.service.snapshot.corpus_snapshot_id
+ 230              saved_config=json.loads((self.log.folder/&#x27;config.json&#x27;).read_text())
+ 231              saved_config[&#x27;tools&#x27;]={&#x27;corpus_snapshot_id&#x27;:self.snapshot_id,&#x27;allowed_document_ids&#x27;:sorted(self.service.allowed),</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario compare</pre><p class="observe">应观察：观察至少两份资料被搜索、读取，然后生成分别引用的比较。</p></article><article id="item-3"><div class="tag">条目 03 · 部分对应：没有 StateGraph 或 Reducer</div><h2>状态与强类型契约</h2><p class="pages">第 03 页｜状态图 (State Graph) 核心架构：State、Nodes 与 Transitions 关系解构<br>第 08 页｜共享状态契约与状态归约器 (Reducers) 原理</p><p>Pydantic 限制决策预算、工具预算与请求期限；Harness 对象保存轮数、证据和终止状态。</p><h3>对应代码</h3><p><a href="../app/agent_types.py">app/agent_types.py</a> · 第 8 行起 · 源码摘录</p><pre>   8  class AgentConfig(StrictModel):
+   9      model: str = Field(default=&#x27;qwen2.5:7b&#x27;, min_length=1, max_length=128)
+  10      url: str = &#x27;http://127.0.0.1:11434&#x27;
+  11      protocol: Literal[&#x27;ollama-native-tools-v1&#x27;] = &#x27;ollama-native-tools-v1&#x27;
+  12      model_timeout: float = Field(default=60.0, ge=0.05, le=300)
+  13      transport_retries: int = Field(default=1, ge=0, le=3)
+  14      deadline_seconds: float = Field(default=180.0, ge=0.05, le=1800)
+  15      max_decisions: int = Field(default=8, ge=1, le=32)
+  16      max_tool_attempts: int = Field(default=10, ge=1, le=100)
+  17      max_calls_per_round: int = Field(default=3, ge=1, le=10)
+  18      stall_threshold: int = Field(default=2, ge=2, le=5)
+  19      answer_repairs: int = Field(default=1, ge=0, le=1)</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario single</pre><p class="observe">应观察：比较 config.json、事件中的累计计数与最终 summary。</p></article><article id="item-4"><div class="tag">条目 04 · 项目扩展：资料快照</div><h2>只读 Data 工具与不可变资料快照</h2><p class="pages">第 04 页｜离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点</p><p>只加载可信 corpus，切分保留行号；快照 ID 根据实际资料确定。它是资料快照，不是图 checkpoint。</p><h3>对应代码</h3><p><a href="../app/corpus.py">app/corpus.py</a> · 第 55 行起 · 源码摘录</p><pre>  55  def load_corpus(root, max_file_bytes=131072, max_total_bytes=1048576):
+  56      try:
+  57          return _load(Path(root), max_file_bytes, max_total_bytes)
+  58      except CorpusError:
+  59          raise
+  60      except (OSError, UnicodeError, ValueError):
+  61          raise CorpusError(&#x27;资料读取失败：请检查文件权限、UTF-8 编码和元数据&#x27;) from None
+  62  
+  63  
+  64  def _load(root, file_limit, total_limit):
+  65      if root.is_symlink() or any(p.is_symlink() for p in root.absolute().parents):
+  66          raise CorpusError(&#x27;不允许符号链接作为资料根目录或其父目录&#x27;)</pre><h3>运行演示方式</h3><pre>运行 python -m app.cli snapshot，再运行 python -m app.cli search &quot;HDFS 副本&quot;。</pre><p class="observe">应观察：运行 python -m app.cli snapshot，再运行 python -m app.cli search &quot;HDFS 副本&quot;。</p></article><article id="item-5"><div class="tag">条目 05 · 项目扩展：Data 节点的具体实现</div><h2>透明关键词检索</h2><p class="pages">第 04 页｜离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点</p><p>词频与标题权重产生可解释排序；搜索摘要只用于发现资料。</p><h3>对应代码</h3><p><a href="../app/search.py">app/search.py</a> · 第 32 行起 · 源码摘录</p><pre>  32  def search(snapshot, query, allowed, top_k=3, stops=DEFAULT_STOPS, synonyms=None):
+  33      terms = tokens(query, stops, synonyms)
+  34      hits = []
+  35      for chunk in snapshot.chunks.values():
+  36          if chunk.document_id not in allowed:
+  37              continue
+  38          weights = {t:float(count(t, chunk.text)+3*count(t, chunk.title)+2*count(t, chunk.section_title)) for t in terms}
+  39          weights = {t:n for t,n in weights.items() if n}
+  40          if not weights:
+  41              continue
+  42          # 优先围绕正文中的第一个命中位置摘录；只命中标题时截取片段开头。
+  43          positions = [chunk.text.lower().find(t) for t in weights if t in chunk.text.lower()]</pre><h3>运行演示方式</h3><pre>运行 python -m app.cli search &quot;Flink 水位线&quot;；检查命中词和片段。</pre><p class="observe">应观察：运行 python -m app.cli search &quot;Flink 水位线&quot;；检查命中词和片段。</p></article><article id="item-6"><div class="tag">条目 06 · 直接对应</div><h2>Guard：固定工具注册表与权限校验</h2><p class="pages">第 04 页｜离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点<br>第 05 页｜条件边 (Conditional Edges) 动态路由：用纯函数收敛大模型的自由跳转</p><p>严格参数、可见文档集合与片段归属检查；模型不能绕过统一入口。</p><h3>对应代码</h3><p><a href="../app/tools.py">app/tools.py</a> · 第 27 行起 · 源码摘录</p><pre>  27      def validate_call(self, name, arguments):
+  28          &quot;&quot;&quot;供 Harness 审计使用；invoke_tool 仍会再次校验，不能绕过权限。&quot;&quot;&quot;
+  29          if not isinstance(name, str) or name not in REGISTRY:
+  30              return failure(&#x27;UNKNOWN_TOOL&#x27;, &#x27;工具名称未登记&#x27;)
+  31          try:
+  32              args = REGISTRY[name].model_validate(arguments)
+  33          except ValidationError:
+  34              return failure(&#x27;INVALID_ARGUMENTS&#x27;, &#x27;参数格式、字段或范围不符合工具 Schema&#x27;)
+  35          ids = getattr(args, &#x27;document_ids&#x27;, None)
+  36          if name == &#x27;read_document&#x27;:
+  37              ids = [args.document_id]
+  38          if ids is not None and not set(ids) &lt;= self.allowed:</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario unauthorized</pre><p class="observe">应观察：观察 DOCUMENT_NOT_ALLOWED 与“未执行”；被拒绝仍消耗预算。</p></article><article id="item-7"><div class="tag">条目 07 · 部分对应：单 Agent；没有 recursion_limit</div><h2>动作指纹与无进展熔断</h2><p class="pages">第 06 页｜死循环与图环死锁控制：recursion_limit 与动作指纹防线<br>第 27 页｜蜂群死锁与成本风暴拦截：Token 预算、最大 Turn 限制与 Loop Guards</p><p>指纹包含规范化动作和结果；新增发现或证据会改变进展判定。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 204 行起 · 源码摘录</p><pre> 204              fingerprint=sha(encoded({&#x27;name&#x27;:name,&#x27;arguments&#x27;:arguments,&#x27;result&#x27;:result}))
+ 205              no_progress=not(new_evidence or new_discovery)
+ 206              self.no_progress=(self.no_progress+1 if self.last_fingerprint==fingerprint else 1) if no_progress else 0
+ 207              self.last_fingerprint=fingerprint
+ 208              category=&#x27;repeated_failure&#x27; if not result.get(&#x27;ok&#x27;) else (&#x27;repeated_read&#x27; if name==&#x27;read_document&#x27; else &#x27;repeated_search&#x27;)
+ 209              result_ref=self.log.blob({&#x27;call_id&#x27;:call_id,&#x27;tool_name&#x27;:name,&#x27;result&#x27;:result})
+ 210              self.emit(&#x27;OBSERVE&#x27;,&#x27;tool_observation&#x27;,call_id=call_id,error_code=code,artifact=result_ref,
+ 211                        new_evidence=new_evidence,new_discovery=new_discovery,no_progress_count=self.no_progress,
+ 212                        repeat_category=category if no_progress else &#x27;progress&#x27;)
+ 213              tool_message={&#x27;role&#x27;:&#x27;tool&#x27;,&#x27;tool_name&#x27;:name,&#x27;content&#x27;:json.dumps({&#x27;call_id&#x27;:call_id,**result},ensure_ascii=False)}
+ 214              if call.get(&#x27;id&#x27;):tool_message[&#x27;tool_call_id&#x27;]=call[&#x27;id&#x27;]
+ 215              messages.append(tool_message)</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario stalled</pre><p class="observe">应观察：相同无命中搜索达到阈值，结束为 STALLED。</p></article><article id="item-8"><div class="tag">条目 08 · 直接对应业务收敛；没有框架 END 节点</div><h2>业务预算与显式退出</h2><p class="pages">第 06 页｜死循环与图环死锁控制：recursion_limit 与动作指纹防线<br>第 07 页｜状态图的收敛证明：显式 END 节点与退出条件断言<br>第 27 页｜蜂群死锁与成本风暴拦截：Token 预算、最大 Turn 限制与 Loop Guards</p><p>决策轮、工具尝试和总期限分别限制；终止由程序判断。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 254 行起 · 源码摘录</p><pre> 254                  if self.round&gt;=self.config.max_decisions:raise Halt(&#x27;BUDGET_EXHAUSTED&#x27;,&#x27;DECISION_BUDGET&#x27;)
+ 255                  self.round+=1
+ 256                  message=self.model_request(messages,&#x27;DECIDE&#x27;)
+ 257                  if message.get(&#x27;tool_calls&#x27;):
+ 258                      self.execute_calls(message,messages)
+ 259                  else:
+ 260                      messages.append(message)
+ 261                      if self.finalize(messages)==&#x27;done&#x27;:
+ 262                          status=&#x27;COMPLETED&#x27;;break
+ 263                      messages.append({&#x27;role&#x27;:&#x27;user&#x27;,&#x27;content&#x27;:&#x27;没有合法读取证据，不能接受回答。请搜索并 read_document 获取证据；最多允许这一次返回检索。确实没有资料时最终回答 insufficient_evidence。&#x27;})
+ 264          except Halt as exc:status,code=exc.status,exc.code
+ 265          except TimeoutError:status,code=&#x27;DEADLINE_EXCEEDED&#x27;,&#x27;RUN_DEADLINE&#x27;</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario budget</pre><p class="observe">应观察：观察 BUDGET_EXHAUSTED；再把网页决策预算调低比较轨迹。</p></article><article id="item-9"><div class="tag">条目 09 · 概念对应：不是 LangGraph RetryPolicy</div><h2>传输重试与总期限</h2><p class="pages">第 09 页｜容错图转变拓扑：Retry Policy 与异常捕获边</p><p>传输失败只有限重试；每次请求使用剩余总期限，不重新获得完整运行时间。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 69 行起 · 源码摘录</p><pre>  69      def model_request(self,messages,phase,final=False):
+  70          payload={&#x27;model&#x27;:self.config.model,&#x27;messages&#x27;:messages,&#x27;stream&#x27;:False,&#x27;think&#x27;:False,
+  71                   &#x27;options&#x27;:{&#x27;temperature&#x27;:0,&#x27;num_predict&#x27;:self.config.num_predict,&#x27;num_ctx&#x27;:self.config.num_ctx}}
+  72          if final:payload[&#x27;format&#x27;]=Answer.model_json_schema()
+  73          else:payload[&#x27;tools&#x27;]=self.tools
+  74          request_ref=self.log.blob(payload)
+  75          for retry in range(self.config.transport_retries+1):
+  76              timeout=min(self.config.model_timeout,self.remaining())
+  77              self.requests+=1
+  78              if retry:self.retries+=1
+  79              request_no=self.requests
+  80              self.emit(phase,&#x27;model_request&#x27;,artifact=request_ref,request_no=request_no,transport_retry=retry)</pre><h3>运行演示方式</h3><pre>运行 python -m pytest -q tests/test_agent.py；阅读 model_request 的 timeout=min(...)。</pre><p class="observe">应观察：运行 python -m pytest -q tests/test_agent.py；阅读 model_request 的 timeout=min(...)。</p></article><article id="item-10"><div class="tag">条目 10 · 项目扩展：证据校验作为 Guard</div><h2>答案验证与一次修复</h2><p class="pages">第 05 页｜条件边 (Conditional Edges) 动态路由：用纯函数收敛大模型的自由跳转<br>第 07 页｜状态图的收敛证明：显式 END 节点与退出条件断言</p><p>独立生成结构化答案；非法引用只允许一次修复，无证据回答可受限返回检索。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 132 行起 · 源码摘录</p><pre> 132      def finalize(self,messages):
+ 133          messages=messages+[{&#x27;role&#x27;:&#x27;user&#x27;,&#x27;content&#x27;:&#x27;现在单独生成最终 JSON，遵守提供的 Schema。只用本次 read 成功返回的证据 ID；资料不足用 insufficient_evidence，claims=[]，并写出缺少什么。所有实质结论必须引用证据。&#x27;}]
+ 134          while True:
+ 135              message=self.model_request(messages,&#x27;FINALIZE&#x27;,final=True)
+ 136              answer,code=self.validate_answer(message[&#x27;content&#x27;])
+ 137              if message.get(&#x27;tool_calls&#x27;):answer,code=None,&#x27;FINAL_TOOL_CALL_NOT_ALLOWED&#x27;
+ 138              ref=self.log.blob({&#x27;answer_content&#x27;:message[&#x27;content&#x27;]})
+ 139              self.emit(&#x27;VALIDATE_ANSWER&#x27;,&#x27;answer_accepted&#x27; if code is None else &#x27;answer_rejected&#x27;,error_code=code,artifact=ref)
+ 140              if code is None:
+ 141                  self.answer=answer
+ 142                  return &#x27;done&#x27;
+ 143              # 无证据却尝试回答时，至多回到 DECIDE 一次；不能用修复绕过读取。</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario bad_citation</pre><p class="observe">应观察：展开 answer_rejected，检查 E99 被拒绝和修复次数。</p></article><article id="item-11"><div class="tag">条目 11 · 直接对应审计；不保证语义支持</div><h2>证据登记与来源审计</h2><p class="pages">第 04 页｜离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点<br>第 18 页｜审计追溯与决策履历 (Lineage &amp; Auditability)</p><p>只有真实读取返回片段才能获得 E1；重复读取复用 ID，搜索摘要不能登记。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 104 行起 · 源码摘录</p><pre> 104      def register(self,result):
+ 105          added=0
+ 106          if result.get(&#x27;ok&#x27;) and &#x27;chunks&#x27; in result:
+ 107              for chunk in result[&#x27;chunks&#x27;]:
+ 108                  key=(chunk[&#x27;corpus_snapshot_id&#x27;],chunk[&#x27;chunk_id&#x27;],chunk[&#x27;content_hash&#x27;])
+ 109                  original=self.service.snapshot.chunks.get(chunk[&#x27;chunk_id&#x27;])
+ 110                  if (chunk[&#x27;corpus_snapshot_id&#x27;]!=self.snapshot_id or original is None or
+ 111                      chunk[&#x27;document_id&#x27;] not in self.service.allowed or original.model_dump()!=chunk):
+ 112                      raise Halt(&#x27;TOOL_ERROR&#x27;,&#x27;SNAPSHOT_MISMATCH&#x27;)
+ 113                  if key not in self.evidence_keys:
+ 114                      eid=&#x27;E&#x27;+str(len(self.evidence)+1)
+ 115                      self.evidence_keys[key]=eid</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario single</pre><p class="observe">应观察：点击 E1，核对标题、原始行号、内容哈希与快照。</p></article><article id="item-12"><div class="tag">条目 12 · 项目扩展：业务终止语义</div><h2>资料不足也是正常结束</h2><p class="pages">第 07 页｜状态图的收敛证明：显式 END 节点与退出条件断言</p><p>执行状态与答案状态分开；COMPLETED 可以配 insufficient_evidence。</p><h3>对应代码</h3><p><a href="../app/agent_types.py">app/agent_types.py</a> · 第 39 行起 · 源码摘录</p><pre>  39  class Answer(StrictModel):
+  40      answer_status: Literal[&#x27;answered&#x27;,&#x27;partial&#x27;,&#x27;insufficient_evidence&#x27;]
+  41      claims: list[Claim] = Field(max_length=20)
+  42      missing_information: list[str] = Field(max_length=20)
+  43  
+  44      @model_validator(mode=&#x27;after&#x27;)
+  45      def coherent(self):
+  46          if any(not c.text.strip() for c in self.claims) or any(not m.strip() for m in self.missing_information):
+  47              raise ValueError(&#x27;不允许空白结论或缺失信息&#x27;)
+  48          if self.answer_status==&#x27;insufficient_evidence&#x27; and (self.claims or not self.missing_information):
+  49              raise ValueError(&#x27;资料不足时不生成实质结论，并列出缺失信息&#x27;)
+  50          if self.answer_status in (&#x27;answered&#x27;,&#x27;partial&#x27;) and not self.claims:</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario insufficient</pre><p class="observe">应观察：查看缺失信息；不把无资料显示成工具故障。</p></article><article id="item-13"><div class="tag">条目 13 · 部分对应：本地日志，无 OTel/CI 自动合并</div><h2>持久轨迹与内容哈希</h2><p class="pages">第 18 页｜审计追溯与决策履历 (Lineage &amp; Auditability)<br>第 38 页｜课程 Capstone 案例剖析 (3/3)：端到端 Trace、失败回放与 CI/CD 评估门控</p><p>events 记录阶段，artifacts 保存大文本；完整 manifest 校验历史记录。</p><h3>对应代码</h3><p><a href="../app/recording.py">app/recording.py</a> · 第 28 行起 · 源码摘录</p><pre>  28  class Recorder:
+  29      def __init__(self,base,run_id):
+  30          self.run_id=run_id
+  31          self.folder=Path(base)/run_id
+  32          self.folder.mkdir(parents=True,exist_ok=False)
+  33          (self.folder/&#x27;artifacts&#x27;).mkdir()
+  34          self.seq=0
+  35          for name in (&#x27;events.jsonl&#x27;,&#x27;model_interactions.jsonl&#x27;):(self.folder/name).touch()
+  36  
+  37      def append(self,name,value):
+  38          with (self.folder/name).open(&#x27;ab&#x27;) as stream:
+  39              stream.write(encoded(value)+b&#x27;\n&#x27;);stream.flush();os.fsync(stream.fileno())</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario single</pre><p class="observe">应观察：在 runs/对应run_id 查看 events.jsonl、summary.json、evidence.json。</p></article><article id="item-14"><div class="tag">条目 14 · 直接对应录制回放；不是 seed/temperature 重采样</div><h2>历史回放而非重新运行</h2><p class="pages">第 34 页｜Agent 测试 Harness 架构：副作用 Mock 与确定性回放 (Deterministic Replay)<br>第 38 页｜课程 Capstone 案例剖析 (3/3)：端到端 Trace、失败回放与 CI/CD 评估门控</p><p>读取历史模型和工具观察，不调用模型或资料工具；原始证据来自该运行文件。</p><h3>对应代码</h3><p><a href="../app/recording.py">app/recording.py</a> · 第 65 行起 · 源码摘录</p><pre>  65  def replay(base,run_id):
+  66      &quot;&quot;&quot;只验证/读取已落盘记录。不加载 corpus，不实例化模型或工具。&quot;&quot;&quot;
+  67      try:
+  68          if not re.fullmatch(r&#x27;[a-f0-9]{32}&#x27;,run_id):raise ValueError()
+  69          folder=Path(base)/run_id
+  70          if folder.is_symlink():raise ValueError()
+  71          manifest=json.loads((folder/&#x27;manifest.json&#x27;).read_text())
+  72          if manifest.get(&#x27;log_version&#x27;)!=LOG_VERSION or manifest.get(&#x27;protocol&#x27;)!=PROTOCOL or manifest.get(&#x27;complete&#x27;) is not True:raise ValueError()
+  73          required={&#x27;events.jsonl&#x27;,&#x27;model_interactions.jsonl&#x27;,&#x27;config.json&#x27;,&#x27;evidence.json&#x27;,&#x27;summary.json&#x27;}
+  74          if not required&lt;=manifest[&#x27;files&#x27;].keys():raise ValueError()
+  75          for name,digest in manifest[&#x27;files&#x27;].items():
+  76              path=folder/name</pre><h3>运行演示方式</h3><pre>网页选择完整历史→从头开始→单步→播放→暂停；或 CLI agent replay RUN_ID。</pre><p class="observe">应观察：网页选择完整历史→从头开始→单步→播放→暂停；或 CLI agent replay RUN_ID。</p></article><article id="item-15"><div class="tag">条目 15 · 部分对应 Mock：只替换模型</div><h2>scripted 与 replay 的区别</h2><p class="pages">第 34 页｜Agent 测试 Harness 架构：副作用 Mock 与确定性回放 (Deterministic Replay)</p><p>scripted 替换模型响应但仍执行真实工具；replay 读取历史记录，两个模式不能混称。</p><h3>对应代码</h3><p><a href="../app/scripted.py">app/scripted.py</a> · 第 20 行起 · 源码摘录</p><pre>  20  class ScriptedModel:
+  21      def __init__(self,scenario):
+  22          if scenario not in SCENARIOS:raise ValueError(&#x27;未知 scripted 场景&#x27;)
+  23          self.scenario=scenario;self.round=0;self.finals=0
+  24          self.unauthorized_document_id=&quot;doc_0000000000000000&quot;
+  25  
+  26      def request(self,payload,timeout):
+  27          obs=observed(payload[&#x27;messages&#x27;])
+  28          if &#x27;format&#x27; in payload:
+  29              self.finals+=1
+  30              evidences=[c for o in obs if o.get(&#x27;ok&#x27;) for c in o.get(&#x27;chunks&#x27;,[]) if &#x27;evidence_id&#x27; in c]
+  31              if self.scenario in (&#x27;insufficient&#x27;,&#x27;unknown_tool&#x27;,&#x27;unauthorized&#x27;,&#x27;injection&#x27;) or not evidences:</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario injection</pre><p class="observe">应观察：观察虚构注入 fixture 诱导的越权动作被拒绝；不能据此断言真实模型抗注入能力。</p></article><article id="item-16"><div class="tag">条目 16 · 部分对应：未实现 Pass@k、Tool F1</div><h2>真实统计与人工语义评测</h2><p class="pages">第 35 页｜Agent 端到端评估指标：Pass@k、轨迹效率、Token 成本与 Tool 召回率</p><p>summary 记录轮数、尝试、耗时与接口返回 Token；未知为 null。不计算美元成本或 Pass@k。</p><h3>对应代码</h3><p><a href="../app/agent.py">app/agent.py</a> · 第 278 行起 · 源码摘录</p><pre> 278                   &#x27;elapsed_seconds&#x27;:self.elapsed(),&#x27;token_statistics&#x27;:self.token_counts,
+ 279                   &#x27;validation_scope&#x27;:&#x27;程序仅验证格式与来源合法性；结论是否被原文支持需要人工语义评测。&#x27;}
+ 280          self.log.finish(summary,self.evidence,self.answer)
+ 281          return {&#x27;ok&#x27;:status==&#x27;COMPLETED&#x27;,&#x27;summary&#x27;:summary,&#x27;answer&#x27;:self.answer,&#x27;evidence&#x27;:self.evidence,
+ 282                  &#x27;events&#x27;:[json.loads(line) for line in (self.log.folder/&#x27;events.jsonl&#x27;).read_text().splitlines()]}</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario compare</pre><p class="observe">应观察：比较两个场景轨迹；逐条核对 claim 是否被 E1/E2 原文支持。</p></article><article id="item-17"><div class="tag">条目 17 · 项目扩展：本地课堂可观测性</div><h2>网页订阅真实事件</h2><p class="pages">第 18 页｜审计追溯与决策履历 (Lineage &amp; Auditability)<br>第 38 页｜课程 Capstone 案例剖析 (3/3)：端到端 Trace、失败回放与 CI/CD 评估门控</p><p>SSE 用事件 seq，重连补发；前端 state.mjs 去重。刷新不会重复扣预算。</p><h3>对应代码</h3><p><a href="../app/web.py">app/web.py</a> · 第 259 行起 · 源码摘录</p><pre> 259          async def stream():
+ 260              nonlocal cursor
+ 261              while not await request.is_disconnected():
+ 262                  d=await asyncio.to_thread(manager.detail,run_id)
+ 263                  batch=[e for e in d[&#x27;events&#x27;] if e[&#x27;seq&#x27;]&gt;cursor]
+ 264                  try:enriched=await asyncio.to_thread(manager.enriched,run_id,batch)
+ 265                  except HTTPException:
+ 266                      yield &#x27;event: damaged\ndata: {&quot;error&quot;:&quot;运行产物损坏&quot;}\n\n&#x27;;return
+ 267                  for item in enriched:
+ 268                      cursor=item[&#x27;event&#x27;][&#x27;seq&#x27;]
+ 269                      yield f&#x27;id: {cursor}\nevent: harness\ndata: {json.dumps(item,ensure_ascii=False)}\n\n&#x27;
+ 270                  if not d[&#x27;active&#x27;]:</pre><h3>运行演示方式</h3><pre>python -m app.cli agent ask &quot;课堂演示问题&quot; --mode scripted --scenario single</pre><p class="observe">应观察：运行中刷新页面，核对同一 run_id；记录完成后由 summary 核对。</p></article><article id="item-18"><div class="tag">条目 18 · 对照：没有 checkpoint、resume 或 fork</div><h2>明确恢复边界</h2><p class="pages">第 11 页｜模块二导论：为什么生产级 Agent 必须具备线程安全的 Checkpointing<br>第 15 页｜时光旅行 (Time Travel)：基于历史 Checkpoint 的状态回溯与重放<br>第 20 页｜模块二小结与状态持久化/时光旅行最佳实践</p><p>记录完整性用于历史查看，不是恢复执行的 checkpoint。异常退出后未完成记录标记 INTERRUPTED。</p><h3>对应代码</h3><p><a href="../app/web.py">app/web.py</a> · 第 87 行起 · 源码摘录</p><pre>  87      def detail(self,run_id):
+  88          folder=self.safe(run_id,&#x27;&#x27;).resolve()
+  89          pending=self.control/(run_id+&#x27;.json&#x27;)
+  90          if not folder.exists() and not pending.exists():raise HTTPException(404,&#x27;运行不存在&#x27;)
+  91          active=self.active()==run_id
+  92          try:
+  93              cfg=self.read(run_id,&#x27;config.json&#x27;,{})
+  94              if not cfg and pending.exists():
+  95                  job=json.loads(pending.read_text());cfg={&#x27;question&#x27;:job[&#x27;question&#x27;],&#x27;mode&#x27;:job[&#x27;mode&#x27;],&#x27;scenario&#x27;:job[&#x27;scenario&#x27;],&#x27;agent&#x27;:job[&#x27;agent&#x27;]}
+  96              events=self.raw_events(run_id)
+  97              if (folder/&#x27;manifest.json&#x27;).exists():
+  98                  saved=replay(self.base,run_id)</pre><h3>运行演示方式</h3><pre>运行 python tests/verify_web_restart.py，在独立临时进程验证异常重启。</pre><p class="observe">应观察：运行 python tests/verify_web_restart.py，在独立临时进程验证异常重启。</p></article><article><h2>未实现主题与教学纠偏</h2><table><tr><th>课件页</th><th>本工程边界</th></tr><tr><td>11—17、19—20</td><td>无图 Checkpointer、人工审批、恢复与分支。corpus_snapshot_id 是资料版本；run_id 是日志身份；两者不是 checkpoint_id。</td></tr><tr><td>21—30</td><td>无蜂群、Handoff、子图和 Agent 间通信。第 27 页的预算和指纹原则在单 Agent 中可观察。</td></tr><tr><td>31—33、36—37</td><td>不运行模型生成代码；资料访问控制不是 Docker/MicroVM 沙箱。Web 子进程是运行与限时安排，不是安全沙箱。</td></tr><tr><td>34、38</td><td>固定 seed 或 temperature=0 不能保证重采样得到相同结果。本工程 replay 完全不调用模型，使用保存的观察。</td></tr><tr><td>35</td><td>只统计真实运行计数与 API Token；没有实现 Pass@k、Tool F1 或费用估算。</td></tr><tr><td>2、5</td><td>DAG 系统也可提供任务重试；有向环用于表达本例反复决策。普通 if/while 也能正确实现受限闭环。</td></tr><tr><td>39—40</td><td>总结与后续课程，作为讨论扩展，不把所有主题宣称为本项目能力。</td></tr></table></article><article><h2>建议 20 分钟导读顺序</h2><p>职责与闭环（01—03）→ 资料与权限（04—06）→ 熔断与预算（07—09）→ 引用与不足（10—12）→ 审计与回放（13—15）→ 统计、网页与恢复边界（16—18）。</p><pre>./start.sh
+# 浏览器：http://127.0.0.1:8770/
+./stop.sh</pre><p>scripted 是预设模型响应与真实资料工具；live 才是真实模型实验。每个条目可先看网页现象，再跳到源码。</p></article></main><footer>课件源文件：A7-Harness, Loop &amp; Graph Engineering.zip<br>SHA-256：776ff8834fb26dd02914775b558f00079ada5cdc0d9ec64aa97f20da4e7391f7<br>源码摘录生成于本次交付；后续修改代码请同步维护本页。</footer></html>

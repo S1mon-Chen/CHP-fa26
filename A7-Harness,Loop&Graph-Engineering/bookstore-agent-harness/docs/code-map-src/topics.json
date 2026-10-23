@@ -1,0 +1,549 @@
+[
+  {
+    "id": "roles",
+    "stage": "基础 Harness",
+    "title": "模型提出动作，Harness 决定执行",
+    "concept": "Agent 不是一个裸模型调用：模型给出建议，控制器决定下一步。",
+    "explain": "从入口顺着读：runner.execute 进入 RunService.start，选择编排引擎；Python 循环调用共享 Runtime.step。模型适配器只返回数据，不能提供 shell 命令。",
+    "sources": [
+      {
+        "file": "harness/core.py",
+        "symbol": "run",
+        "anchor": "        while state",
+        "count": 4
+      },
+      {
+        "file": "harness/runner.py",
+        "symbol": "execute"
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario success",
+    "ui": "Python → scripted → 成功修复 → 开始运行；依次观察 GENERATE、VALIDATE、APPLY、TEST。",
+    "expect": "预设第一候选测试失败，第二候选通过，Python 引擎最终 SUCCESS。",
+    "evidence": "events.jsonl 中 node / event_type；candidate-1.py 与 candidate-2.py。",
+    "question": "如果模型回答“已经修好了”，程序的哪一行决定是否真的成功？",
+    "pitfall": "scripted 替换模型响应；未加 --simulate 时仍是真实 Docker 测试。",
+    "requires": "Docker 与教学镜像",
+    "test": "python -m pytest -q tests/test_graph.py -k python_graph_business_parity"
+  },
+  {
+    "id": "contract",
+    "stage": "基础 Harness",
+    "title": "任务契约与固定评测",
+    "concept": "先明确业务正确性的标准，再让模型修复。",
+    "explain": "初始 Bug 只有免运费边界：> 应为 >=。金额使用 Decimal，先处理折扣与舍入，再判断运费；固定测试包含边界和非法输入。",
+    "sources": [
+      {
+        "file": "starter/bookstore.py",
+        "symbol": "calculate_total",
+        "anchor": "    if not items:",
+        "count": 7
+      },
+      {
+        "file": "tests_business/test_bookstore.py",
+        "anchor": "@pytest.mark.parametrize(\"items,coupon,expected\",",
+        "count": 17
+      }
+    ],
+    "demo": "python tests/verify_docker.py",
+    "ui": "打开任务说明、初始代码与 Diff；讲解恰好 100 元为什么是必要测试。",
+    "expect": "初始代码 26 passed / 3 failed，正确候选 29 passed；此脚本还验证超时和输出上限。",
+    "evidence": "TASK.md；tests_business/test_bookstore.py；docker-verification.json。",
+    "question": "为什么把所有测试改成通过，不算完成任务？",
+    "pitfall": "不要在宿主机直接导入模型候选；业务验证脚本通过 DockerExecutor 执行。",
+    "requires": "Docker 与教学镜像",
+    "test": "python -m pytest -q tests/test_controls.py -k forbidden_never_executes"
+  },
+  {
+    "id": "context",
+    "stage": "基础 Harness",
+    "title": "上下文与结构化模型响应",
+    "concept": "请求需要任务、初始代码、上一候选与反馈，而不仅是一句“请修复”。",
+    "explain": "GENERATE 构造结构化 request；Ollama 适配器使用可信本地配置的地址、模型和超时，并请求 JSON。响应仍需后续校验，format=json 不等于契约可靠。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "        elif node == 'GENERATE':",
+        "count": 7
+      },
+      {
+        "file": "harness/ollama.py",
+        "symbol": "Ollama.__call__",
+        "count": 18
+      }
+    ],
+    "demo": "bookstore-harness live --engine python",
+    "ui": "live 模式检查模型后运行；结束后展开 model_response 事件和记录文件。",
+    "expect": "真实调用本地 Ollama；具体候选数量和是否修复成功不保证。token 只来自 API 真实返回。",
+    "evidence": "recording.json 中 kind=model 的 request/response；model-response-N.json。",
+    "question": "第二轮模型从哪里知道上一轮为什么失败？",
+    "pitfall": "temperature=0 不等于可确定重放；模型原文不是内部思维链。",
+    "requires": "Docker、教学镜像、本地 Ollama 模型",
+    "test": "python -m pytest -q tests/test_controls.py -k model_retries_bounded"
+  },
+  {
+    "id": "guard",
+    "stage": "基础 Harness",
+    "title": "Guard：校验动作权限与参数",
+    "concept": "模型建议必须通过确定性的程序检查。",
+    "explain": "validate 只接受 path/code 两个字段；路径必须严格等于 bookstore.py；检查 UTF-8 字节长度与 Python 语法。违规响应成为结构化错误，消耗本轮候选预算。",
+    "sources": [
+      {
+        "file": "harness/core.py",
+        "symbol": "validate"
+      },
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "        elif node == 'VALIDATE':",
+        "count": 12
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario forbidden",
+    "ui": "选择违规修改场景，观察 VALIDATE / rejected 和被拒候选的路径。",
+    "expect": "修改测试文件请求被拒；默认 3 次后 FAILED，不进入 TEST。CLI 返回 1 是此场景预期结果。",
+    "evidence": "proposal-N.json 的 decision=rejected；events.jsonl 的 VALIDATION_ERROR。",
+    "question": "只在 prompt 里写“不许改测试”，和这段代码的约束有什么不同？",
+    "pitfall": "ast.parse 只检查语法，不是安全沙箱，也不能证明业务正确。",
+    "requires": "CLI 可加 --simulate；无 Docker 时网页需显式勾选模拟",
+    "test": "python -m pytest -q tests/test_controls.py -k 'validation or forbidden or length'"
+  },
+  {
+    "id": "isolation",
+    "stage": "基础 Harness",
+    "title": "APPLY 与执行隔离",
+    "concept": "把候选放入独立、受限的执行环境。",
+    "explain": "APPLY 保存带候选编号的文件和 diff；DockerExecutor 为每次测试创建临时副本，复制固定测试，候选和测试均只读。Docker 参数由 Harness 构造。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "        elif node == 'APPLY':",
+        "count": 14
+      },
+      {
+        "file": "harness/executor.py",
+        "symbol": "DockerExecutor.__call__",
+        "anchor": "            command = [",
+        "count": 11
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario success",
+    "ui": "查看 candidate_staged 之后才出现 TEST；展开真实测试结果。",
+    "expect": "容器禁网、非 root、只读、移除 capabilities、限制内存/CPU/PID，执行固定 pytest 命令。",
+    "evidence": "harness/executor.py 的 Docker 参数；candidate-N.py、changes.diff。",
+    "question": "Checkpoint 保存了状态，是否意味着宿主文件也自动回滚？",
+    "pitfall": "容器不是绝对安全保证；整个项目、密钥与 Docker socket 不挂载到候选容器。",
+    "requires": "Docker 与教学镜像",
+    "test": "python tests/verify_docker.py"
+  },
+  {
+    "id": "observation",
+    "stage": "基础 Harness",
+    "title": "Observation：失败变成下一轮反馈",
+    "concept": "测试观察驱动循环，而不是模型的成功声明。",
+    "explain": "TEST 将真实结果写入产物，失败时把 summary 放入 feedback，更新失败指纹并设置 next=GENERATE。下一轮请求会携带这个反馈。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "            state['test_status'] =",
+        "count": 13
+      },
+      {
+        "file": "harness/executor.py",
+        "symbol": "normalize",
+        "count": 10
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario success",
+    "ui": "逐步回放第一轮 TEST 失败 → 第二轮 GENERATE，核对候选编号增加。",
+    "expect": "先出现失败断言，下一轮改成 >= 后全部通过。",
+    "evidence": "test-1.json 的 summary 与 recording.json 第二个 model 请求的 feedback。",
+    "question": "为什么失败摘要需要去掉运行时间等易变信息？",
+    "pitfall": "执行超时是 EXECUTION_ERROR，不应当伪装为普通业务测试失败。",
+    "requires": "Docker；--simulate 只演示控制流",
+    "test": "python -m pytest -q tests/test_controls.py -k normalize"
+  },
+  {
+    "id": "termination",
+    "stage": "基础 Harness",
+    "title": "候选预算与重复失败检测",
+    "concept": "有限循环必须有确定的停止规则。",
+    "explain": "GENERATE 每个新候选只扣一次预算。failed_status 用代码哈希和规范化失败摘要组成指纹；相同失败达到阈值时 STALLED，否则预算耗尽时 FAILED。两者同时满足优先 STALLED。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "failed_status"
+      },
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "        if node == 'GENERATE':",
+        "count": 3
+      },
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "build",
+        "anchor": "    for name in sorted(TERMINAL):",
+        "count": 8
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario repeated\nbookstore-harness scripted --engine python --scenario budget",
+    "ui": "对比重复错误与预算耗尽两个场景；观察剩余预算和终态。",
+    "expect": "默认 repeated 在候选 2 触发 STALLED；budget 用不同错误候选在候选 3 结束为 FAILED。两条命令预期返回 1。",
+    "evidence": "summary.json 的 candidates / remaining_candidates；LangGraph 引擎还可检查 checkpoint 中的 fingerprints。",
+    "question": "相同代码得到不同失败，是否应该算同一次重复失败？",
+    "pitfall": "模型网络调用重试与候选预算是两种计数；Graph recursion_limit 也不是候选预算。",
+    "requires": "Docker；无 Docker 可给每条命令加 --simulate",
+    "test": "python -m pytest -q tests/test_controls.py -k 'stalled or budget or different'"
+  },
+  {
+    "id": "timeouts",
+    "stage": "基础 Harness",
+    "title": "超时、输出上限与错误分类",
+    "concept": "工具没有返回时，控制器也必须能结束。",
+    "explain": "bounded 持续读取输出，超过时间或大小限制就终止 Docker 客户端，调用方负责清理容器。模型也有独立 HTTP 超时和有限重试。",
+    "sources": [
+      {
+        "file": "harness/executor.py",
+        "symbol": "bounded",
+        "anchor": "    while p.poll() is None:",
+        "count": 17
+      },
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "anchor": "                except Exception as exc:",
+        "count": 4
+      }
+    ],
+    "demo": "python tests/verify_docker.py",
+    "ui": "查看验收输出中的 timeout / output_limit；回到课堂解释 EXECUTION_ERROR 与 FAILED 的区别。",
+    "expect": "无限等待被标成 TEST_TIMEOUT，巨大输出被标成 OUTPUT_LIMIT；不无限运行。",
+    "evidence": "docker-verification.json；测试结果 error / truncated / counts。",
+    "question": "为什么杀掉 Docker CLI 还不够，仍需清理容器？",
+    "pitfall": "超时不是沙箱；未提供真实统计时显示 null / 未提供。",
+    "requires": "Docker 与教学镜像",
+    "test": "python -m pytest -q tests/test_controls.py -k 'timeout or retries or missing_docker'"
+  },
+  {
+    "id": "events",
+    "stage": "网页与轨迹",
+    "title": "事件日志与产物：可观察性",
+    "concept": "每一步都留下可定位、可审计的证据。",
+    "explain": "emit 先写 events.jsonl，再通知网页观察者。稳定 event_id 用来去重，seq 用来排序；源码和大输出写产物文件，事件只带摘要、哈希和引用信息。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.emit",
+        "count": 20
+      },
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.report",
+        "count": 10
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine python --scenario success --simulate",
+    "ui": "展开某条事件，对比候选编号、哈希、时间和错误类型，再查看最终 summary。",
+    "expect": "生成独立 run_id；事件和 summary 明确标注 simulated。",
+    "evidence": "events.jsonl、summary.json、proposal-N.json、test-N.json、changes.diff。",
+    "question": "只保留最终答案，会失去哪几类调试线索？",
+    "pitfall": "此命令使用模拟工具结果，不证明代码通过真实业务测试。事件也不是模型思维链。",
+    "requires": "Python 环境；无需 Docker/Ollama",
+    "test": "python -m pytest -q tests/test_web.py"
+  },
+  {
+    "id": "sse",
+    "stage": "网页与轨迹",
+    "title": "SSE：前端展示后端事实",
+    "concept": "实时页面订阅事件，不用动画猜测进度。",
+    "explain": "后端从持久化日志按 seq 补发事件；前端 mergeEvents 根据 seq 去重，snapshot 根据游标投影历史状态。模型和 Docker 在工作线程中执行，不阻塞 Web 事件循环。",
+    "sources": [
+      {
+        "file": "harness/web.py",
+        "symbol": "create_app.events",
+        "count": 17
+      },
+      {
+        "file": "web/state.js",
+        "anchor": "export function mergeEvents",
+        "count": 6
+      }
+    ],
+    "demo": "python -m harness.web --port 8766",
+    "ui": "打开 http://127.0.0.1:8766；开始运行后刷新页面，再观察事件序号及轨迹。已有同端口服务时直接使用，不要重复启动。",
+    "expect": "仍是同一 run_id；重连按序号补发，页面不重复插入轨迹。运行很快时可使用已完成轨迹检查去重。",
+    "evidence": "GET /api/runs/{id}/events；Last-Event-ID；web/state.js。",
+    "question": "前端关闭后，运行还继续吗？为什么？",
+    "pitfall": "测试前端投影需要 Node，但网页安装和运行本身不需要 Node。",
+    "requires": "本地网页服务；模拟场景无需 Docker",
+    "test": "node --test tests/test_frontend.mjs"
+  },
+  {
+    "id": "replay",
+    "stage": "网页与轨迹",
+    "title": "Replay：历史观察与真实执行分开",
+    "concept": "回放依赖录制结果与请求匹配，不依赖固定随机种子。",
+    "explain": "Tape.call 的 replay 分支核对 kind 和 request，再返回历史结果；它不会调用传入函数。网页回放直接展示已有事件，不重新驱动 Agent。",
+    "sources": [
+      {
+        "file": "harness/core.py",
+        "symbol": "Tape.call",
+        "count": 22
+      },
+      {
+        "file": "tests/test_graph.py",
+        "symbol": "test_replay_no_adapters_called",
+        "count": 12
+      }
+    ],
+    "demo": "# 先复制目标运行的 ID，并保持与原录制相同的配置\nRUN_ID='替换为已有 Python 引擎运行 ID'\nbookstore-harness replay --recording \"runs/$RUN_ID/recording.json\"",
+    "ui": "历史区选择运行 → 查看报告 / 回放 → 从头开始 → 下一步或自动播放。",
+    "expect": "显示历史观察，本次没有模型或 Docker 调用；请求/任务/配置不匹配时拒绝 CLI 回放。",
+    "evidence": "recording.json 的 manifest / calls；historical_observation 标识。",
+    "question": "温度为 0 或固定 seed，为什么还不能代替 replay？",
+    "pitfall": "如果原运行是 LangGraph，CLI replay 要使用原配置并加 --engine langgraph；CLI 回放不重演审批交付。",
+    "requires": "已有录制；无需 Docker/Ollama",
+    "test": "python -m pytest -q tests/test_graph.py -k replay"
+  },
+  {
+    "id": "graph",
+    "stage": "LangGraph 与持久化",
+    "title": "State、Node、Edge 对应哪里",
+    "concept": "框架接管编排，共享节点仍负责业务。",
+    "explain": "HarnessState 定义跨节点状态；StateGraph 注册节点；普通节点调用同一个 Runtime.step；条件边读取 status 或 next。测试通过时转到 APPROVAL。",
+    "sources": [
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "HarnessState",
+        "count": 17
+      },
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "build",
+        "anchor": "    for name in ('LOAD'",
+        "count": 6
+      },
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "build.common",
+        "count": 14
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine langgraph --scenario success",
+    "ui": "选择 LangGraph 后运行成功修复，观察 TEST 通过却停在 WAITING_APPROVAL。",
+    "expect": "共享测试结果和预算计数；与 Python 的差别是图引擎需要批准后才能 SUCCESS。",
+    "evidence": "graph_engine.py 的 HarnessState / build；runtime.py 的共享 step。",
+    "question": "引入 LangGraph 后，哪部分没有必要再写一遍？",
+    "pitfall": "框架不会自动替你决定权限、预算或安全隔离策略。",
+    "requires": "Docker；--simulate 可演示状态图",
+    "test": "python -m pytest -q tests/test_graph.py -k python_graph_business_parity"
+  },
+  {
+    "id": "checkpoint",
+    "stage": "LangGraph 与持久化",
+    "title": "SQLite Checkpoint 与三类记录",
+    "concept": "checkpoint 用于恢复，事件用于审计，summary 用于报告。",
+    "explain": "graph_session 使用 SqliteSaver；thread_id 指定状态流。checkpoints 从图历史读取下一节点、候选、测试状态及 ID；大源码和测试输出通过产物引用关联。",
+    "sources": [
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "graph_session"
+      },
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.checkpoints"
+      }
+    ],
+    "demo": "RUN_ID='替换为 LangGraph 运行 ID'\nbookstore-harness status \"$RUN_ID\"\nbookstore-harness checkpoints \"$RUN_ID\"",
+    "ui": "打开 / 恢复审批 → 查看 Checkpoint 历史，选择“LOAD 完成 · 首次生成前”。",
+    "expect": "每个运行独立 thread_id；可查看多个真实 checkpoint，安全分支边界有明确标签。",
+    "evidence": ".harness/checkpoints.sqlite；events.jsonl；summary.json。",
+    "question": "events.jsonl 与 checkpoint 各自回答什么问题？",
+    "pitfall": "三类存储不是天然原子一致；checkpoint 不是文件系统快照。",
+    "requires": "已有 LangGraph 运行；查询无需模型/Docker",
+    "test": "python -m pytest -q tests/test_graph.py -k 'thread_isolation or approval_uses_checkpoint'"
+  },
+  {
+    "id": "approval",
+    "stage": "LangGraph 与持久化",
+    "title": "Human-in-the-Loop：动态 interrupt",
+    "concept": "通过测试只是进入审批的条件，还不是交付授权。",
+    "explain": "APPROVAL 节点调用 interrupt。恢复时该节点从头重执行，因此 interrupt 前只有可去重事件；审批请求绑定 run_id、审批 ID、候选哈希，并核对测试产物。",
+    "sources": [
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "build.approval"
+      },
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "validate_approval"
+      }
+    ],
+    "demo": "bookstore-harness scripted --engine langgraph --scenario success",
+    "ui": "等待审批 → 查看 diff、测试和哈希 → 填备注 → 批准或拒绝。分别演示一次批准与一次独立运行的拒绝。",
+    "expect": "批准后 DELIVER → SUCCESS；拒绝为 REJECTED，理由写入审计；重复或过期请求被拒。",
+    "evidence": "approval_request、approval-decision.json、approval_result；VALIDATE 与 APPROVAL 是不同控制点。",
+    "question": "为什么批准必须绑定候选哈希，不能只写 approved=true？",
+    "pitfall": "模拟测试也可演示审批，但交付仍标 simulated；不能宣称真实业务验证成功。",
+    "requires": "Docker，或显式模拟；网页或 CLI 均可审批",
+    "test": "python -m pytest -q tests/test_graph.py -k 'approval_binding or rejection'"
+  },
+  {
+    "id": "resume",
+    "stage": "LangGraph 与持久化",
+    "title": "进程重启恢复与状态对账",
+    "concept": "恢复同一线程，不重置预算，不伪装从头运行。",
+    "explain": "drive 使用 Command(resume=answer) 恢复审批；普通中断 invoke(None) 继续 checkpoint。reconcile 将图状态投影到 summary，修复图已结束但页面报告落后的窗口。",
+    "sources": [
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.drive",
+        "count": 13
+      },
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.reconcile",
+        "count": 18
+      }
+    ],
+    "demo": "# 在运行后端的终端：等待 WAITING_APPROVAL 后按 Ctrl+C\npython -m harness.web --port 8766\n# 在另一终端检查同一运行\nRUN_ID='替换为刚才的运行 ID'\nbookstore-harness status \"$RUN_ID\"",
+    "ui": "真正关闭后端后重启 → 刷新 → 打开原运行 → 批准。RECOVERABLE 的中途运行才使用 Resume 按钮。",
+    "expect": "run_id、thread_id、候选哈希保持不变；等待审批阶段无批准时仍不会进入 SUCCESS。",
+    "evidence": "原运行 checkpoint；重启前后 summary；RECOVERABLE / RECOVERY_REQUIRED。",
+    "question": "刷新浏览器和重启后端进程，是同一种恢复测试吗？",
+    "pitfall": "缺少 checkpoint、产物不匹配或执行状态不确定时要求人工恢复。不能静默从头跑。",
+    "requires": "已有图运行；正常审批恢复无需再次测试",
+    "test": "python tests/verify_phase3.py"
+  },
+  {
+    "id": "effects",
+    "stage": "LangGraph 与持久化",
+    "title": "幂等交付与互斥",
+    "concept": "恢复可能重复进入节点，逻辑交付不能重复发生。",
+    "explain": "DELIVER 使用固定运行目录、候选哈希和 manifest 核对，delivered 事件用稳定 ID 去重。RunService.slot 的文件锁同时约束 CLI 和 Web；等待审批释放执行槽。",
+    "sources": [
+      {
+        "file": "harness/graph_engine.py",
+        "symbol": "build.deliver",
+        "anchor": "        previous = read_json",
+        "count": 17
+      },
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.slot",
+        "count": 16
+      }
+    ],
+    "demo": "python -m pytest -q tests/test_graph.py -k 'delivery_crash_window or cli_and_web_share_lock or approval_binding'",
+    "ui": "批准后再次提交同一个审批请求，确认拒绝且没有第二次逻辑交付。",
+    "expect": "交付异常后恢复最多生成一次逻辑 delivered 事件；已有活动执行时另一个执行被拒。此命令用模拟测试观察验证控制逻辑。",
+    "evidence": "delivery/bookstore.py、manifest.json；event_id=delivery:<run_id>；.harness/execution.lock。",
+    "question": "同一个文件被原子替换两次，是否等于发生两次逻辑交付？",
+    "pitfall": "这里的幂等不能直接推广成外部邮件、支付或模型调用的 exactly-once。",
+    "requires": "Python 测试环境；无需 Docker/Ollama",
+    "test": "python -m pytest -q tests/test_graph.py -k delivery_crash_window"
+  },
+  {
+    "id": "crash",
+    "stage": "LangGraph 与持久化",
+    "title": "节点中途退出：收据与遗留执行",
+    "concept": "恢复图之前，先核对已经发生的动作。",
+    "explain": "动作 ID 包含节点与候选号。有结果收据则复用；无收据的 Docker 测试先核对容器归属并清理，再用新副本重试。模型结果未落盘时可能重新请求，日志必须说明。",
+    "sources": [
+      {
+        "file": "harness/runtime.py",
+        "symbol": "Runtime.step",
+        "count": 26
+      },
+      {
+        "file": "harness/executor.py",
+        "symbol": "DockerExecutor.recover",
+        "count": 21
+      }
+    ],
+    "demo": "python tests/verify_phase3.py",
+    "ui": "查看该脚本创建的独立测试项目及报告；它自动在第 2 轮 TEST 中 SIGKILL 后端并重启。不要强杀学生当前运行来替代该验证。",
+    "expect": "真实独立进程恢复，旧容器被清理；候选仍为 2、剩余 1、失败指纹保留，最终 STALLED。",
+    "evidence": "phase3-verification.json；actions/、calls/、execution-N.json；interrupted_execution_cleaned 事件。",
+    "question": "请求已发出、结果还没写盘就崩溃，能证明模型只被调用一次吗？",
+    "pitfall": "Docker create 提交窗口不确定时需要人工检查；恢复不会自动撤销外部副作用。",
+    "requires": "Docker 与教学镜像；脚本启动独立本地后端进程",
+    "test": "python -m pytest -q tests/test_graph.py -k action_receipt"
+  },
+  {
+    "id": "fork",
+    "stage": "LangGraph 与持久化",
+    "title": "Fork：从安全历史状态创建新实验",
+    "concept": "分支是新运行，不是修改父线程或复制 checkpoint ID。",
+    "explain": "只允许 LOAD 完成、首次 GENERATE 前的边界。复制所选 state，替换新 run_id / thread_id / 配置和父关系，调用 update_state(new_config, copied, as_node='LOAD')，然后继续。",
+    "sources": [
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.fork",
+        "anchor": "            copied = copy.deepcopy(source)",
+        "count": 10
+      }
+    ],
+    "demo": "RUN_ID='替换为父 LangGraph 运行 ID'\nbookstore-harness checkpoints \"$RUN_ID\"\nCHECKPOINT_ID='替换为 safe_to_fork=true 的 ID'\nbookstore-harness fork \"$RUN_ID\" --checkpoint \"$CHECKPOINT_ID\" --reason '比较预算' --max-candidates 1",
+    "ui": "打开父运行 → 选择安全 checkpoint → 填原因 → 预算 1 → Fork；再用预算 3 创建另一分支。",
+    "expect": "使用 scripted success 父运行的安全 LOAD checkpoint：新线程保留 parent_run_id；预算 1 分支失败，预算 3 分支重新测试并等待自己的审批；父运行不变。",
+    "evidence": "父子 summary、source_checkpoint；两个独立运行目录；不同 approval_id。",
+    "question": "为什么分支不能继承父运行的批准？",
+    "pitfall": "replay 不执行工具；resume 继续原线程；fork 可能再次调用模型和 Docker。",
+    "requires": "已有图运行；执行依赖沿用父运行的真实/模拟模式",
+    "test": "python -m pytest -q tests/test_graph.py -k fork_copies"
+  },
+  {
+    "id": "tests",
+    "stage": "课堂总结",
+    "title": "Test Harness：如何证明控制器有效",
+    "concept": "业务测试与 Harness 测试关注不同正确性。",
+    "explain": "固定业务测试验证计价；控制逻辑测试验证预算、拒绝、幂等及无工具回放；真实集成程序验证 Docker 和进程退出。不能用同一进程重建对象冒充后端重启。",
+    "sources": [
+      {
+        "file": "tests/test_graph.py",
+        "symbol": "test_python_graph_business_parity",
+        "count": 11
+      },
+      {
+        "file": "tests/test_graph.py",
+        "symbol": "test_delivery_crash_window_recovers_once",
+        "count": 18
+      }
+    ],
+    "demo": "python -m pytest -q\n# 安装 Node 时可选：\nnode --test tests/test_frontend.mjs\n# 有 Docker 时：\npython tests/verify_phase3.py",
+    "ui": "先展示单元测试的模拟标识，再查看真实进程验收报告，讨论两类证据的边界。",
+    "expect": "控制逻辑自动化测试通过；独立进程报告记录真实 PID、容器清理及预算保持。测试总数随项目更新可能变化。",
+    "evidence": "tests/test_controls.py、test_web.py、test_graph.py；docs/verification-phase3.md。",
+    "question": "某项 pytest 通过，究竟证明的是业务、控制流还是 UI 投影？",
+    "pitfall": "不要把模拟工具结果当作真实测试，也不要把浏览器 UI 测试与 HTTP 接口测试混为一谈。",
+    "requires": "常规 pytest 无需模型/Docker；最后一条需要 Docker",
+    "test": "python -m pytest -q"
+  },
+  {
+    "id": "route",
+    "stage": "课堂总结",
+    "title": "把整套工程串成一次课堂演示",
+    "concept": "每个知识点都应对应可读代码、可执行动作和可核对证据。",
+    "explain": "建议顺序：Guard → 反馈循环 → STALLED/FAILED → 图与审批 → 真正重启 → 幂等 → Fork → Replay。先讲 20 个知识点的索引，再选重点逐页讲解。",
+    "sources": [
+      {
+        "file": "harness/service.py",
+        "symbol": "RunService.start",
+        "count": 16
+      }
+    ],
+    "demo": "python -m harness.web --port 8766",
+    "ui": "用 scripted 固定模型响应降低课堂偶然性；有 Docker 时真实测试。等待审批时关闭后端再重启；完成后逐步回放讲解。",
+    "expect": "学生能够沿知识点定位到函数，再通过运行产物说明为何接受、拒绝、继续或结束。",
+    "evidence": "本对照文档与三个阶段教师指南；README 中的安装和 CLI 操作。",
+    "question": "如果把控制器删掉，只保留 Ollama 调用，这些工程保证还剩哪些？",
+    "pitfall": "现有 LectureNote.md 还提到退款和课程资料检索短案例；它们未在此项目实现，不映射成已有代码。",
+    "requires": "按所选演示模式；无依赖时只回放已有记录",
+    "test": "python -m pytest -q tests/test_graph.py"
+  }
+]

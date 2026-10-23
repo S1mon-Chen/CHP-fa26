@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - 状态分支 Fork 与 What-If 假设推演</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code-fork"></i>
+                <span>第 7 课：控制流工程 · 模块二状态持久化与分支分叉</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                状态分支 Fork 与 What-If 假设推演
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                构建平行多宇宙决策演练阵地：解构基于历史 Checkpoint 的 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">State Forking (状态分叉)</span> 机制，通过将已存档快照挂载至全新 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">thread_id 派生平行分支</span>，实现无毒化对比方案 A/B 演算与对复杂 Task 的 What-If 假设模拟分析
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: State Forking Mechanics vs What-If Simulation) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: State Forking Mechanics & Thread Isolation -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code-branch"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. State Forking (状态分叉) 机制</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Snapshot Spawning & Thread Isolation</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Forking Spec</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-purple-400"># 1. 抓取主干历史节点的 Snapshot 快照状态</div>
+                        <div class="text-slate-300">base_config = {<span class="text-amber-300">"configurable"</span>: {<span class="text-amber-300">"thread_id"</span>: <span class="text-emerald-300">"main_branch"</span>, <span class="text-amber-300">"checkpoint_id"</span>: <span class="text-emerald-300">"ckpt_step_2"</span>}}</div>
+                        <div class="text-slate-300">snapshot = app.<span class="text-cyan-300">get_state</span>(base_config)</div>
+                        <br/>
+                        <div class="text-purple-400"># 2. 注入全新的 thread_id 派生独立子分支，原主干完好无损</div>
+                        <div class="text-slate-300">fork_config = {<span class="text-amber-300">"configurable"</span>: {<span class="text-amber-300">"thread_id"</span>: <span class="text-emerald-300">"fork_branch_a"</span>}}</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">update_state</span>(fork_config, snapshot.values)</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">invoke</span>(<span class="text-cyan-300 font-bold">None</span>, config=fork_config) <span class="text-slate-500"># 从派生分支独立推演！</span></div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>绝对物理隔离：</strong>派生分支产生的任何工具调用或状态变更均写入全新的 `thread_id`，原主干历史路径不受丝毫不良污染。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>版本快照复用：</strong>继承选定快照（Snapshot）截至第 N 步的所有上下文、计算中间件与全局状态。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrows-split-up-and-left text-purple-600"></i>
+                    <span>物理本质：建立在关系型/KV Key 索引隔离基础上的状态树分叉技术</span>
+                </div>
+            </div>
+
+            <!-- Right Card: What-If Simulation & Strategy Comparison -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-vial"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. What-If 假设推演与 A/B 方案比对</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Parallel Scenario Testing & Strategy A/B Eval</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">What-If Eval</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 同时从 Step 2 分叉两条分支，注入不同的假设参数 (What-If)</div>
+                        <div class="text-slate-300"># 分支 A: 假设提升重试策略与宽松 Prompt</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">update_state</span>(cfg_a, {<span class="text-amber-300">"strategy"</span>: <span class="text-emerald-300">"aggressive"</span>, <span class="text-amber-300">"temperature"</span>: <span class="text-cyan-300">0.7</span>})</div>
+                        <div class="text-slate-300">res_a = app.<span class="text-cyan-300">invoke</span>(<span class="text-cyan-300 font-bold">None</span>, config=cfg_a)</div>
+                        <br/>
+                        <div class="text-slate-300"># 分支 B: 假设采用保守安全 Prompt 与只读校验</div>
+                        <div class="text-slate-300">app.<span class="text-cyan-300">update_state</span>(cfg_b, {<span class="text-amber-300">"strategy"</span>: <span class="text-emerald-300">"conservative"</span>, <span class="text-amber-300">"temperature"</span>: <span class="text-cyan-300">0.1</span>})</div>
+                        <div class="text-slate-300">res_b = app.<span class="text-cyan-300">invoke</span>(<span class="text-cyan-300 font-bold">None</span>, config=cfg_b)</div>
+                        <br/>
+                        <div class="text-indigo-400"># 平行评估方案 A 和 B 的产出质量，选优合并！</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>基准环境绝对对齐：</strong>保证方案 A 与方案 B 在分叉前的输入与中间状态 100% 完全一致，得出最客观的评测。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>安全无毒沙箱试错：</strong>在大规模代码重构或高风险架构决策前，先在平行 Fork 分支中预演推演，零风险选择最优方案。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-indigo-600"></i>
+                    <span>物理本质：以特定快照为树根节点派生平行决策树（Decision Tree Spawning）</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- State Forking & Parallel What-If Execution Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">State Forking & Parallel What-If Execution Topology / 状态分叉与平行假设推演拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Forking Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-clock-rotate-left mr-1 text-indigo-400"></i>1. Select Checkpoint</div>
+                    <div class="text-[9px] text-slate-400">Fetch Step Snapshot</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-fork mr-1 text-purple-400"></i>2. Fork thread_id</div>
+                    <div class="text-[9px] text-slate-400">Spawn `fork_branch_a`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-vial mr-1 text-amber-400"></i>3. Inject What-If Patch</div>
+                    <div class="text-[9px] text-slate-400">`strategy="aggressive"`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-square-poll-vertical mr-1 text-emerald-400"></i>4. Parallel A/B Eval</div>
+                    <div class="text-[9px] text-slate-400">Compare & Merge Winner</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>State Forking 将单线推理升维为多分支决策树！</strong>通过从指定快照点派生独立 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">thread_id</code>，架构师能够实现平行的 What-If 假设推演与 A/B 策略比对，在完全隔离的安全分支中寻找最优质决策路径。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">16</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[40%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (15.html <- 16.html -> 17.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">状态分支 Fork 与 What-If 假设推演</span>
+            <a href="17.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="15.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="17.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 讲授 State Forking (状态分叉) 机制：</span>
+                    “向学员深入剖析：上一页我们学习了 Time Travel，即沿着主干往前或往后重放。但在复杂的商业决策或代码重构中，我们往往不希望把原主干数据给覆盖掉，而是希望能派生出一个平行分支进行试错——这就是 State Forking。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 What-If 假设推演的价值：</span>
+                    “提示学员看右侧代码：我们可以读取第 2 步的快照，赋予一个全新的 `thread_id="fork_branch_a"`。在这个分支里，我们可以修改参数（如把策略改为激进或保守），让它独立推演后半段。原主干 `main_branch` 的快照树不会受到任何污染，最后比对两条分支的结果，择优应用即可。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

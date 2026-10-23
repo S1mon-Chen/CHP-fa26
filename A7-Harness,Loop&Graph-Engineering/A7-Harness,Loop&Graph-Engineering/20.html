@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 20 - 模块二小结与状态持久化/时光旅行最佳实践</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-compass"></i>
+                <span>第 7 课：控制流工程 · 模块二总结与落地指南</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块二小结与状态持久化 / 时光旅行最佳实践
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                全盘归纳状态持久化、时光旅行与人机挂起架构：融会贯通 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">三级句柄隔离体系 (`thread_id`)</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">异步 HITL 断点续传 (`interrupt()`)</span>，凝炼生产级 5 大数据治理与版本演进工程最佳实践
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Module 2 Technical Synthesis vs 5 Production Best Practices) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Module 2 Technical Architecture Synthesis -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-layer-group"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 模块二四大核心技术原语复盘</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Module 2 Core Technical Primitives</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">4 Primitives</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Checkpointer</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">抽象接口落盘介质：</strong>
+                                <span class="text-slate-600 text-[11px]">基于 `BaseCheckpointSaver` 统一解耦 SQLite (开发)、PostgreSQL (生产) 与 Redis (极速缓存)。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Handles</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">三级强隔离句柄：</strong>
+                                <span class="text-slate-600 text-[11px]">以 `(thread_id, checkpoint_ns, checkpoint_id)` 复合主键彻底防范多租户高并发数据穿透。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">HITL & Patch</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">异步打断与人类覆写：</strong>
+                                <span class="text-slate-600 text-[11px]">`interrupt()` 触发零 CPU/RAM 挂起，结合 `app.update_state()` 完成人类审核并原位唤醒。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Time Travel</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">时光旅行与平行 Fork：</strong>
+                                <span class="text-slate-600 text-[11px]">基于历史快照树进行定点重放（Zero Re-computation）与派生新 `thread_id` 进行 What-If 假设推演。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-clock-rotate-left text-purple-600"></i>
+                    <span>物理本质：把易失的内存逻辑升维为具备版本演进、点对点追溯与人类治理的企业级快照账本</span>
+                </div>
+            </div>
+
+            <!-- Right Card: 5 Production Best Practices -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-list-check"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. 生产级状态落盘与时光旅行 5 大最佳实践</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">5 Production Engineering Best Practices</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">5 Best Practices</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700">
+                        <!-- Rule 1 -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">1. TTL 数据自动过期与快照清理 (Storage Pruning)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">为历史 Checkpoint 建立分区清理（PostgreSQL Partition) 或 Redis Key TTL，防止无限增量暴表。</p>
+                        </div>
+
+                        <!-- Rule 2 -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">2. 敏感数据前置脱敏落盘 (PII Data Masking)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">在快照序列化写库前脱敏用户密钥、身份证等敏感字段，保障静态落盘安全。</p>
+                        </div>
+
+                        <!-- Rule 3 -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">3. 节点侧副作用幂等设计 (Idempotent Action Nodes)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">时光旅行或重放（Replay）时，写 DB/扣费等副作用节点必须带幂等 Token 校验，防范二次误触发。</p>
+                        </div>
+
+                        <!-- Rule 4 -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">4. 确定性重放沙箱隔离 (Deterministic Sandbox Replay)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">时光旅行回溯时建议在隔离沙箱或带 Mock 工具的环境中重放，避免对线上系统产生二次干扰。</p>
+                        </div>
+
+                        <!-- Rule 5 -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 soft-shadow space-y-0.5">
+                            <strong class="text-slate-900 block text-[11px] font-bold">5. State Schema 向上兼容与版本控制 (Schema Migration)</strong>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">升级 图 State 字段时保持字段可选（Optional），防止旧版本快照反序列化崩溃。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-arrow-right text-indigo-600"></i>
+                    <span>下一步：进入模块三《多智能体蜂群与状态树编排 (Slides 21-30)》</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- State Persistence Best Practices Matrix Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">State Persistence & Time Travel Governance Matrix / 状态持久化与时光旅行数据治理矩阵</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Module 2 Governance Matrix</span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left font-mono text-[11px]">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400">
+                            <th class="py-1.5 px-3">治理维度 / Aspect</th>
+                            <th class="py-1.5 px-3 text-indigo-300">常规状态落盘 / Checkpointing</th>
+                            <th class="py-1.5 px-3 text-amber-300">人机挂起 / HITL Interrupt</th>
+                            <th class="py-1.5 px-3 text-emerald-300">时光旅行 / Time Travel Replay</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">资源占用 / Overhead</td>
+                            <td class="py-1.5 px-3 text-indigo-300">低 (节点完成异步序列化写库)</td>
+                            <td class="py-1.5 px-3 text-amber-300">零 CPU / RAM (只驻留 DB 快照)</td>
+                            <td class="py-1.5 px-3 text-emerald-300">中等 (读取历史 Block 并原位唤醒)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">数据安全 / Security</td>
+                            <td class="py-1.5 px-3 text-indigo-300">PII 脱敏与 DB 行级隔离</td>
+                            <td class="py-1.5 px-3 text-amber-300">SOC2 审批手印与手印日志记录</td>
+                            <td class="py-1.5 px-3 text-emerald-300">沙箱隔离重放防范副作用重复</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-3 font-semibold text-slate-400">恢复方式 / Resumption</td>
+                            <td class="py-1.5 px-3 text-indigo-300">凭 `thread_id` 从最新 Snapshot 恢复</td>
+                            <td class="py-1.5 px-3 text-amber-300">`update_state()` 后发 `invoke(None)`</td>
+                            <td class="py-1.5 px-3 text-emerald-300">指定 `checkpoint_id` 发起 `invoke()`</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>状态持久化不仅是事故恢复的保底，更是赋予 Agent 时间维度治理（Time-Dimension Governance）的核心武器！</strong>通过 Checkpointer 存储引擎、严密的三级句柄、`interrupt()` 打断与时光旅行重放，架构师把不可控的黑盒推演升级为可被人类随时调阅、暂停、回溯与纠偏的白盒长生命周期微服务。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">20</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[50%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (19.html <- 20.html -> 21.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="19.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块二小结与状态持久化/时光旅行最佳实践</span>
+            <a href="21.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="19.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="21.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 总结模块二：状态持久化、时光旅行与人机挂起：</span>
+                    “向学员深入总结：大家请看模块二的整体视角。我们从为什么需要 Checkpointer 出发，介绍了三级隔离句柄、HITL 异步打断、时光旅行重放、分支 Fork 推演与 State Overriding 人类干预。最后我们还讲了如何与 Temporal 这类分布式引擎融合。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 5 大生产落地工程实践：</span>
+                    “提示学员注意右侧的 5 大最佳实践：第一是 TTL 清理策略防止快照爆表；第二是 PII 脱敏落盘；第三是副作用节点的幂等性保护（防止时光旅行重放时重复扣费）；第四是沙箱隔离重放；第五是 State Schema 的向上兼容。做好这五点，你的 Agent 持久化架构就达到了企业级生产标准。接下来模块三我们将进入《多智能体蜂群与状态树编排》！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

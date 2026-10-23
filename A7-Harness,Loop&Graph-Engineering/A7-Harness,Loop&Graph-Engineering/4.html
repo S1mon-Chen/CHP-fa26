@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 04 - 离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 7: Harness, Loop & Graph Engineering)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-cubes"></i>
+                <span>第 7 课：控制流工程 · 模块一图工程</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                离散节点设计模式：LLM 节点、Tool 节点、Data 节点与 Guard 节点
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                遵循单一职责原理 (SRP) 解耦图计算：将大杂乱函数解构为只读推理的 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LLM Node</span>、知识检索的 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Data Node</span>、物理改变系统的 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Tool/Action Node</span> 与合规风控拦截的 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Guard Node</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (4 Discrete Node Taxonomy Cards) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
+            
+            <!-- Card 1: LLM Node -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-sm shrink-0">
+                            <i class="fa-solid fa-brain"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Reasoning</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">1. LLM Node (推理节点)</h3>
+                    <p class="text-[10px] text-indigo-800 font-mono mb-2">Pure Reasoning / Prompt Assembly</p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[9px] shadow-inner space-y-1 mb-2.5 leading-relaxed">
+                        <div class="text-indigo-400">// 仅做概率推理与 JSON 输出</div>
+                        <div class="text-purple-300">def reasoning_node(state):</div>
+                        <div class="text-slate-300 pl-2">prompt = build_prompt(state)</div>
+                        <div class="text-cyan-300 pl-2">res = llm.invoke(prompt)</div>
+                        <div class="text-slate-300 pl-2">return {"intent": res.intent}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700">
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-indigo-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>单一职责：</strong>仅做文本生成、意图分类与 ReAct 计划推演。</span>
+                        </li>
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-indigo-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>零副作用：</strong>绝不直接发起写 DB、网络请求或执行代码。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-indigo-200/60 text-[10px] text-indigo-900 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：纯推理计算单元</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Data Node -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-sm shrink-0">
+                            <i class="fa-solid fa-database"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Read-Only</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">2. Data Node (数据检索)</h3>
+                    <p class="text-[10px] text-purple-800 font-mono">RAG / AST / Vector Store</p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[9px] shadow-inner space-y-1 mb-2.5 leading-relaxed">
+                        <div class="text-purple-400">// 只读知识库与 AST 提取</div>
+                        <div class="text-purple-300">def rag_search_node(state):</div>
+                        <div class="text-slate-300 pl-2">query = state["email"]</div>
+                        <div class="text-cyan-300 pl-2">docs = vector_db.search(query)</div>
+                        <div class="text-slate-300 pl-2">return {"chunks": docs}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700">
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>只读隔离：</strong>负责向量库检索、代码 AST 结构抽取与数据库查表。</span>
+                        </li>
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>开销隔离：</strong>把耗时的向量匹配独立开来，便于独立挂载缓存 Cache。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-purple-200/60 text-[10px] text-purple-900 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-magnifying-glass text-purple-600"></i>
+                    <span>物理本质：无副作用数据抽回器</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Tool / Action Node -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-sm shrink-0">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Side-Effect</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">3. Action Node (动作节点)</h3>
+                    <p class="text-[10px] text-emerald-800 font-mono">DB Write / API / E2B Sandbox</p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[9px] shadow-inner space-y-1 mb-2.5 leading-relaxed">
+                        <div class="text-emerald-400">// 物理写操作与外部改变</div>
+                        <div class="text-purple-300">def apply_patch_node(state):</div>
+                        <div class="text-slate-300 pl-2">patch = state["patch"]</div>
+                        <div class="text-cyan-300 pl-2">res = sandbox.exec(patch)</div>
+                        <div class="text-slate-300 pl-2">return {"executed": True}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700">
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>物理副作用：</strong>专门管辖写 DB、提 PR、发邮件或在沙箱跑代码。</span>
+                        </li>
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>卡扣审计：</strong>所有的系统状态修改动作均收敛在此类节点进行严格监控。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-emerald-200/60 text-[10px] text-emerald-900 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-gears text-emerald-600"></i>
+                    <span>物理本质：物理状态变更执行器</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Guard Node -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-sm shrink-0">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">Safety Gate</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">4. Guard Node (风控节点)</h3>
+                    <p class="text-[10px] text-amber-800 font-mono">PII Redact / RBAC / Rate Limit</p>
+
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[9px] shadow-inner space-y-1 mb-2.5 leading-relaxed">
+                        <div class="text-amber-400">// 合规校验与物理拦截</div>
+                        <div class="text-purple-300">def guard_check_node(state):</div>
+                        <div class="text-slate-300 pl-2">if state["amount"] > 1000:</div>
+                        <div class="text-rose-400 pl-4">raise PolicyViolationError()</div>
+                        <div class="text-slate-300 pl-2">return {"safe": True}</div>
+                    </div>
+
+                    <ul class="space-y-1 text-[11px] text-slate-700">
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-amber-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>物理拦截闸门：</strong>执行 PII 脱敏、RBAC 越权拦截与高危操作限额校验。</span>
+                        </li>
+                        <li class="flex items-start gap-1">
+                            <i class="fa-solid fa-check text-amber-600 mt-0.5 shrink-0 text-[9px]"></i>
+                            <span><strong>安全解耦：</strong>由安全/风控团队统一维护，独立于业务 LLM 代码之外。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-amber-200/60 text-[10px] text-amber-900 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-lock text-amber-600"></i>
+                    <span>物理本质：确定性物理安全防火墙</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Discrete Node Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Discrete Node Execution & SRP Isolation Pipeline / 离散节点单一职责解耦流水线</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">SRP Architecture</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-2 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-3 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-database mr-1 text-purple-400"></i>1. Data Node</div>
+                    <div class="text-[9px] text-slate-400">Fetch RAG / Context</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-indigo-400"></i>2. LLM Node</div>
+                    <div class="text-[9px] text-slate-400">Reason & Plan Action</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-shield-halved mr-1 text-amber-400"></i>3. Guard Node</div>
+                    <div class="text-[9px] text-slate-400">Validate Policy & RBAC</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-3 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>4. Action Node</div>
+                    <div class="text-[9px] text-slate-400">Execute Side Effects</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>严格区分只读节点（Data/LLM）与副作用节点（Tool/Guard），是构建高鲁棒性状态图的第一步！</strong>单一职责解耦不仅大幅降低单测门槛，还能让安全团队专门对 Guard 节点施加物理硬拦截，彻底隔绝越权风险。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">04</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[10%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">离散节点设计模式：LLM、Tool、Data 与 Guard 节点</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析离散节点拆解的核心痛点：</span>
+                    “向学员深入剖析：在早期的代码写法中，大家习惯把写 Prompt、调大模型、查数据库、调工具全部塞在一个巨大的 `run_agent()` 函数里。这种大混杂导致代码根本无法编写单元测试，一旦工具报错整块崩溃。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 4 类离散节点与只读/写分离：</span>
+                    “提示学员注意 4 类节点的职责：Data 节点只读查向量库，LLM 节点只读算推理，Guard 节点只读跑校验，Tool 节点才真正产生系统修改（副作用）。这种读写分离让安全团队可以把防护重点集中在 Guard 与 Action 节点上。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
