@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 子系统 7：多文件变更原子级 Undo / Rollback 事务管理器</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-rotate-left"></i>
+                <span>第 8 课：全栈系统架构 · 模块二子系统实战 (7/8)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                子系统 7：多文件变更原子级 Undo / Rollback 事务管理器
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                在多文件复杂重构场景中建立具备原子性与可撤销性的物理屏障：手写 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Git 快照事务管理器 (Git Transaction Manager)</span>，借助临时 Stash 与分支快照实现 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">多文件原子提交 (Atomic Multi-file Commit)</span>，在单测失败或人类驳回时触发 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">原位零残留回滚 (Zero-Pollution Rollback)</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Git Snapshot Specs vs Python Implementation Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Git Snapshot & Atomic Undo Specs -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 多文件原子事务与 Git Stash 撤销机制规约</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Git Snapshot Checkpoints & Atomic Rollback Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Transaction Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Stash Snapshot</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">工作树快照记录 (Checkout Point)：</strong>
+                                <span class="text-slate-600 text-[11px]">改动物理文件前，调用 `git stash create` 生成不可变 Blob 快照 SHA，不污染常规 git log。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Zero Pollution</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">原位零残留回滚 (Zero-Pollution Rollback)：</strong>
+                                <span class="text-slate-600 text-[11px]">单测破防或 Reviewer 拒批时，执行 `git reset --hard HEAD` 与 `stash apply`，一键还原至完美干净状态。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Atomic Commit</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">跨文件原子提交 (Atomic Commit)：</strong>
+                                <span class="text-slate-600 text-[11px]">校验 100% 全绿后将涉及的所有文件变动打包为一个 Clean Commit，避免版本库出现半成品碎改动。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-code-branch text-purple-600"></i>
+                    <span>物理本质：把 Git 底层对象模型当作 AI 修改代码的 ACIDO 事务数据库处理</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Git Transaction Manager -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Git 事务管理器 (GitTransactionManager) 实战代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Git Snapshot & Atomic Rollback Engine</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级多文件变更 Git 事务管理器实现</div>
+                        <div class="text-purple-300">import git</div>
+                        <br/>
+                        <div class="text-purple-300">class GitTransactionManager:</div>
+                        <div class="text-slate-300 pl-3">def __init__(self, repo_path: str):</div>
+                        <div class="text-slate-300 pl-6">self.repo = git.Repo(repo_path)</div>
+                        <div class="text-slate-300 pl-6">self.checkpoint_sha = None</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 1. 修改前抓取物理快照</div>
+                        <div class="text-purple-300 pl-3">def create_checkpoint(self) -&gt; str:</div>
+                        <div class="text-slate-300 pl-6">self.checkpoint_sha = self.repo.git.stash(<span class="text-amber-300">"create"</span>)</div>
+                        <div class="text-emerald-300 pl-6 font-bold">return self.checkpoint_sha</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 2. 验证失败：物理原位强清干净回滚</div>
+                        <div class="text-purple-300 pl-3">def rollback(self):</div>
+                        <div class="text-slate-300 pl-6">self.repo.git.reset(<span class="text-amber-300">"--hard"</span>, <span class="text-amber-300">"HEAD"</span>)</div>
+                        <div class="text-cyan-300 pl-6">if</div>
+                        <div class="text-slate-300 pl-9">self.checkpoint_sha:</div>
+                        <div class="text-slate-300 pl-12">self.repo.git.stash(<span class="text-amber-300">"apply"</span>, self.checkpoint_sha)</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 3. 验证通过：打包提交为原子 Commit</div>
+                        <div class="text-purple-300 pl-3">def commit_transaction(self, commit_msg: str):</div>
+                        <div class="text-slate-300 pl-6">self.repo.git.add(A=<span class="text-cyan-300">True</span>)</div>
+                        <div class="text-emerald-300 pl-6 font-bold">self.repo.index.commit(commit_msg)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>脏代码隔离（Dirty Workspace Isolation）：</strong>即使 AI 一口气动了 20 个文件，回滚时也能在一毫秒内恢复至完美的变动前基线。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零无用提交（No Junk Commits）：</strong>未跑通测试与审查的试错改动绝不会进入版本库历史。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>物理本质：手写 Git 快照事务管辖器，确保代码应用具备真正的 ACID 特性</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Subsystem Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Git Transaction Manager Pipeline / 多文件撤销事务管理器拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 7 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-camera mr-1 text-indigo-400"></i>1. Create Checkpoint</div>
+                    <div class="text-[9px] text-slate-400">`stash create` Blob SHA</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-file-pen mr-1 text-purple-400"></i>2. Apply Multi-File Patch</div>
+                    <div class="text-[9px] text-slate-400">Apply Changes to Working Tree</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-vial mr-1 text-amber-400"></i>3. Test & Verify</div>
+                    <div class="text-[9px] text-slate-400">Sandbox Test / Review</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-check-double mr-1 text-emerald-400"></i>4. Commit or Rollback</div>
+                    <div class="text-[9px] text-slate-400">Atomic Commit / `reset --hard`</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要让未经测试与评审拦截的多文件碎改动污染物理 Git 历史！</strong>通过手写 Git 快照事务管理器，在应用补丁前创建轻量 Stash 快照，能够在遇到单测报错或人类驳回时一键完成毫秒级原位撤销，保证代码仓库修改的原子性与绝对安全性。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[45%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">子系统 7：多文件变更原子级 Undo / Rollback 事务管理器</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 讲授多文件撤销事务管理器子系统逻辑：</span>
+                    “向学员深入剖析：在构建全栈 AI Coding 平台时，第 7 个核心子系统就是 Git 多文件事务撤销管理器。大模型在修改代码时，经常会同时修改 5 到 10 个关联文件。如果改到第 8 个文件时发现语法错误或单测失败，如果不加事务管理，物理工作树就会留下满地狼藉的‘半成品脏改动’。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 `stash create` 与原子提交（Atomic Commit）：</span>
+                    “提示学员看右侧代码：我们在应用任何补丁前，先用 `git.stash("create")` 抓取不可变的隐藏快照 SHA。如果后续单测通过，用 `index.commit()` 将所有文件一次性打包为原子提交；如果单测失败，直接执行 `reset --hard` 一键原位清空并恢复原状，保持代码库绝不产生脏改动！下一页我们将手写第 8 个子系统：HITL 人类打断与风险卡扣控制器！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

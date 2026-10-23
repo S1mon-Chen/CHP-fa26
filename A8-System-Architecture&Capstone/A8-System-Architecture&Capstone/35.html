@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - Capstone 核心模块 3：Coder Sub-Graph 生成 Unified Diff 代码补丁</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code"></i>
+                <span>第 8 课：全栈系统架构 · 模块四 Capstone 实战 (3/5)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Capstone 核心模块 3：Coder Sub-Graph 生成 Unified Diff 代码补丁
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                构建具备思考约束与语法自检的代码重构大子图：装载精简 XML 上下文，执行 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Devin 风格系统提示词</span>，在 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">`&lt;thought&gt;` 标签</span> 中开展自洽推理，吐出规范的 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">`&lt;unified_diff&gt;` 补丁</span> 并完成写前内存 AST 语法断言
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Coder Sub-Graph Specs vs Python Coder Node Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Coder Sub-Graph & Unified Diff Specs -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-file-contract"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Coder 子图与 Unified Diff 生成规约</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Devin Prompt Contract & AST Memory Assertion Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Coder Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Devin Contract</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Devin 风格系统提示词约束 (System Constraints)：</strong>
+                                <span class="text-slate-600 text-[11px]">限制模型把重构思路写在 `&lt;thought&gt;` 节点，代码改动一律收敛于 `&lt;unified_diff&gt;` 标签，禁止闲聊。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Hunk Format</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">标准 Unified Diff 格式输出：</strong>
+                                <span class="text-slate-600 text-[11px]">按 `--- a/path` 与 `+++ b/path` 生成 Hunks 块，避免全量文件覆盖导致的行丢删丢失。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">AST Pre-check</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">内存写前 AST 语法预检 (Syntax Assert)：</strong>
+                                <span class="text-slate-600 text-[11px]">通过 `ast.parse()` 在内存中模拟组装 Patch；若发现 SyntaxError，即刻拦截并重新向 Coder 提示修正。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-code-compare text-purple-600"></i>
+                    <span>物理本质：把非确定性的 LLM 重构输出转化为强契约、带内存语法校验的代码补丁</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Coder Sub-Graph Node -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Coder Agent 子图节点实战代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Coder Node with Devin Prompt & AST Validation</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Coder Node</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 Coder Agent 子图节点与补丁生成实现</div>
+                        <div class="text-purple-300">async def coder_agent_subgraph_node(state: CapstoneState) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3">prompt = f<span class="text-amber-300">"""Task: Fix Issue #{state['issue_id']}</div>
+<div class="text-amber-300">Issue Context: {state['issue_body']}</div>
+<div class="text-amber-300">Codebase Context: {state['context_xml']}</div>
+<div class="text-amber-300">Previous Traceback (if retry): {state.get('traceback', 'None')}</div>
+<div class="text-amber-300">MUST write thought in &lt;thought&gt; tag and patch in &lt;unified_diff&gt; tag."""</span></div>
+                        <br/>
+                        <div class="text-slate-300 pl-3">response = await coder_llm.ainvoke([SystemMessage(content=DEVIN_PROMPT), HumanMessage(content=prompt)])</div>
+                        <div class="text-slate-300 pl-3">diff_patch = extract_xml_tag(response.content, <span class="text-amber-300">"unified_diff"</span>)</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 写前内存 AST 语法校验（防止输出非法 Python 语法导致沙箱崩溃）</div>
+                        <div class="text-cyan-300 pl-3">try</div>
+                        <div class="text-slate-300 pl-6">: simulate_in_memory_ast_parse(state[<span class="text-amber-300">"target_files"</span>], diff_patch)</div>
+                        <div class="text-cyan-300 pl-3">except</div>
+                        <div class="text-slate-300 pl-6">SyntaxError <span class="text-cyan-300">as</span> err:</div>
+                        <div class="text-rose-400 pl-9 font-bold">return {"current_patch": None, "traceback": f"AST SyntaxError: {err}"}</div>
+                        <div class="text-emerald-300 pl-3 font-bold">return {"current_patch": diff_patch, "traceback": None}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零垃圾代码物理泄露：</strong>内存 AST 预检捕获语法错误并立即返回 Traceback，防止沙箱无效崩溃。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>无缝融合自愈经验：</strong>自动将前轮 E2B 沙箱爆出的失败 Traceback 注入 Prompt 驱动自主修正。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：把 Devin 架构原语落实为带有思考闭环与内存语法防线的 Coder 算子</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Coder Sub-Graph Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Coder Sub-Graph Patch Generation Pipeline / Coder 子图补丁生成拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Capstone Module 3 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-file-code mr-1 text-indigo-400"></i>1. XML Context Payload</div>
+                    <div class="text-[9px] text-slate-400">Issue + Codebase Skeleton</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-purple-400"></i>2. &lt;thought&gt; Reasoning</div>
+                    <div class="text-[9px] text-slate-400">Devin Prompt Execution</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-compare mr-1 text-amber-400"></i>3. Emit &lt;unified_diff&gt;</div>
+                    <div class="text-[9px] text-slate-400">Extract Hunks Patch</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-vial-circle-check mr-1 text-emerald-400"></i>4. AST Syntax Pre-check</div>
+                    <div class="text-[9px] text-slate-400">Memory `ast.parse()` Assertion</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要直接把未经语法校验的代码补丁投进物理运行环境！</strong>通过 Devin 风格提示词约束大模型在 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">&lt;thought&gt;</code> 中独立思考并生成规范的 Unified Diff，配合写前内存 AST 语法断言，能大幅提升补丁一次成功率，避免无效沙箱重启浪费。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Capstone 核心模块 3：Coder Sub-Graph 生成 Unified Diff 代码补丁</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析 Capstone Coder 子图实现逻辑：</span>
+                    “向学员深入剖析：在经过 Slide 34 的装载剪枝之后，核心步骤是调用 Coder Sub-Graph 生成 Unified Diff 代码补丁。我们给 LLM 装载 Devin 风格系统提示词，限定其推理必须包含在 `<thought>` 节点，补丁包含在 `<unified_diff>` 节点。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调内存语法预检（AST Pre-check）：</span>
+                    “提示学员看右侧代码：提取到补丁后，我们在内存中模拟组装并跑 `ast.parse()`。如果发现缩进错误或语法破坏，节点捕获该错误并立即重新请求 Coder 自修正，避免将坏代码推入 E2B 沙箱造成无效浪费！下一页我们将讲授 Capstone 核心模块 4：E2B 沙箱自动化单测与自愈（TDD Loop）！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

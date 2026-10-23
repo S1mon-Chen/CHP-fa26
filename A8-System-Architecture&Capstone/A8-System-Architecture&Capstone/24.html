@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - 代码生成 Quality 量化评估基准：SWE-bench 与 HumanEval 实战</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-vial-circle-check"></i>
+                <span>第 8 课：全栈系统架构 · 模块三代码生成 Quality 评估基准</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                代码生成 Quality 量化评估基准：SWE-bench 与 HumanEval 实战
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                掌握代码智能评估的底层逻辑与工业基准：解构从单函数补全 (<span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">HumanEval Pass@1</span>) 向真实 GitHub 复杂微服务重构 (<span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">SWE-bench / SWE-bench Lite</span>) 的评估演进，编写基于真实代码库与单元测试套件 (<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Test Harness</span>) 的 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Pass@k 自动化评估引擎</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Benchmark Specs vs Python Eval Harness Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: HumanEval vs. SWE-bench Benchmarks & Test Harness Specs -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-sliders"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. HumanEval 与 SWE-bench 评估基准对比与工程设计</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">HumanEval vs. SWE-bench & SWE-bench Lite Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Benchmark Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">HumanEval</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">HumanEval（离散单函数补全）：</strong>
+                                <span class="text-slate-600 text-[11px]">关注 Docstring 到函数的纯生成能力；但无法衡量跨文件依赖、真实 GitHub 漏洞修复与项目复杂重构。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">SWE-bench</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">SWE-bench / Lite（真实仓库修复基准）：</strong>
+                                <span class="text-slate-600 text-[11px]">基于开源 GitHub Issue 与真实代码库，要求 Agent 自主搜索、修改 Patch 并跑通项目原本的完整单元测试。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">F2P & P2P</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Fail-to-Pass 与 Pass-to-Pass 物理断言：</strong>
+                                <span class="text-slate-600 text-[11px]">校验生成的 Patch 必须让原本失败的测试集变绿（F2P），同时确保原本通过的测试集不受任何退化破坏（P2P）。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-flask text-emerald-600"></i>
+                    <span>物理本质：把非确定性的代码生成转化为可自动化验证、可无偏估计的工业级运行断言</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for SWE-bench Eval Harness & Pass@k -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. SWE-bench 评估 Harness 与 Pass@k 计算代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python SWE-bench Eval Harness & Pass@k Estimator</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Harness</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 SWE-bench 风格 Agent 自动化评估 Harness</div>
+                        <div class="text-purple-300">from e2b_code_interpreter import Sandbox</div>
+                        <div class="text-purple-300">import math</div>
+                        <br/>
+                        <div class="text-purple-300">def evaluate_swe_bench_task(repo_dir: str, patch_code: str, test_spec: dict) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">with</span> Sandbox() <span class="text-cyan-300">as</span> sbx:</div>
+                        <div class="text-slate-500 pl-6"># 1. 挂载真实仓库基线与 Patch 补丁</div>
+                        <div class="text-slate-300 pl-6">sbx.files.write(f<span class="text-amber-300">"{repo_dir}/patch.diff"</span>, patch_code)</div>
+                        <div class="text-slate-300 pl-6">sbx.commands.run(f<span class="text-amber-300">"cd {repo_dir} && git apply patch.diff"</span>)</div>
+                        <div class="text-slate-500 pl-6"># 2. 校验 F2P (原本失败现需成功) 与 P2P (原先成功不破坏) 测试集</div>
+                        <div class="text-slate-300 pl-6">f2p_res = sbx.commands.run(f<span class="text-amber-300">"cd {repo_dir} && pytest {test_spec['f2p_tests']}"</span>)</div>
+                        <div class="text-slate-300 pl-6">p2p_res = sbx.commands.run(f<span class="text-amber-300">"cd {repo_dir} && pytest {test_spec['p2p_tests']}"</span>)</div>
+                        <div class="text-slate-300 pl-6">passed = (f2p_res.exit_code == <span class="text-cyan-300">0</span>) <span class="text-cyan-300">and</span> (p2p_res.exit_code == <span class="text-cyan-300">0</span>)</div>
+                        <div class="text-emerald-300 pl-6 font-bold">return {"task_id": test_spec["task_id"], "passed": passed}</div>
+                        <br/>
+                        <div class="text-purple-300">def calculate_pass_at_k(n: int, c: int, k: int) -&gt; float:</div>
+                        <div class="text-slate-500 pl-3"># 3. 组合数算无偏 Pass@k 概率 (避免采样盲目求均值偏置)</div>
+                        <div class="text-cyan-300 pl-3">if</div>
+                        <div class="text-slate-300 pl-6">n - c &lt; k: <span class="text-cyan-300">return</span> <span class="text-cyan-300">1.0</span></div>
+                        <div class="text-emerald-300 pl-3 font-bold">return 1.0 - (math.comb(n - c, k) / math.comb(n, k))</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>真实回归测试：</strong>通过 F2P 与 P2P 双向断言，防止 Agent 修复了 Bug A 却搞砸了 5 个已有功能。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>组合数无偏估计：</strong>使用数学公式精确推算 $Pass@1$ 与 $Pass@5$，为 CI/CD 提供确定性得分。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-square-poll-vertical text-indigo-600"></i>
+                    <span>物理本质：建立在真实软件仓库测试集基础上的无偏估计评估套件</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SWE-bench Evaluation Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">SWE-bench Evaluation & Test Harness Pipeline Topology / SWE-bench 评估与测试套件拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 10 Evaluation Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-folder-tree mr-1 text-indigo-400"></i>1. GitHub Repo & Issue</div>
+                    <div class="text-[9px] text-slate-400">Real Bug Context Baseline</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code mr-1 text-purple-400"></i>2. Agent Generates Patch</div>
+                    <div class="text-[9px] text-slate-400">Unified Diff Output</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-box-archive mr-1 text-amber-400"></i>3. Sandbox F2P / P2P Run</div>
+                    <div class="text-[9px] text-slate-400">Pytest Execution in Sandbox</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-chart-line mr-1 text-emerald-400"></i>4. Pass@k Metric & Report</div>
+                    <div class="text-[9px] text-slate-400">Unbiased Pass@1 Accuracy Score</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要依靠“看起来写得对”来评估 AI Coding 系统的能力！</strong>必须建立基于真实代码库与单元测试集的 SWE-bench 风格基准测试 Harness，通过 Fail-to-Pass（F2P）与 Pass-to-Pass（P2P）断言客观评估 Agent 的真实 Pass@1 正确率与回归隐患。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">代码生成 Quality 量化评估基准：SWE-bench 与 HumanEval 实战</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲授 SWE-bench 与 HumanEval 评测基准的核心差异：</span>
+                    “向学员深入剖析：在评估 AI Coding 平台时，HumanEval 只测单函数，容易被大模型背题作弊；而 SWE-bench 是截取真实 GitHub 开源仓库的 Issue 和单元测试。Agent 必须自己定位代码、修改多文件，并保证 F2P 测试变绿、P2P 测试不退化。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 Pass@k 无偏估计与企业级 Benchmark Harness：</span>
+                    “提示学员看右侧代码：我们使用组合数公式计算 Pass@k，避免直接求平均导致的估计偏置。有了这套基于 E2B 沙箱的 SWE-bench Eval Harness，团队修改 Prompt 或更新模型时就能分钟级得出客观得分！下一页我们将手写 LLM-as-a-Judge 评估器 Prompt！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

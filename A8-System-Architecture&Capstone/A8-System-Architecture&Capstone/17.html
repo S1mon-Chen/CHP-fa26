@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 子系统 6：E2B 沙箱测试器与边运行边修复 (Test-Driven Healing) 代码</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-vial-circle-check"></i>
+                <span>第 8 课：全栈系统架构 · 模块二子系统实战 (6/8)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                子系统 6：E2B 沙箱测试器与边运行边修复 (Test-Driven Healing) 代码
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                建立自动单测校验与错误自愈闭环：编写 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">E2B 沙箱测试节点</span>，在用后即焚的 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Ephemeral MicroVM 物理隔离容器</span> 中挂载补丁并运行 Pytest，捕获底层 Traceback 堆栈并转化为 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">TDD 自愈提示载荷 (Test-Driven Healing Payload)</span> 驱动 Coder 智能体自我纠偏
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Sandboxed Testing Mechanics vs Python Implementation Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Sandboxed Testing Mechanics & TDD Healing Loop Specs -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-4 md:p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-base shrink-0">
+                                <i class="fa-solid fa-box-archive"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. E2B 微沙箱执行与 TDD 自愈闭环规约</h3>
+                                <p class="text-[10px] text-rose-800 font-mono">Ephemeral MicroVM Execution & TDD Self-Correction Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold">Tester Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">MicroVM Run</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">用后即焚物理隔离 (MicroVM Isolation)：</strong>
+                                <span class="text-slate-600 text-[11px]">调用 `e2b_code_interpreter.Sandbox` 启动只读挂载且切断网络 (`network_mode="none"`) 的硬件级隔离容器。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">Traceback Capture</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">报错堆栈结构化捕获 (Error Observation)：</strong>
+                                <span class="text-slate-600 text-[11px]">捕捉 Pytest 抛出的 `AssertionError` 与 Traceback，剔除干扰冗余行后包装为精准的自愈反馈。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Healing Loop</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">TDD 自愈重试路由 (Test-Driven Reflexion)：</strong>
+                                <span class="text-slate-600 text-[11px]">结合状态图条件边，若单测全绿 (`exit_code == 0`) 则流向 Reviewer；若报错则重传给 Coder 重修（最多重试 3 次）。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-rose-200/60 text-[11px] text-rose-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-left text-rose-600"></i>
+                    <span>物理本质：把物理沙箱的真正报错作为绝对无幻觉的物理真相 Observation 灌回模型大脑</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Sandboxed Tester & TDD Healing -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. E2B 沙箱单测与自愈 Node 实战代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Sandboxed Healing Node for LangGraph</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 E2B 沙箱测试与 TDD 自愈节点实现</div>
+                        <div class="text-purple-300">from e2b_code_interpreter import Sandbox</div>
+                        <br/>
+                        <div class="text-purple-300">def sandboxed_testing_node(state: RefactorState) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3">current_diff = state[<span class="text-amber-300">"current_diff"</span>]</div>
+                        <div class="text-slate-300 pl-3">retry_count = state.get(<span class="text-amber-300">"retry_count"</span>, <span class="text-cyan-300">0</span>)</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 1. 物理安全隔离：启动用后即焚的 E2B Ephemeral MicroVM 沙箱</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">with</span> Sandbox() <span class="text-cyan-300">as</span> sbx:</div>
+                        <div class="text-slate-300 pl-6">sbx.files.write(<span class="text-amber-300">"/home/user/repo/patch.diff"</span>, current_diff)</div>
+                        <div class="text-slate-300 pl-6">sbx.commands.run(<span class="text-amber-300">"cd /home/user/repo && patch -p1 < patch.diff"</span>)</div>
+                        <div class="text-slate-300 pl-6">res = sbx.commands.run(<span class="text-amber-300">"cd /home/user/repo && pytest"</span>)</div>
+                        <br/>
+                        <div class="text-slate-500 pl-6"># 2. 单测成功通过：返回 PASSED 进入下一节点</div>
+                        <div class="text-cyan-300 pl-6">if</div>
+                        <div class="text-slate-300 pl-9">res.exit_code == <span class="text-cyan-300">0</span>:</div>
+                        <div class="text-emerald-300 pl-12 font-bold">return {"test_status": "PASSED", "traceback": None}</div>
+                        <br/>
+                        <div class="text-slate-500 pl-6"># 3. 单测失败：捕获报错堆栈并触发 TDD 自动重修自愈回路</div>
+                        <div class="text-emerald-300 pl-6 font-bold">return {</div>
+                        <div class="text-slate-300 pl-9"><span class="text-amber-300">"test_status"</span>: <span class="text-rose-400 font-bold">"FAILED"</span>,</div>
+                        <div class="text-slate-300 pl-9"><span class="text-amber-300">"traceback"</span>: res.stderr,  <span class="text-slate-500"># 将报错丢给 Coder 自愈！</span></div>
+                        <div class="text-slate-300 pl-9"><span class="text-amber-300">"retry_count"</span>: retry_count + <span class="text-cyan-300">1</span></div>
+                        <div class="text-emerald-300 pl-6 font-bold">}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>崩溃物理屏蔽：</strong>即使测试代码引发底层死循环或段错误，仅销毁容器微虚拟机，主进程稳如磐石。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>真正的 Pass@1 质量卡扣：</strong>不凭大模型自说自话，唯有真正跑通沙箱 Pytest 验证才能进入下一阶段。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>物理本质：把测试执行结果包装为状态节点，驱动状态机闭环收敛</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Subsystem Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-rose-300">Sandboxed Tester Subsystem Pipeline / E2B 沙箱测试与 TDD 自愈拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 6 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-file-code mr-1 text-indigo-400"></i>1. Receive Patch</div>
+                    <div class="text-[9px] text-slate-400">Validated Unified Diff</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-box-archive mr-1 text-rose-400"></i>2. E2B Sandbox Run</div>
+                    <div class="text-[9px] text-slate-400">Isolated Pytest Execution</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-rotate-left mr-1 text-amber-400"></i>3. Capture Traceback</div>
+                    <div class="text-[9px] text-slate-400">Feed Observation to Coder</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-check-double mr-1 text-emerald-400"></i>4. Pass@1 Gate</div>
+                    <div class="text-[9px] text-slate-400">Proceed to Reviewer/PR</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要让模型凭空揣测自己的代码是否正确！</strong>通过手写 E2B 沙箱测试节点，把实际运行 Pytest 产生的 Traceback 堆栈包装为客观无幻觉的 Observation 回传给模型大脑，是驱动 AI 智能体实现 TDD 自动边运行边自愈修复的唯一工程通道。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">子系统 6：E2B 沙箱测试器与边运行边修复 (Test-Driven Healing) 代码</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲授 E2B 沙箱测试与 TDD 自愈闭环逻辑：</span>
+                    “向学员深入剖析：在构建全栈 AI Coding 平台时，第 6 个核心子系统就是 E2B 沙箱测试与 TDD 自愈引擎。我们在第 16 页解析好了 Unified Diff 补丁，接下来必须丢进真正只读隔离的沙箱环境里跑单测。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调报错即反馈（Error as Feedback）：</span>
+                    “提示学员看右侧代码：如果 `res.exit_code != 0`，节点把 `res.stderr` 捕获并打包回 State。有向有环图（DCG）条件边检测到失败，就把包含 Traceback 的 Observation 重新丢给 Coder Agent，驱动其生成新 Patch 再次重试，直到单测 Pass@1 通过！下一页我们将手写第 7 个子系统：多文件 Undo 事务管理器！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

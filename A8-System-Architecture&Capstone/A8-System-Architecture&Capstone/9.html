@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 09 - 高可用与长连接架构：Server-Sent Events (SSE) 与 WebSocket 双向流式响应</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-wifi"></i>
+                <span>第 8 课：全栈系统架构 · 模块一长连接与流式网关</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                高可用与长连接架构：Server-Sent Events (SSE) 与 WebSocket 双向流式响应
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解决长耗时推理连接挂起与用户体验断层：解构 <span class="text-cyan-600 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">Server-Sent Events (SSE) 单向流式推送</span> 与 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">WebSocket 双向实时交互管道</span>，借助 FastAPI / Spring WebFlux 实现 Thinking Token、Tool Call 及沙箱日志的毫秒级端到端流式透传
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: SSE vs WebSocket Mechanics vs FastAPI SSE Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: SSE vs WebSocket Protocol & HA Mechanics -->
+            <div class="group relative rounded-2xl border border-cyan-200 bg-cyan-50/30 p-4 md:p-5 soft-shadow transition hover:border-cyan-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-600 text-base shrink-0">
+                                <i class="fa-solid fa-arrows-left-right-to-line"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. SSE 与 WebSocket 架构选型与长连接保障</h3>
+                                <p class="text-[10px] text-cyan-800 font-mono">SSE vs WebSocket Protocols & Gateway HA</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-800 text-[10px] font-mono font-bold">Streaming Protocols</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-cyan-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono font-bold text-[10px] shrink-0">SSE (Preferred)</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Server-Sent Events (HTTP/2 单向流)：</strong>
+                                <span class="text-slate-600 text-[11px]">轻量级标准 HTTP 协议，天然穿越企业防火墙，原生产生 `text/event-stream`，支持基于 `Last-Event-ID` 自动重连，是 AI 补全/Token 推送的首选。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">WebSocket</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">WebSocket (全双工双向长连接)：</strong>
+                                <span class="text-slate-600 text-[11px]">TCP 握手升级，适合高频双向打断（如推演中途人类发语音/弹窗打断干预），但需要专门的处理连接池与网络保活。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Keep-Alive</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">心跳保活与 Gateway Nginx 避坑：</strong>
+                                <span class="text-slate-600 text-[11px]">设置 `: ping\n\n` 心跳包防超时；Nginx 网关层配置 `proxy_buffering off` 确保流数据零延迟透传。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-cyan-200/60 text-[11px] text-cyan-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-bolt text-cyan-600"></i>
+                    <span>物理本质：用标准单向 HTTP 流流式吐出微观推演粒度，彻底抹平数十秒等待延时感</span>
+                </div>
+            </div>
+
+            <!-- Right Card: FastAPI SSE Streaming Code -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. FastAPI 异步 SSE 流式响应代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python FastAPI SSE with LangGraph Events</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">FastAPI Streaming</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># FastAPI SSE 流式接口：实时透传 Thinking Token、Tool Call 与沙箱日志</div>
+                        <div class="text-purple-300">from fastapi.responses import StreamingResponse</div>
+                        <div class="text-purple-300">import json, asyncio</div>
+                        <br/>
+                        <div class="text-purple-300">@app.post("/api/v1/agent/stream")</div>
+                        <div class="text-purple-300">async def stream_agent_execution(req: AgentRequest):</div>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">async def</span> <span class="text-emerald-300">event_generator</span>():</div>
+                        <div class="text-slate-500 pl-6"># 1. 订阅 LangGraph astream_events 事件流</div>
+                        <div class="text-slate-300 pl-6"><span class="text-cyan-300">async for</span> event <span class="text-cyan-300">in</span> agent_graph.astream_events(req.dict(), version=<span class="text-amber-300">"v2"</span>):</div>
+                        <div class="text-slate-300 pl-9">kind = event[<span class="text-amber-300">"event"</span>]</div>
+                        <div class="text-cyan-300 pl-9">if</div>
+                        <div class="text-slate-300 pl-12">kind == <span class="text-amber-300">"on_chat_model_stream"</span>:</div>
+                        <div class="text-slate-300 pl-15">token = event[<span class="text-amber-300">"data"</span>][<span class="text-amber-300">"chunk"</span>].content</div>
+                        <div class="text-emerald-300 pl-15 font-bold">yield f"data: {json.dumps({'type': 'token', 'val': token})}\n\n"</div>
+                        <div class="text-cyan-300 pl-9">elif</div>
+                        <div class="text-slate-300 pl-12">kind == <span class="text-amber-300">"on_tool_start"</span>:</div>
+                        <div class="text-purple-300 pl-15 font-bold">yield f"data: {json.dumps({'type': 'tool', 'name': event['name']})}\n\n"</div>
+                        <br/>
+                        <div class="text-slate-300 pl-3"><span class="text-cyan-300">return</span> StreamingResponse(event_generator(), media_type=<span class="text-amber-300">"text/event-stream"</span>)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>标准化协议输出：</strong>基于以 `data: {...}\n\n` 结尾的格式输出，前端可以零门槛解析。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>细粒度状态暴露：</strong>将 LLM 的思考过程与 Sandbox 工具调用日志切分为独立 Event 分批输出。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-compass text-indigo-600"></i>
+                    <span>物理本质：把 Agent 内部图状态机事件通过标准 HTTP SSE 管道实时打给 IDE/CLI 客户端</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Streaming Response Architecture Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-cyan-300">Real-Time Streaming Agent Gateway Pipeline Topology / 实长连接流式响应网关拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">SSE Pipeline Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-indigo-400"></i>1. Agent Node Reasoning</div>
+                    <div class="text-[9px] text-slate-400">Emits LLM Chunk / Tool Call</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-stream mr-1 text-purple-400"></i>2. Event Aggregator</div>
+                    <div class="text-[9px] text-slate-400">`astream_events()` Yields</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-wifi mr-1 text-cyan-400"></i>3. FastAPI SSE Gateway</div>
+                    <div class="text-[9px] text-slate-400">`text/event-stream` Flush</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-desktop mr-1 text-emerald-400"></i>4. IDE / CLI Render</div>
+                    <div class="text-[9px] text-slate-400">Live Render Thinking Tokens</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>优先采用 SSE (Server-Sent Events) 作为 AI Agent 的流式响应协议！</strong>借助 SSE 的单向 HTTP 协议天然优势（易穿透防火墙、自动重连、原生支持 HTTP/2）与 FastAPI 的 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">StreamingResponse</code>，架构师可以为 IDE/CLI 客户端打造毫秒级响应、透明可感知的 AI 思考与工具执行体验。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">09</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[22.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (8.html <- 9.html -> 10.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="8.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">高可用与长连接架构：SSE 与 WebSocket 双向流式响应</span>
+            <a href="10.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="8.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="10.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 讲授长连接流式响应网关设计：</span>
+                    “向学员深入剖析：在构建全栈 AI Coding 系统时，最影响用户体验的就是‘等待延时感’。大模型推演一个代码补丁可能需要 15 秒以上。如果我们像传统 HTTP 接口那样等完全推演完再一次性返回，用户体验会极差。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 SSE 相比 WebSocket 的工程优势：</span>
+                    “提示学员看右侧代码：我们使用 FastAPI 搭配 LangGraph 的 `astream_events` 订阅事件。为什么首选 SSE 而非 WebSocket？因为 SSE 依然是标准 HTTP 协议，对反向代理（Nginx）、云网关与防火墙极其友好，且浏览器/插件端支持自动重连。下一页我们将对模块一（架构原语缝合）进行全景总结！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

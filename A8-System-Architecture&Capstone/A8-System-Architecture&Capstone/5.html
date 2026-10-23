@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 05 - 远端 Agent 引擎微服务化：FastAPI / Spring AI 高并发 API 网关架构</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-network-wired"></i>
+                <span>第 8 课：全栈系统架构 · 模块一微服务网关</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                远端 Agent 引擎微服务化：FastAPI / Spring AI 高并发 API 网关架构
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                解构无状态 Agent 微服务与分布式调度网关：将 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Python LangGraph</span> 与 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">Spring AI 引擎</span> 解耦为无状态 (Stateless) 服务节点，依托 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">FastAPI / Spring Cloud Gateway 网关</span> 实现鉴权、令牌桶限流与 Celery / RabbitMQ 异步解耦
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Gateway Mechanics vs FastAPI Gateway Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Microservice Gateway Architecture Mechanics -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-server"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 无状态 Agent 微服务与网关防线</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Stateless Agent Microservices & Gateway Defense</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Gateway Pattern</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Rate Limit</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">令牌桶频次限流 (Redis Token Bucket)：</strong>
+                                <span class="text-slate-600 text-[11px]">在 API 网关层通过 Redis 限制租户调用 QPS 与并发数，杜绝滥用导致后端大模型 Token 账单暴风增长。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Stateless</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">无状态 Worker 水平缩放 (Auto-scaling)：</strong>
+                                <span class="text-slate-600 text-[11px]">将 Agent 逻辑抽象为无状态算子，状态全量托管于 PostgreSQL Checkpointer 与 Redis，支持 K8s HPA 弹性扩容。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Async Queue</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">异步任务队列解耦 (Celery / RabbitMQ)：</strong>
+                                <span class="text-slate-600 text-[11px]">长时推演任务同步返回 `task_id`，避免 HTTP 请求超长连接挂起，支持轮询或 SSE 状态订阅。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-cubes text-indigo-600"></i>
+                    <span>物理本质：用高并发流量网关隔绝非确定性 Agent 推演带来的阻塞风险</span>
+                </div>
+            </div>
+
+            <!-- Right Card: FastAPI High-Concurrency Agent Gateway Code -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. FastAPI 异步 Agent 网关实战代码</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Python FastAPI Gateway with Async Queue</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">FastAPI Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># FastAPI 异步 Agent 网关：Token 鉴权、Redis 限流与 Celery 解耦</div>
+                        <div class="text-purple-300">from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException</div>
+                        <div class="text-purple-300">from fastapi.security import HTTPBearer</div>
+                        <div class="text-purple-300">import redis.asyncio as redis</div>
+                        <br/>
+                        <div class="text-slate-300">app = FastAPI(title=<span class="text-amber-300">"AI Agent Gateway"</span>)</div>
+                        <div class="text-slate-300">security = HTTPBearer()</div>
+                        <div class="text-slate-300">redis_client = redis.from_url(<span class="text-amber-300">"redis://localhost:6379"</span>)</div>
+                        <br/>
+                        <div class="text-purple-300">@app.post("/api/v1/agent/dispatch")</div>
+                        <div class="text-purple-300">async def dispatch_agent_task(payload: AgentTaskRequest, bg_tasks: BackgroundTasks, token=Depends(security)):</div>
+                        <div class="text-slate-500 pl-3"># 1. 物理租户鉴权与令牌桶限流</div>
+                        <div class="text-slate-300 pl-3">is_allowed = await check_rate_limit(redis_client, token.credentials)</div>
+                        <div class="text-amber-300 pl-3">if not is_allowed: raise HTTPException(status_code=429, detail="Rate limit")</div>
+                        <div class="text-slate-500 pl-3"># 2. 将耗时 Agent 推演任务解耦至后台队列，瞬间响应 task_id</div>
+                        <div class="text-slate-300 pl-3">task_id = generate_uuid()</div>
+                        <div class="text-slate-300 pl-3">bg_tasks.add_task(execute_langgraph_agent_worker, task_id, payload)</div>
+                        <div class="text-emerald-300 pl-3 font-bold">return {"task_id": task_id, "status": "QUEUED"}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>毫秒级响应分发：</strong>通过把耗时思考解耦至后台 Task，前端瞬间获取 `task_id`，避免 HTTP 阻塞。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>高并发保障：</strong>支持网关多节点部署，基于 Redis 集中式共享限流与 Token 桶字典。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                    <span>物理本质：把 Agent 复杂推演包裹在标准高并发工业级微服务框架内</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Agent Microservice Gateway Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">API Gateway & Asynchronous Worker Pipeline / 高并发网关与 Worker 调度拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Gateway Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-laptop-code mr-1 text-indigo-400"></i>1. Client Request</div>
+                    <div class="text-[9px] text-slate-400">Token Auth & Bearer</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-filter mr-1 text-purple-400"></i>2. Gateway Rate Limit</div>
+                    <div class="text-[9px] text-slate-400">Redis Token Bucket Check</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-list-check mr-1 text-amber-400"></i>3. Async Task Queue</div>
+                    <div class="text-[9px] text-slate-400">Celery / BackgroundTasks</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-brain mr-1 text-emerald-400"></i>4. Agent Engine Run</div>
+                    <div class="text-[9px] text-slate-400">LangGraph & Postgres Saver</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要将 Agent 思考图逻辑直接暴露为原生的 HTTP 同步接口！</strong>通过 FastAPI / Spring Cloud Gateway 网关完成鉴权与限流防线，并利用异步队列将推演任务解耦，是构建高吞吐、抗高并发、不崩溃 Enterprise AI 系统的基石。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">05</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[12.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (4.html <- 5.html -> 6.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">远端 Agent 引擎微服务化：FastAPI / Spring AI 高并发 API 网关</span>
+            <a href="6.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="4.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="6.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Agent 微服务与 API 网关解耦：</span>
+                    “向学员深入剖析：在生产环境中，大模型推演极其耗时（可能需要 10s 至数分钟）。如果直接将客户端连接暴露给长耗时同步接口，高并发下会导致线程池耗尽或 504 Gateway Timeout。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调异步队列与速率控制：</span>
+                    “提示学员看右侧代码：我们使用 FastAPI 搭配 Redis 令牌桶做租户限流，并通过 `BackgroundTasks` 或 Celery 将任务异步化。网关瞬间返回 `task_id`，避免 HTTP 阻塞，下一页我们将深入学习 SSE/WebSocket 管道的双向流式通信。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

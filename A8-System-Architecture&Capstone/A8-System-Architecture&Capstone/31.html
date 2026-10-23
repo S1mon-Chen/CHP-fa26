@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 31 - 模块四导论：终局 Capstone——从 GitHub Issue 到 PR 自动合并的全流程实战</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-crown"></i>
+                <span>第 8 课：全栈系统架构 · 模块四导论与 Capstone</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                模块四导论：终局 Capstone——从 GitHub Issue 到 PR 自动合并的全流程实战
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                全课程 8 门课原语体系的终局集成落地：融合 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Prompt 结构化契约</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">MCP 协议</span>、<span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">Codebase RAG</span>、<span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Skill 模式网络</span>、<span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">LangGraph DCG 图引擎</span> 与 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">E2B 沙箱测试 Harness</span>，手把手构建无人值守的 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Autonomous Coding Agent 平台</span>，实现从 Issue 监听、范围分诊、补丁生成、沙箱 TDD 自愈到 OWASP 审计与 PR 自动合并的闭环
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Capstone Autonomous Capabilities vs 7-Stage End-to-End Pipeline) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Capstone Core Autonomous Pillars & Value -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Capstone 平台四大核心全自治能力维度</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Autonomous Coding Agent System Capabilities</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Capstone Scope</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">1. Auto-Triage</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">工单分诊与代码库范围定位 (Scope Finder)：</strong>
+                                <span class="text-slate-600 text-[11px]">监听 GitHub Issue Webhook，结合 Codebase RAG 混合检索与 Tree-sitter AST 精准裁剪上下文。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">2. Diff Patch</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Unified Diff 补丁生成与内存 AST 验证：</strong>
+                                <span class="text-slate-600 text-[10px]">根据 Devin 系统 Prompt 规范输出 `<unified_diff>`，应用前通过 `ast.parse()` 断言语法合规性。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">3. TDD Healing</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">E2B 沙箱 TDD 边运行边自愈 (Self-Correction Loop)：</strong>
+                                <span class="text-slate-600 text-[10px]">在隔离 MicroVM 中跑 Pytest，将失败 Traceback 转化为 Observation 驱动 Coder 智能体自愈重修。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">4. OWASP Gate</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">OWASP 静态安全卡扣与 GitHub PR 自动合并：</strong>
+                                <span class="text-slate-600 text-[10px]">通过 Gitleaks/Semgrep 与 Reviewer 裁判评估，零越界通过后通过 GitHub API 自动 Commit 与 Squash Merge。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-crown text-indigo-600"></i>
+                    <span>物理本质：将 8 门课离散原语演进升级为真正具有生产交付能力的企业级无人值守智能体</span>
+                </div>
+            </div>
+
+            <!-- Right Card: 7-Stage End-to-End Pipeline Blueprint -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-timeline"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Capstone 端到端 7 阶自动化重构流水线</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">7-Stage End-to-End Replay Flow</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">7 Stages</span>
+                    </div>
+
+                    <!-- Terminal Pipeline Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># Capstone 无人值守自动编程平台执行管道流：</div>
+                        <div class="text-slate-300">Stage 1: <span class="text-amber-300">GitHub Webhook Listener</span> (Issue Created / Bug Ticket)</div>
+                        <div class="text-slate-300">Stage 2: <span class="text-amber-300">Triage Agent & RAG</span> (Scope Identification & AST Skeleton)</div>
+                        <div class="text-slate-300">Stage 3: <span class="text-amber-300">Context Packager</span> (Tiktoken Hard Truncation & XML Tagging)</div>
+                        <div class="text-slate-300">Stage 4: <span class="text-amber-300">Coder Sub-Graph</span> (Devin Prompt & Unified Diff Patching)</div>
+                        <div class="text-slate-300">Stage 5: <span class="text-amber-300">E2B Sandbox Test</span> (Isolated Pytest & Traceback TDD Loop)</div>
+                        <div class="text-slate-300">Stage 6: <span class="text-amber-300">Reviewer & OWASP Audit</span> (Gitleaks + LLM Judge Approval)</div>
+                        <div class="text-emerald-300 font-bold">Stage 7: GitHub PR Merge (Auto Approve & Squash Merge to Main)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>完全透明跟踪：</strong>全程输出 OpenTelemetry / LangSmith Spans，便于回溯排查异常。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零生产污染：</strong>测试完全限制在用后即焚的 E2B 微沙箱中，保证代码主干绝对安全。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                    <span>物理本质：把所有离散子系统缝合为一个具有生产发布裁决权的全栈 Agent 管道</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Master Capstone Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Grand Capstone Master System Topology / 终局 Capstone 全栈系统拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Course 8 Capstone Master Topology</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-circle-exclamation mr-1 text-indigo-400"></i>1. Issue & Triage</div>
+                    <div class="text-[9px] text-slate-400">Webhook Listener & RAG</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code mr-1 text-purple-400"></i>2. Coder Sub-Graph</div>
+                    <div class="text-[9px] text-slate-400">Devin Prompt & Diff Patch</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-box-archive mr-1 text-rose-400"></i>3. E2B TDD Healing</div>
+                    <div class="text-[9px] text-slate-400">Sandbox Test & Traceback Loop</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-pull-request mr-1 text-emerald-400"></i>4. Gate & Auto PR</div>
+                    <div class="text-[9px] text-slate-400">OWASP Audit & PR Merge</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>将前面所有章节的知识原语与手写子系统串联起来，我们就拥有了构建商业级 Autonomous Coding Agent 的完整能力！</strong>在模块四接下来的 Slides 32 至 Slide 40 中，我们将逐一剖析该 Capstone 平台的各个模块源码、运行 Log 与架构师十六大法则！
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">31</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[77.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (30.html <- 31.html -> 32.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="30.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">模块四导论：终局 Capstone——从 GitHub Issue 到 PR 自动合并的全流程实战</span>
+            <a href="32.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="30.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="32.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 开启模块四：终局 Capstone 综合实战演练：</span>
+                    “向学员深入剖析：欢迎大家来到全课程的最后一个模块——模块四！在前三个模块中，我们完成了分层拓扑解构（模块一）、8 大核心子系统代码手写（模块二）以及可观测性与评估门控（模块三）。在本模块中，我们将把所有这些组件融会贯通，搭建一个完全自主运转的 Autonomous Coding Agent 平台！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Capstone 全流程与核心亮点：</span>
+                    “提示学员看右侧的 7 阶流程：该平台可以自动接收 GitHub Issue 事件，经过 Triage 分诊、Scope 检索、Context 打包、Coder 生成 Patch，在 E2B 微沙箱里跑 Pytest 自愈修复，经过 OWASP 安全审察后直接自动 Commit 并 Squash Merge 提交 PR！下一页我们将剖析 Capstone 的具体架构与节点设计！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '30.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '32.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

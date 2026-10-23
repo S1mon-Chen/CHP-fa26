@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 子系统 3：极简 MCP Client/Server 通信桥接器实现 (Python/Java)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-plug"></i>
+                <span>第 8 课：全栈系统架构 · 模块二子系统实战 (3/8)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                子系统 3：极简 MCP Client/Server 通信桥接器实现 (Python/Java)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                建立解耦、跨系统的标准化能力通道：手写 <span class="text-blue-600 font-semibold underline decoration-blue-300 decoration-2 underline-offset-4">MCP (Model Context Protocol) Client 桥接层</span>，通过 `stdio` / `SSE` 通信管道接入远端 MCP Server，自动拉取 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">`list_tools()` 契约列表</span> 并动态转译映射为 Agent 推理可调用的标准节点
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: MCP Protocol & Bridge Specs vs Python MCP Client Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: MCP Protocol & Bridge Mechanics -->
+            <div class="group relative rounded-2xl border border-blue-200 bg-blue-50/30 p-4 md:p-5 soft-shadow transition hover:border-blue-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 text-base shrink-0">
+                                <i class="fa-solid fa-network-wired"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. MCP 桥接协议与动态工具节点转译</h3>
+                                <p class="text-[10px] text-blue-800 font-mono">MCP Stdio/SSE Pipe & Dynamic Tool Translation</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-[10px] font-mono font-bold">MCP Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-blue-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-[10px] shrink-0">Stdio / SSE</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">双模进程/网络通信管道：</strong>
+                                <span class="text-slate-600 text-[11px]">支持基于标准输入输出 (`stdio`) 拉起本地子进程，或通过 `SSE` 连接远程部署的第三方 MCP 服务。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Discovery</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">动态能力探查 (`list_tools`)：</strong>
+                                <span class="text-slate-600 text-[11px]">发送 JSON-RPC 初始化请求后自动广播探查，动态拉取 Server 暴露的所有 Tools、Resources 与 Prompts。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Schema Trans</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Schema 自动转译与节点注册：</strong>
+                                <span class="text-slate-600 text-[11px]">将 MCP 的 JSON-RPC Tool Schema 自动无缝映射转译为 LangGraph / Spring AI 引擎的原生可调算子。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-blue-200/60 text-[11px] text-blue-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-plug text-blue-600"></i>
+                    <span>物理本质：把物理环境中繁杂的扩展接口归一化为标准的 JSON-RPC 消息响应管道</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for MCP Bridge -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. MCP Client 桥接器实战代码</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Python MCP Client Bridge & Node Converter</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 MCP Client 桥接器与动态节点转换器</div>
+                        <div class="text-purple-300">from mcp import ClientSession, StdioServerParameters</div>
+                        <div class="text-purple-300">from mcp.client.stdio import stdio_client</div>
+                        <br/>
+                        <div class="text-purple-300">async def bridge_mcp_server_to_agent(server_params: StdioServerParameters):</div>
+                        <div class="text-slate-500 pl-3"># 1. 初始化 stdio 物理通信管道与 Session</div>
+                        <div class="text-cyan-300 pl-3">async with</div>
+                        <div class="text-slate-300 pl-6">stdio_client(server_params) <span class="text-cyan-300">as</span> (read, write):</div>
+                        <div class="text-cyan-300 pl-6">async with</div>
+                        <div class="text-slate-300 pl-9">ClientSession(read, write) <span class="text-cyan-300">as</span> session:</div>
+                        <div class="text-slate-300 pl-12">await session.initialize()</div>
+                        <div class="text-slate-500 pl-12"># 2. 发起 JSON-RPC list_tools 能力探测</div>
+                        <div class="text-slate-300 pl-12">tools_resp = await session.list_tools()</div>
+                        <div class="text-slate-300 pl-12">agent_tools = []</div>
+                        <br/>
+                        <div class="text-slate-500 pl-12"># 3. 将 MCP Tool Schema 转译为系统原生 Agent 工具算子</div>
+                        <div class="text-cyan-300 pl-12">for</div>
+                        <div class="text-slate-300 pl-15">t <span class="text-cyan-300">in</span> tools_resp.tools:</div>
+                        <div class="text-slate-300 pl-18">node = convert_mcp_tool_to_agent_node(t, session)</div>
+                        <div class="text-slate-300 pl-18">agent_tools.append(node)</div>
+                        <div class="text-emerald-300 pl-12 font-bold">return agent_tools</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零代码强解耦：</strong>新增 Postgres、GitHub 或 JIRA 能力无需修改 Agent 核心代码，只需挂载新 MCP Server。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>安全上下文隔离：</strong>敏感的 API Key 与环境连接串被封印在 MCP Server 端，Agent 仅操作抽象 Schema。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-link text-purple-600"></i>
+                    <span>物理本质：手写极简桥接器完成 JSON-RPC 到 LLM Tool Schema 的自动翻译</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- MCP Client Bridge Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-blue-300">MCP Client Bridge Subsystem Pipeline / MCP 桥接与算子注册拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 3 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-server mr-1 text-indigo-400"></i>1. MCP Server Config</div>
+                    <div class="text-[9px] text-slate-400">Stdio / SSE Transport</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-blue-950 border border-blue-700 text-blue-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-network-wired mr-1 text-blue-400"></i>2. JSON-RPC Discovery</div>
+                    <div class="text-[9px] text-slate-400">`session.list_tools()`</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-blue-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-blue-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-wand-magic-sparkles mr-1 text-purple-400"></i>3. Schema Translation</div>
+                    <div class="text-[9px] text-slate-400">Convert MCP Tool to Node</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-emerald-400"></i>4. Agent Graph Nodes</div>
+                    <div class="text-[9px] text-slate-400">Registered Dynamic Tools</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要在 Agent 核心控制逻辑中写死特定的数据库或第三方工具 API！</strong>手写 MCP Client 通信桥接器，基于标准 JSON-RPC 协议动态拉取外部 MCP Server 暴露的能力并完成节点翻译，是实现企业级 AI Coding 平台零侵入扩展与插件化升级的基石。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">14</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[35%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (13.html <- 14.html -> 15.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">子系统 3：极简 MCP Client/Server 通信桥接器实现 (Python/Java)</span>
+            <a href="15.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="13.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="15.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲授 MCP Client 桥接器子系统逻辑：</span>
+                    “向学员深入剖析：在构建全栈 AI Coding 系统时，第 3 个核心子系统就是手写极简的 MCP Client 桥接器。它的职责是用标准 JSON-RPC 协议与外部独立的 MCP Server（如 Git、Postgres、GitHub）沟通。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调动态探测与 Schema 转译：</span>
+                    “提示学员看右侧代码：桥接器发起 `session.list_tools()` 探测，把返回的 MCP Tool 结构转化为上游 LangGraph 图引擎认可的原生节点。这样一来，无论外部扩展多少个工具，Agent 主框架的代码行数零增加！下一页我们将手写第 4 个子系统：Devin / Claude Code 风格的 System Prompt 引擎！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

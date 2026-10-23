@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 23 - Token 消耗、延迟与成本的实时监控指标看板 (Prometheus & Grafana)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>第 8 课：全栈系统架构 · 模块三可观测性与指标看板</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Token 消耗、延迟与成本的实时监控指标看板 (Prometheus & Grafana)
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                建立生产级 APM 指标测量与成本归因防线：在微服务网关与 Agent 图节点侧嵌入 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Prometheus Counter / Histogram 采集器</span>，实时监控 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Prompt / Completion Tokens 吞吐</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">TTFT (首字延迟) 与节点耗时</span>，并通过 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">Grafana 看板</span> 预防单夜 Token 成本风暴
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Prometheus Specs vs Python Metrics Collector Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Prometheus Metrics Architecture & Cost Attribution Specs -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 md:p-5 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-base shrink-0">
+                                <i class="fa-solid fa-sliders"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Prometheus 三大核心指标维度与成本归因</h3>
+                                <p class="text-[10px] text-amber-800 font-mono">Prometheus Metrics Design & Cost Attribution Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">Metrics Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">Tokens & USD</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Token 吞吐与美元开销 (`Counter`)：</strong>
+                                <span class="text-slate-600 text-[11px]">按 `model`、`tenant_id` 与 `token_type` (prompt/completion) 统计总量，按官方单价实时换算美元开销。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">TTFT & Latency</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">TTFT 首字延迟与节点耗时 (`Histogram`)：</strong>
+                                <span class="text-slate-600 text-[11px]">测量从请求发出到收到第一个 Token 的 TTFT，以及 RAG、MCP 工具与 E2B 沙箱测试等离散节点的耗时分布 (P95/P99)。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Quota Alert</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">异常失败率与成本配额报警 (`Gauge`)：</strong>
+                                <span class="text-slate-600 text-[11px]">监测单任务成本爆表或图节点死循环，自动通过 Alertmanager 向 PagerDuty/钉钉 发送熔断警报。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-chart-line text-amber-600"></i>
+                    <span>物理本质：把非确定性的推演计算转化为工业级 APM 可测量、可报警的流式数据指标</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Prometheus Metric Collector -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Python Prometheus 指标埋点与采集代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Prometheus Metric Collector & Exporter</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Metrics</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 Agent 成本与延迟 Prometheus 埋点采集器</div>
+                        <div class="text-purple-300">from prometheus_client import Counter, Histogram, Gauge</div>
+                        <br/>
+                        <div class="text-slate-300">TOKEN_COUNTER = Counter(<span class="text-amber-300">'agent_tokens_total'</span>, <span class="text-amber-300">'Tokens'</span>, [<span class="text-amber-300">'model'</span>, <span class="text-amber-300">'type'</span>])</div>
+                        <div class="text-slate-300">COST_COUNTER = Counter(<span class="text-amber-300">'agent_cost_usd_total'</span>, <span class="text-amber-300">'Cost USD'</span>, [<span class="text-amber-300">'tenant_id'</span>])</div>
+                        <div class="text-slate-300">LATENCY_HIST = Histogram(<span class="text-amber-300">'agent_step_duration_seconds'</span>, <span class="text-amber-300">'Latency'</span>, [<span class="text-amber-300">'node'</span>])</div>
+                        <br/>
+                        <div class="text-purple-300">def record_agent_step_metrics(node_name: str, model: str, prompt_toks: int, comp_toks: int, duration: float, tenant: str):</div>
+                        <div class="text-slate-500 pl-3"># 1. 累加 Prompt 与 Completion Tokens 计数</div>
+                        <div class="text-slate-300 pl-3">TOKEN_COUNTER.labels(model=model, type=<span class="text-amber-300">'prompt'</span>).inc(prompt_toks)</div>
+                        <div class="text-slate-300 pl-3">TOKEN_COUNTER.labels(model=model, type=<span class="text-amber-300">'completion'</span>).inc(comp_toks)</div>
+                        <div class="text-slate-500 pl-3"># 2. 计算精准美元消耗并累加</div>
+                        <div class="text-slate-300 pl-3">usd_cost = (prompt_toks * <span class="text-cyan-300">0.0000025</span>) + (comp_toks * <span class="text-cyan-300">0.00001</span>)</div>
+                        <div class="text-slate-300 pl-3">COST_COUNTER.labels(tenant_id=tenant).inc(usd_cost)</div>
+                        <div class="text-slate-500 pl-3"># 3. 记录节点耗时直方图分布</div>
+                        <div class="text-emerald-300 pl-3 font-bold">LATENCY_HIST.labels(node=node_name).observe(duration)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>租户成本精确归因：</strong>带上 `tenant_id` 标签，轻松回答“哪个团队/哪个功能昨晚消耗了最多美元”。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>标准 `/metrics` 抓取暴露：</strong>兼容 FastApi 与 Prometheus Server 的 Scrape 机制，极简拉取。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-gauge-high text-indigo-600"></i>
+                    <span>物理本质：把 Agent 内部计算开销暴露为工业级标准云原生监控指标</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Prometheus Metrics & Grafana Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">Prometheus Metrics & Grafana Dashboard Pipeline / 指标采集与看板拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 10 Metrics Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-indigo-400"></i>1. Agent Graph Node</div>
+                    <div class="text-[9px] text-slate-400">Collect Tokens & Duration</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-calculator mr-1 text-amber-400"></i>2. Prometheus Metric</div>
+                    <div class="text-[9px] text-slate-400">Expose `/metrics` Endpoint</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-server mr-1 text-purple-400"></i>3. Prometheus Server</div>
+                    <div class="text-[9px] text-slate-400">Scrape & Aggregate Time-Series</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-chart-pie mr-1 text-emerald-400"></i>4. Grafana & Alerts</div>
+                    <div class="text-[9px] text-slate-400">Cost Boards & PagerDuty Alert</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要在月底收到 API 巨额账单时才追悔莫及！</strong>通过在 Agent 微服务节点手写 Prometheus 指标埋点，将 Prompt/Completion Tokens、首字延迟（TTFT）与美元成本进行多维度（模型、租户、节点）归因，配合 Grafana 实时看板与 Alertmanager 硬熔断警报，能为平台构建坚不可摧的财务与性能安全壁垒。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">23</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[57.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (22.html <- 23.html -> 24.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="22.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Token 消耗、延迟与成本的实时监控指标看板 (Prometheus & Grafana)</span>
+            <a href="24.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="22.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="24.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 Prometheus 指标埋点与成本监控的核心要点：</span>
+                    “向学员深入剖析：在第 22 页我们讲了 OpenTelemetry 的单 Trace 追踪，但当线上有成千上万个并发 Task 运行时，我们需要的是可汇总的 APM 指标看板。最核心的三大指标是：Token 吞吐量、节点延迟直方图和换算的物理美元成本。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调按租户标签归因（Tenant Label Attribution）：</span>
+                    “提示学员看右侧代码：我们在 `COST_COUNTER` 中打上 `tenant_id` 和 `model` 标签。在 Grafana 里就能一键拉出柱状图：‘昨天哪个租户跑了 500 美元？是哪个图节点发生了抖动？’下一页我们将深入 SWE-bench 与代码生成质量评估基准！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '22.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

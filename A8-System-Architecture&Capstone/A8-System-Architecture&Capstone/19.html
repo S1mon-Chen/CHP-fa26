@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - 子系统 8：人类断点与交互批准 (HITL Terminal Prompt) 控制器</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-user-shield"></i>
+                <span>第 8 课：全栈系统架构 · 模块二子系统实战 (8/8)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                子系统 8：人类断点与交互批准 (HITL Terminal Prompt) 控制器
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                在自主重构与高危变更间建立人类安全最终控制线：手写 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">HITL 人类打断与审批控制器</span>，当补丁涉及删除文件、修改数据库 Schema 或敏感配置时触发 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LangGraph `interrupt()` 原语</span> 异步挂起，并通过 CLI / Slack 交互弹窗收集人类决策后原位恢复与 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">`update_state` 状态覆写</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: HITL Approval Specs vs Python Implementation Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: HITL Approval Mechanics & Risk Classification Specs -->
+            <div class="group relative rounded-2xl border border-amber-200 bg-amber-50/30 p-4 md:p-5 soft-shadow transition hover:border-amber-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 text-base shrink-0">
+                                <i class="fa-solid fa-hand"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. 人类打断 (HITL) 与风险分级规约</h3>
+                                <p class="text-[10px] text-amber-800 font-mono">LangGraph Interrupts & Risk Level Classification</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 border border-amber-200 text-amber-800 text-[10px] font-mono font-bold">HITL Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono font-bold text-[10px] shrink-0">Risk Sensor</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">高危动作前置感应 (Risk Sensor)：</strong>
+                                <span class="text-slate-600 text-[11px]">静态扫描 Unified Diff，若包含删除源文件 (`--- a/file`)、修改 `DROP/ALTER TABLE` 或暴露未密化 Secret，自动标记高风险。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Async Interrupt</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">零资源消耗异步挂起 (`interrupt()`)：</strong>
+                                <span class="text-slate-600 text-[11px]">触发 LangGraph 状态持久化快照（Checkpointer），线程与内存完全释放，直至收到外部人类批准信号。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">State Override</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">人类状态强行覆写 (`update_state`)：</strong>
+                                <span class="text-slate-600 text-[11px]">人类可批准、驳回或手动修补 Diff 参数后恢复运行，实现真正的“人机混合双轮智能（Hybrid Intelligence）”。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-amber-200/60 text-[11px] text-amber-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-shield text-amber-600"></i>
+                    <span>物理本质：将人类意志与责任约束无缝嵌入非确定性 AI 状态流的最关键节点</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for HITL Gate Controller -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. HITL 挂起与交互断点控制器代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python LangGraph interrupt() & State Override</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 HITL 人类断点与风险控制卡扣实现</div>
+                        <div class="text-purple-300">from langgraph.types import interrupt</div>
+                        <br/>
+                        <div class="text-purple-300">def hitl_approval_gate_node(state: RefactorState) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3">is_high_risk = evaluate_patch_risk(state[<span class="text-amber-300">"current_diff"</span>])</div>
+                        <div class="text-cyan-300 pl-3">if</div>
+                        <div class="text-slate-300 pl-6">is_high_risk:</div>
+                        <div class="text-slate-500 pl-9"># 1. 触发 LangGraph 物理挂起卡扣，等待 CLI/Slack 外部人类批准</div>
+                        <div class="text-slate-300 pl-9">decision = interrupt({</div>
+                        <div class="text-slate-300 pl-12"><span class="text-amber-300">"warning"</span>: <span class="text-rose-400 font-bold">"High-Risk Code Patch Detected!"</span>,</div>
+                        <div class="text-slate-300 pl-12"><span class="text-amber-300">"diff"</span>: state[<span class="text-amber-300">"current_diff"</span>],</div>
+                        <div class="text-slate-300 pl-12"><span class="text-amber-300">"prompt"</span>: <span class="text-amber-300">"Approve, Reject, or Modify?"</span></div>
+                        <div class="text-slate-300 pl-9">})</div>
+                        <br/>
+                        <div class="text-slate-500 pl-9"># 2. 检查人类意见：如驳回直接抛错打断；若更新代码则覆写状态</div>
+                        <div class="text-cyan-300 pl-9">if</div>
+                        <div class="text-slate-300 pl-12">decision.get(<span class="text-amber-300">"type"</span>) == <span class="text-amber-300">"REJECTED"</span>:</div>
+                        <div class="text-rose-400 pl-15 font-bold">raise PermissionError("Human operator rejected the patch")</div>
+                        <div class="text-cyan-300 pl-9">elif</div>
+                        <div class="text-slate-300 pl-12">decision.get(<span class="text-amber-300">"type"</span>) == <span class="text-amber-300">"MODIFIED"</span>:</div>
+                        <div class="text-emerald-300 pl-15 font-bold">return {"current_diff": decision["modified_diff"], "approved": True}</div>
+                        <br/>
+                        <div class="text-emerald-300 pl-3 font-bold">return {"approved": True}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>SOC2 物理合规保证：</strong>确保物理写动作在生产或主干上线前必须经过物理打卡留痕。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零阻塞异步解耦：</strong>图引擎反序列化写库后线程释放，人类在 3 天后点击批准均可原位唤醒。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                    <span>物理本质：把安全合规审核下沉为图状态机的持久化异步挂起节点</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Subsystem Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">HITL Breakpoint Controller Pipeline / 人类断点与交互批准控制拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 8 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-triangle-exclamation mr-1 text-indigo-400"></i>1. High-Risk Sensor</div>
+                    <div class="text-[9px] text-slate-400">Detect File Deletion / Secret</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-pause mr-1 text-amber-400"></i>2. `interrupt()` Suspend</div>
+                    <div class="text-[9px] text-slate-400">Checkpointer State Stash</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-terminal mr-1 text-purple-400"></i>3. CLI / Slack Prompt</div>
+                    <div class="text-[9px] text-slate-400">Human Approval / Override</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-play mr-1 text-emerald-400"></i>4. Resume Execution</div>
+                    <div class="text-[9px] text-slate-400">`update_state` & Resume</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要把高危物理变更动作完全托付给非确定性的 AI 决策！</strong>通过手写 HITL 人类断点与交互批准控制器，结合状态图的 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">interrupt()</code> 异步挂起与 <code class="bg-indigo-100 text-indigo-900 px-1 rounded font-bold">update_state()</code> 状态覆写，能为企业级代码自动化重构构建最后一道绝不可逾越的安全防火墙。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">子系统 8：人类断点与交互批准 (HITL Terminal Prompt) 控制器</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 讲授 HITL 卡扣控制器的核心工程意义：</span>
+                    “向学员深入剖析：在构建全栈 AI Coding 平台时，第 8 个核心子系统就是手写 HITL 人类断点与交互批准控制器。大模型在重构代码时，难免会涉及修改危险配置或删除物理文件。如果不加人类卡扣，自动化 Agent 就可能造成不可逆的生产事故。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 `interrupt()` 与 `update_state` 结合：</span>
+                    “提示学员看右侧代码：我们在检测到高危动作时，调用 LangGraph 的 `interrupt()` 异步挂起。线程和内存资源被完全释放，等待人类在 Terminal CLI 或 Slack 中点击 Approve 或修改 Patch。人类提交后通过 `update_state` 覆盖新 Patch 并恢复原位执行。下一页我们将进入模块二小结，将这 8 大子系统缝合闭环！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

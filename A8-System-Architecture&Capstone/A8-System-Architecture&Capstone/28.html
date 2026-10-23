@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 28 - OWASP 安全扫描与敏感信息 (Secrets) 硬防线注入</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>第 8 课：全栈系统架构 · 模块三 OWASP 安全防线与密钥拦截</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                OWASP 安全扫描与敏感信息 (Secrets) 硬防线注入
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                构建智能体代码修改的零信任物理防御壁垒：在 Agent 物理写盘与提交 PR 前强制挂载 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">Gitleaks 敏感密钥探测</span> 与 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Semgrep SAST 静态安全分析引擎</span>，将 OWASP Top 10 漏洞 (<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">SQL 注入、未鉴权写接口、硬编码 API Key</span>) 转化为物理阻断信号并反馈给 Coder Agent 自动修补
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: OWASP Scanning Mechanics vs Python Security Node Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: OWASP Security & Secrets Interception Specs -->
+            <div class="group relative rounded-2xl border border-rose-200 bg-rose-50/30 p-4 md:p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-base shrink-0">
+                                <i class="fa-solid fa-lock"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. OWASP Top 10 漏洞拦截与敏感密钥防护规约</h3>
+                                <p class="text-[10px] text-rose-800 font-mono">Secrets Interception & SAST Security Guard Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[10px] font-mono font-bold">Security Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">Secrets Gate</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Gitleaks 敏感密钥零容忍拦截：</strong>
+                                <span class="text-slate-600 text-[11px]">基于熵值计算与高精度正则规则，秒级探测 Patch 中误写入的 AWS AK/SK、GitHub Token 或 JWT 秘钥。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Semgrep SAST</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Semgrep 物理静态断言 (OWASP Rules)：</strong>
+                                <span class="text-slate-600 text-[11px]">扫描 SQL 字符串拼接 (`SELECT * FROM ... + var`)、未越权访问漏洞或反序列化攻击风险，一票否决合规申请。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">Reflexion Loop</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">安全漏洞结构化反馈与自愈修复：</strong>
+                                <span class="text-slate-600 text-[11px]">将 Semgrep 抛出的漏洞行号与 CVE/OWASP 诊断信息作为 Observation 灌回 Coder Agent 重新生成安全补丁。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-rose-200/60 text-[11px] text-rose-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-cat text-rose-600"></i>
+                    <span>物理本质：把安全合规与漏洞拦截转化为算法生成与合规卡扣之间的强干预机制</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Semgrep & Gitleaks Security Node -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Gitleaks 与 Semgrep 安全扫描防护节点代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Semgrep & Gitleaks Security Node for LangGraph</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Security</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 Gitleaks 秘钥探测与 Semgrep SAST 静态安全卡扣</div>
+                        <div class="text-purple-300">import subprocess, json</div>
+                        <br/>
+                        <div class="text-purple-300">def scan_patch_security_and_secrets(repo_dir: str, patch_code: str) -&gt; dict:</div>
+                        <div class="text-slate-500 pl-3"># 1. 运行 Gitleaks 检测是否存在硬编码 API Key 或 Secrets</div>
+                        <div class="text-slate-300 pl-3">gitleaks_res = subprocess.run(</div>
+                        <div class="text-slate-300 pl-6">[<span class="text-amber-300">"gitleaks"</span>, <span class="text-amber-300">"detect"</span>, <span class="text-amber-300">"--no-git"</span>, <span class="text-amber-300">"--pipe"</span>, <span class="text-amber-300">"--report-format=json"</span>],</div>
+                        <div class="text-slate-300 pl-6">input=patch_code.encode(), capture_output=<span class="text-cyan-300">True</span></div>
+                        <div class="text-slate-300 pl-3">)</div>
+                        <div class="text-cyan-300 pl-3">if</div>
+                        <div class="text-slate-300 pl-6">gitleaks_res.returncode != <span class="text-cyan-300">0</span>:</div>
+                        <div class="text-rose-400 pl-9 font-bold">return {"status": "BLOCKED", "reason": "Secret Leaked", "details": gitleaks_res.stdout.decode()}</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 2. 运行 Semgrep 扫描 OWASP Top 10 SAST 漏洞</div>
+                        <div class="text-slate-300 pl-3">semgrep_res = subprocess.run(</div>
+                        <div class="text-slate-300 pl-6">[<span class="text-amber-300">"semgrep"</span>, <span class="text-amber-300">"--config=p/owasp-top-10"</span>, <span class="text-amber-300">"--json"</span>, repo_dir],</div>
+                        <div class="text-slate-300 pl-6">capture_output=<span class="text-cyan-300">True</span></div>
+                        <div class="text-slate-300 pl-3">)</div>
+                        <div class="text-slate-300 pl-3">findings = json.loads(semgrep_res.stdout).get(<span class="text-amber-300">"results"</span>, [])</div>
+                        <div class="text-cyan-300 pl-3">if</div>
+                        <div class="text-slate-300 pl-6">findings:</div>
+                        <div class="text-rose-400 pl-9 font-bold">return {"status": "BLOCKED", "reason": "OWASP Vulnerability", "findings": findings}</div>
+                        <div class="text-emerald-300 pl-3 font-bold">return {"status": "PASSED"}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零信任双重物理屏障：</strong>在管道中串联管道流，确保源码不包含秘钥泄漏与典型注入。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>自愈重修复路：</strong>返回精准 JSON 诊断，直接驱动 Agent 自主将其修改为安全的预编译 SQL。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-cat text-indigo-600"></i>
+                    <span>物理本质：把安全工具规则下沉为自动化 CI/CD 物理卡扣与提示词自愈重修信号</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- OWASP Security & Secrets Interception Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-rose-300">OWASP Security & Secrets Interception Pipeline Topology / 安全扫描与秘钥拦截拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 10 Security Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-compare mr-1 text-indigo-400"></i>1. Candidate Patch</div>
+                    <div class="text-[9px] text-slate-400">Generated Unified Diff</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-key mr-1 text-rose-400"></i>2. Gitleaks Secrets Scan</div>
+                    <div class="text-[9px] text-slate-400">Entropy & Regex Inspection</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-shield-bug mr-1 text-purple-400"></i>3. Semgrep SAST Audit</div>
+                    <div class="text-[9px] text-slate-400">OWASP Top 10 Rules Scan</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-lock-open mr-1 text-emerald-400"></i>4. Pass or Block & Repair</div>
+                    <div class="text-[9px] text-slate-400">Pass Gate or Reflexion Loop</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要把包含了硬编码 API 秘钥或 OWASP 漏洞的代码补丁发布至生产主干！</strong>在 CI/CD 和 Agent 执行管道中前置挂载 Gitleaks 秘钥检测与 Semgrep 静态分析，将发现的安全隐患包装为结构化 Observation 回传，是构建零信任安全防线与自愈重修回路的硬前提。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">28</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[70%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (27.html <- 28.html -> 29.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="27.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">OWASP 安全扫描与敏感信息 (Secrets) 硬防线注入</span>
+            <a href="29.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="27.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="29.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲授 OWASP 安全扫描与秘钥拦截的核心意义：</span>
+                    “向学员深入剖析：在构建工业级 AI Coding 平台时，除了 Slide 27 讲的单测通过率，最致命的隐患是模型在写代码时误将 AWS_KEY 或 API Token 硬编码进了源码，或者引入了 SQL 注入等 OWASP Top 10 漏洞。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调物理阻断与自动修复回路：</span>
+                    “提示学员看右侧代码：我们在提交前挂载 Gitleaks 秘钥扫描与 Semgrep SAST 引擎。一旦检测到问题，系统不仅物理阻断 PR，还会将具体的漏洞行号与修复建议返回给 Coder Agent，驱动其自我修复补丁！下一页我们将讲授 Agent 的灰度发布与 Canary 影子测试机制！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '27.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

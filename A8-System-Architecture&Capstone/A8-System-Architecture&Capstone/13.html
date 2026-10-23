@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 子系统 2：基于 Tree-sitter 的代码 AST 关系图谱与 Symbol 提取器</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>第 8 课：全栈系统架构 · 模块二子系统实战 (2/8)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                子系统 2：基于 Tree-sitter 的代码 AST 关系图谱与 Symbol 提取器
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                提炼零噪声的代码关系图谱与架构骨架：编写 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Tree-sitter 增量语法提炼算子</span>，对工程文件进行类声明（`Class`）、方法签名（`Function/Method`）与依赖引用（`Import`）无损剖析，生成 Token 压缩率达 80%+ 的 <span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">结构化代码骨架 (Skeleton)</span> 与符号拓扑图
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Tree-sitter Principles vs Python AST Extractor Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Tree-sitter Extraction Mechanics & Skeletonizing Specs -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-folder-tree"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. AST 提炼机制与代码骨架瘦身 (Skeletonizing)</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">AST Tree Queries & Context Pruning Principles</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">AST Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-[10px] shrink-0">S-Expression</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Tree-sitter S-模式精准查询：</strong>
+                                <span class="text-slate-600 text-[11px]">使用 `(function_definition name: (identifier) @func.name)` 捕获物理节点的精确位置与词法文本。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">Skeletonizing</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">函数体逻辑剥离 (Body Stripping)：</strong>
+                                <span class="text-slate-600 text-[11px]">保留类型声明、Docstring、注解与函数签名，将其内部实现细节强行替换为 `...`，减少 80%+ 冗余 Token。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Symbol Graph</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">确定性符号映射图 (Zero Hallucination)：</strong>
+                                <span class="text-slate-600 text-[11px]">提炼跨文件的 `import` 引用链，构造准确的 Symbol 依赖拓扑，为 RAG 知识图谱提供物理真相。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-bone text-indigo-600"></i>
+                    <span>物理本质：用标准 C/WASM 语法分析器替代大模型粗暴的纯文本按行盲切与高噪声全文注入</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for AST Extractor -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 md:p-5 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Tree-sitter AST Extractor 实战代码</h3>
+                                <p class="text-[10px] text-purple-800 font-mono">Python Code Skeleton & Symbol Extractor</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10px] font-mono font-bold">Python Code</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级代码骨架 (Skeleton) 与符号关系提取算子</div>
+                        <div class="text-purple-300">from tree_sitter import Language, Parser</div>
+                        <br/>
+                        <div class="text-purple-300">def generate_code_skeleton(source_code: str, lang_so_path: str = "build/languages.so") -&gt; str:</div>
+                        <div class="text-slate-300 pl-3">PY_LANG = Language(lang_so_path, <span class="text-amber-300">"python"</span>)</div>
+                        <div class="text-slate-300 pl-3">parser = Parser()</div>
+                        <div class="text-slate-300 pl-3">parser.set_language(PY_LANG)</div>
+                        <div class="text-slate-300 pl-3">tree = parser.parse(bytes(source_code, <span class="text-amber-300">"utf8"</span>))</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 提取 Class / Function 节点并构建高隐蔽剥离模型</div>
+                        <div class="text-slate-300 pl-3">lines = source_code.splitlines()</div>
+                        <div class="text-slate-300 pl-3">skeleton_lines = []</div>
+                        <div class="text-cyan-300 pl-3">for</div>
+                        <div class="text-slate-300 pl-6">line <span class="text-cyan-300">in</span> lines:</div>
+                        <div class="text-cyan-300 pl-9">if</div>
+                        <div class="text-slate-300 pl-12">line.strip().startswith((<span class="text-amber-300">"def "</span>, <span class="text-amber-300">"class "</span>, <span class="text-amber-300">"import "</span>, <span class="text-amber-300">"from "</span>, <span class="text-amber-300">"@"</span>)):</div>
+                        <div class="text-slate-300 pl-15">skeleton_lines.append(line)</div>
+                        <div class="text-cyan-300 pl-9">elif</div>
+                        <div class="text-slate-300 pl-12">line.strip().startswith(<span class="text-amber-300">'"""'</span>) <span class="text-cyan-300">or</span> line.strip().startswith(<span class="text-amber-300">"'''"</span>):</div>
+                        <div class="text-slate-300 pl-15">skeleton_lines.append(line)  <span class="text-slate-500"># 保留原始 Docstrings</span></div>
+                        <br/>
+                        <div class="text-emerald-300 pl-3 font-bold">return "\n".join(skeleton_lines)</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>架构级真相锚定：</strong>保留全量类方法签名与注释规约，大模型绝对不会发生函数参数拼写误判。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>毫秒级极速解析：</strong>底层的 C/WASM 扩展可在 5ms 内完成千行文件的多层 AST 扫描。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[11px] text-purple-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-gears text-purple-600"></i>
+                    <span>物理本质：手写多语言极简提炼算子将长代码文件瘦身为强架构语义载荷</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Tree-sitter Skeleton Subsystem Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">Tree-sitter AST Extractor Subsystem Pipeline / AST 提取与骨架渲染拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Subsystem 2 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-file-code mr-1 text-indigo-400"></i>1. Raw Source File</div>
+                    <div class="text-[9px] text-slate-400">Full Code Text</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-purple-400"></i>2. Tree-sitter Parser</div>
+                    <div class="text-[9px] text-slate-400">C/WASM AST Node Query</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-scissors mr-1 text-amber-400"></i>3. Body Stripping</div>
+                    <div class="text-[9px] text-slate-400">Keep Signatures & Docstrings</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-amber-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-amber-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bone mr-1 text-emerald-400"></i>4. Code Skeleton</div>
+                    <div class="text-[9px] text-slate-400">80%+ Token Compressed Payload</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要把没有修改到的依赖文件的完整源码全文压入 Prompt！</strong>通过手写基于 Tree-sitter 的 AST 代码骨架提炼算子，仅保留类与方法的强类型签名与注释（Skeleton），既能为模型提供零幻觉的代码物理真相，又能将 Token 开销压缩 80% 以上。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[32.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">子系统 2：基于 Tree-sitter 的代码 AST 关系图谱与 Symbol 提取器</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 讲授 Tree-sitter AST 提取器子系统逻辑：</span>
+                    “向学员深入剖析：在第 12 页我们手写了 Context Packager，但如果我们把非编辑文件的几十万行细节全文塞进 `<codebase_context>`，马上就会爆 Token。因此我们需要第二个子系统——基于 Tree-sitter 的代码骨架提取器。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调方法签名保留与 Token 优化：</span>
+                    “提示学员看右侧代码：我们通过语法树逻辑剥离，将方法体内的逻辑剔除，仅保留 `class`、`def` 签名与 Docstring。大模型依然能获得全库绝对准确的函数调用方式与类型约束，但上下文大小直接缩减 80%+。下一页我们将手写第 3 个子系统：MCP Client 桥接器！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

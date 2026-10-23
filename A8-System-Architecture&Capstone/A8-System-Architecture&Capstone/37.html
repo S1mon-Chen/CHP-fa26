@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 37 - Capstone 核心模块 5：Reviewer OWASP 安全审查与自动 PR 提交代码</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                AI 应用与辅助编程架构师视角 (Course 8: System Architecture & Capstone)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-code-pull-request"></i>
+                <span>第 8 课：全栈系统架构 · 模块四 Capstone 实战 (5/5)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-3">
+                Capstone 核心模块 5：Reviewer OWASP 安全审查与自动 PR 提交代码
+            </h1>
+            
+            <p class="text-sm sm:text-base md:text-lg lg:text-xl font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                全自动化安全审计与物理代码合并终局：在单测全绿后触发 <span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">Gitleaks 密钥扫描与 Semgrep SAST 静态防御</span>，配合 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">LLM Reviewer 裁决裁判</span>，确认零风险后通过 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">GitHub REST API 自动创建 PR、Approve 并执行 Squash Merge</span>
+            </p>
+        </div>
+
+        <!-- Content Grid (2 Columns: Security Audit Specs vs Python Auto-PR Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-3 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            
+            <!-- Left Card: Reviewer OWASP Security Audit & Auto PR Specs -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 md:p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-base shrink-0">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">1. Reviewer OWASP 审察与自动 PR 合并规约</h3>
+                                <p class="text-[10px] text-emerald-800 font-mono">OWASP Audit, LLM Consensus & Auto PR Merge Specs</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">Reviewer Specs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700">
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px] shrink-0">SAST Defense</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">Gitleaks + Semgrep 物理静态防御：</strong>
+                                <span class="text-slate-600 text-[11px]">拦截 Patch 中误写入的 API 秘钥与 SQL 注入、未鉴权写接口等 OWASP Top 10 漏洞，实现一票否决。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono font-bold text-[10px] shrink-0">LLM Consensus</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">LLM 裁判三维评分 (`APPROVED`)：</strong>
+                                <span class="text-slate-600 text-[11px]">校验补丁的逻辑正确性、代码规范（PEP8/Clean Code）与架构符合度，输出带归因的 JSON 裁决。</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 soft-shadow flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px] shrink-0">Squash Merge</span>
+                            <div>
+                                <strong class="text-slate-900 text-[11px] block">GitHub REST API 自动 Approve & Squash Merge：</strong>
+                                <span class="text-slate-600 text-[11px]">调用 `/repos/{owner}/{repo}/pulls` 创建 PR，自动点 Approve，并使用 `squash` 模式无缝合并入 `main` 分支。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-lock text-emerald-600"></i>
+                    <span>物理本质：把安全合规审查与 GitHub 交付动作打包为状态机的终局收敛节点</span>
+                </div>
+            </div>
+
+            <!-- Right Card: Python Code Implementation for Capstone Reviewer & GitHub Auto Merge Node -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 md:p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600 text-base shrink-0">
+                                <i class="fa-solid fa-code"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">2. Reviewer 审察与自动 PR 提交代码</h3>
+                                <p class="text-[10px] text-indigo-800 font-mono">Python Reviewer Audit & GitHub API Auto Merge</p>
+                            </div>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10px] font-mono font-bold">Python Reviewer</span>
+                    </div>
+
+                    <!-- Terminal Code Box -->
+                    <div class="bg-slate-900 text-slate-100 rounded-xl p-2.5 font-mono text-[10px] shadow-inner space-y-1 leading-relaxed mb-3 overflow-x-auto">
+                        <div class="text-indigo-400"># 生产级 Reviewer OWASP 安全审察与 GitHub REST API 自动 PR 合并</div>
+                        <div class="text-purple-300">import requests</div>
+                        <br/>
+                        <div class="text-purple-300">async def reviewer_consensus_node(state: CapstoneState) -&gt; dict:</div>
+                        <div class="text-slate-300 pl-3">patch_code = state[<span class="text-amber-300">"current_patch"</span>]</div>
+                        <div class="text-slate-300 pl-3">issue_id = state[<span class="text-amber-300">"issue_id"</span>]</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 1. 物理 Gitleaks 密钥扫描与 Semgrep OWASP SAST 静态审查</div>
+                        <div class="text-slate-300 pl-3">sec_res = scan_patch_security_and_secrets(state[<span class="text-amber-300">"repo_dir"</span>], patch_code)</div>
+                        <div class="text-cyan-300 pl-3">if</div>
+                        <div class="text-slate-300 pl-6">sec_res[<span class="text-amber-300">"status"</span>] == <span class="text-amber-300">"BLOCKED"</span>:</div>
+                        <div class="text-rose-400 pl-9 font-bold">return {"review_status": "REJECTED_SECURITY", "traceback": sec_res["reason"]}</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 2. 校验 100% 全绿无害：通过 GitHub REST API 自动创建 PR 并 Squash Merge</div>
+                        <div class="text-slate-300 pl-3">headers = {<span class="text-amber-300">"Authorization"</span>: f<span class="text-amber-300">"Bearer {GITHUB_TOKEN}"</span>, <span class="text-amber-300">"Accept"</span>: <span class="text-amber-300">"application/vnd.github.v3+json"</span>}</div>
+                        <div class="text-slate-300 pl-3">pr_body = {<span class="text-amber-300">"title"</span>: f<span class="text-amber-300">"fix: Auto-resolved Issue #{issue_id}"</span>, <span class="text-amber-300">"head"</span>: f<span class="text-amber-300">"agent-fix-{issue_id}"</span>, <span class="text-amber-300">"base"</span>: <span class="text-amber-300">"main"</span>}</div>
+                        <div class="text-slate-300 pl-3">pr_res = requests.post(f<span class="text-amber-300">"https://api.github.com/repos/{REPO}/pulls"</span>, json=pr_body, headers=headers).json()</div>
+                        <br/>
+                        <div class="text-slate-500 pl-3"># 3. 自动点 Approve 并执行 Squash Merge</div>
+                        <div class="text-slate-300 pl-3">pr_num = pr_res[<span class="text-amber-300">"number"</span>]</div>
+                        <div class="text-slate-300 pl-3">requests.put(f<span class="text-amber-300">"https://api.github.com/repos/{REPO}/pulls/{pr_num}/merge"</span>, json={<span class="text-amber-300">"merge_method"</span>: <span class="text-amber-300">"squash"</span>}, headers=headers)</div>
+                        <div class="text-emerald-300 pl-3 font-bold">return {"review_status": "MERGED", "pr_url": pr_res["html_url"]}</div>
+                    </div>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>零人工干预全自动闭环：</strong>单测全绿 + 安全扫描通过后直接合并，大幅释放人力。</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-1 shrink-0 text-[10px]"></i>
+                            <span><strong>物理 Commit 提交干净：</strong>采用 `squash` 模式合并，把 Agent 多轮自愈重修的历史碎片压成一条干净 Commit。</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[11px] text-indigo-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-crown text-indigo-600"></i>
+                    <span>物理本质：把前几课学到的 Gitleaks、Semgrep 与 GitHub API 融合为 Capstone 平台的收敛终局</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Capstone Module 5 Pipeline Topology Box -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">Capstone Reviewer Audit & Auto PR Merge Pipeline Topology / 安全审察与自动 PR 拓扑</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Capstone Module 5 Pipeline</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-1.5 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-file-circle-check mr-1 text-indigo-400"></i>1. Receive Test-Passed Patch</div>
+                    <div class="text-[9px] text-slate-400">Passed Sandbox Pytest</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-rose-950 border border-rose-700 text-rose-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-shield-cat mr-1 text-rose-400"></i>2. Semgrep & Gitleaks Audit</div>
+                    <div class="text-[9px] text-slate-400">SAST & Secret Leak Scan</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-rose-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-rose-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-gavel mr-1 text-purple-400"></i>3. LLM Reviewer Consensus</div>
+                    <div class="text-[9px] text-slate-400">Clean Code & Style Assertions</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-code-pull-request mr-1 text-emerald-400"></i>4. GitHub REST API Merge</div>
+                    <div class="text-[9px] text-slate-400">Create PR & Squash Merge</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-compass-drafting"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Architectural Core Thesis / 架构师视角</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>不要将未经过静态安全审计（Semgrep/Gitleaks）与 LLM 裁判认同的代码合并入主干！</strong>只有将安全扫描拦截与 GitHub REST API 自动提交/合并物理绑定，才能在保障绝对高吞吐交付的同时，守住生产环境零漏洞的底线。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">37</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[92.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (36.html <- 37.html -> 38.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="36.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Capstone 核心模块 5：Reviewer OWASP 安全审查与自动 PR 提交代码</span>
+            <a href="38.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="36.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="38.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲授 Reviewer OWASP 审察与自动 PR 提交逻辑：</span>
+                    “向学员深入剖析：在经过 Slide 36 的沙箱单测跑通后，代码改动还差最后一步安全锁。我们不能允许包含泄露 API Key 或 SQL 注入漏洞的代码直接提交 PR，因此在此节点嵌入了 Gitleaks 与 Semgrep 扫描。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 GitHub REST API Squash Merge：</span>
+                    “提示学员看右侧代码：如果安全扫描通过且 LLM Reviewer 给出了 APPROVED，节点调用 GitHub API 自动创建 PR、Approve 并执行 Squash Merge，把重构历史整洁地合并入主干！下一页我们将讲授 Capstone 全套运行 Log、LangSmith Trace 轨迹与架构师十六大法则！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = '36.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = '38.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
