@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - 星巴克 RESTful 购咖啡表述性状态机 (Case Study: How to Get a Cup of Coffee)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-mug-hot text-purple-600"></i>
+                <span>Part 02 · RESTful 架构风格与资源设计 (RESTful Architecture & Resource Design)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                REST 架构案例剖析：星巴克购咖啡表述性状态机
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Case Study: "How to Get a Cup of Coffee" — State Machine &amp; HATEOAS Hypermedia Driven Flow
+            </p>
+        </div>
+
+        <!-- Content Grid: Customer & Barista State Machines (6 cols) vs HATEOAS Principles (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Customer & Barista State Flow Diagrams (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-split-up-and-left text-purple-600"></i>
+                            <span>1. 交易角色两端的状态机流转 (State Machine Diagram)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Jim Webber Case Study</span>
+                    </div>
+
+                    <!-- Customer State Machine Card -->
+                    <div class="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs mb-2.5 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span class="text-amber-300 font-bold flex items-center gap-1.5 text-[10.5px]">
+                                <i class="fa-solid fa-user text-amber-400"></i>
+                                <span>顾客端状态转移 (Customer State Flow)</span>
+                            </span>
+                            <span class="text-[9px] text-slate-400">Client-Driven State</span>
+                        </div>
+
+                        <!-- Customer Flow Nodes -->
+                        <div class="space-y-1.5 text-[9.5px]">
+                            <!-- State 1 -->
+                            <div class="p-2 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <span class="text-slate-400 block text-[8.5px]">Step 1: 下单创建</span>
+                                    <code class="text-purple-300 font-bold">POST /order</code>
+                                </div>
+                                <i class="fa-solid fa-arrow-right text-slate-600"></i>
+                                <div class="text-right">
+                                    <span class="px-1.5 py-0.5 rounded bg-purple-950 border border-purple-700 text-purple-300 font-bold">Order Placed</span>
+                                    <span class="text-[8.5px] text-emerald-400 block mt-0.5">201 Created</span>
+                                </div>
+                            </div>
+
+                            <!-- State 2 -->
+                            <div class="p-2 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <span class="text-slate-400 block text-[8.5px]">Step 2: 支付锁定</span>
+                                    <code class="text-indigo-300 font-bold">PUT /payment/order/1234</code>
+                                </div>
+                                <i class="fa-solid fa-arrow-right text-slate-600"></i>
+                                <div class="text-right">
+                                    <span class="px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-700 text-indigo-300 font-bold">Paid</span>
+                                    <span class="text-[8.5px] text-emerald-400 block mt-0.5">200 / 201 Created</span>
+                                </div>
+                            </div>
+
+                            <!-- State 3 -->
+                            <div class="p-2 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <span class="text-slate-400 block text-[8.5px]">Step 3: 取餐消费</span>
+                                    <code class="text-emerald-300 font-bold">GET /order/1234</code>
+                                </div>
+                                <i class="fa-solid fa-arrow-right text-slate-600"></i>
+                                <div class="text-right">
+                                    <span class="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold">Drink Received</span>
+                                    <span class="text-[8.5px] text-emerald-400 block mt-0.5">200 OK</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Barista State Machine Card -->
+                    <div class="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span class="text-indigo-300 font-bold flex items-center gap-1.5 text-[10.5px]">
+                                <i class="fa-solid fa-mug-hot text-indigo-400"></i>
+                                <span>咖啡师端状态转移 (Barista State Flow)</span>
+                            </span>
+                            <span class="text-[9px] text-slate-400">Atom Feed Polling</span>
+                        </div>
+
+                        <!-- Barista Flow Steps -->
+                        <div class="p-2 rounded bg-slate-950 border border-slate-800 text-[9.5px] leading-relaxed text-slate-300">
+                            <div class="flex items-center justify-between text-slate-400 text-[8.5px] mb-1">
+                                <span>轮询获取待制作订单: GET /orders/feed</span>
+                                <span class="text-amber-300 font-bold">Cache-Control / Expires</span>
+                            </div>
+                            <div class="flex items-center justify-between gap-1 text-[9px] font-bold">
+                                <span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">Order Chosen</span>
+                                <i class="fa-solid fa-chevron-right text-purple-400"></i>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-950 border border-purple-700 text-purple-300">Drink Made</span>
+                                <i class="fa-solid fa-chevron-right text-indigo-400"></i>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300">Drink Released</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心启发：流程推进行动并非通过 RPC，而是通过更新资源状态</span>
+                    <i class="fa-solid fa-diagram-project text-purple-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: HATEOAS Principles & Hypermedia Links (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-link"></i>
+                            <span>2. HATEOAS 与超媒体驱动状态转移机制</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">HATEOAS Alignment</span>
+                    </div>
+
+                    <!-- HATEOAS Definition Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <span class="text-amber-300 font-bold block text-[10.5px]">什么是 HATEOAS？</span>
+                        <p class="text-[10px] text-slate-300 font-sans leading-tight">
+                            **Hypermedia As The Engine Of Application State**（超媒体作为应用状态引擎）是 REST 架构成熟度最高层级 (Richardson Maturity Model Level 3) 的标志。
+                        </p>
+                        <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                            客户端无需硬编码未来的所有 URI 路由；服务端在返回的 Payload 中**直接注入下一步允许触发的状态转移超链接 (`<next>` / `links`)**。
+                        </p>
+                    </div>
+
+                    <!-- Response Payload Hypermedia Example Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[10px] space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold">服务端响应 (201 Created 带超媒体链接)</span>
+                            <span class="text-slate-500 text-[8.5px]">Location: /order/1234</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] leading-relaxed text-slate-300 overflow-x-auto">
+                            <div><span class="text-purple-300">&lt;order</span> <span class="text-amber-300">xmlns</span>=<span class="text-emerald-300">"http://starbucks.example.org/"</span><span class="text-purple-300">&gt;</span></div>
+                            <div class="pl-4"><span class="text-indigo-300">&lt;drink&gt;</span>latte<span class="text-indigo-300">&lt;/drink&gt;</span></div>
+                            <div class="pl-4"><span class="text-indigo-300">&lt;cost&gt;</span>3.00<span class="text-indigo-300">&lt;/cost&gt;</span></div>
+                            <div class="pl-4 text-amber-300">&lt;!-- 动态告知客户端下一步的支付 UR​​I --&gt;</div>
+                            <div class="pl-4"><span class="text-purple-400">&lt;next</span> <span class="text-amber-300">rel</span>=<span class="text-emerald-300">"http://starbucks.example.org/payment"</span></div>
+                            <div class="pl-12"><span class="text-amber-300">uri</span>=<span class="text-emerald-300">"http://starbucks.example.com/payment/order/1234"</span> <span class="text-purple-400">/&gt;</span></div>
+                            <div><span class="text-purple-300">&lt;/order&gt;</span></div>
+                        </div>
+                    </div>
+
+                    <!-- 3 State Machine Rules Grid -->
+                    <div class="grid grid-cols-3 gap-1.5 mt-2.5 text-[9px] font-mono">
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-center">
+                            <strong class="text-purple-300 block mb-0.5">1. 表述驱动</strong>
+                            <span class="text-slate-400 font-sans">解析响应 link 决定下一步请求</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-center">
+                            <strong class="text-indigo-300 block mb-0.5">2. 状态校验</strong>
+                            <span class="text-slate-400 font-sans">非法更新返回 409 Conflict</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-center">
+                            <strong class="text-emerald-300 block mb-0.5">3. 幂等重试</strong>
+                            <span class="text-slate-400 font-sans">PUT/DELETE 实现抖动自动无损重试</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个关键点：星巴克购咖啡生命周期详讲 (创建/更新/冲突/支付)</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Starbucks Case Study Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        星巴克咖啡案例优雅地展示了**REST 架构如何将复杂的长事务业务建模为自描述的状态机**。客户端通过资源表述中的超链接动态获取可执行的下一步动作，服务端则严格校验状态转移规则，使得整个网络系统具备极高的松耦合度与扩展韧性。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 16 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">16</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[45.71%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (15.html <- 16.html -> 17.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">星巴克案例：状态机 (How to Get a Cup of Coffee)</span>
+            <a href="17.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="15.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="17.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视星巴克案例的核心意义：</span>
+                    “向学员强调：星巴克购咖啡是 REST 领域最经典的案例（由 Jim Webber 等提出）。其精髓在于展示 REST 不仅仅是‘用 URL 传 JSON’，而是用统一接口（POST/PUT/GET/DELETE）驱动客户端在状态机树上跳转。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 HATEOAS 超媒体控制概念：</span>
+                    “请学员关注右侧的响应 Payload：`201 Created` 响应中直接带上了 `<next rel=".../payment" uri="..."/>` 链接。客户端不需要写死路由算法，而是像在 Web 页面上点击超链接一样，由服务端的 Hypermedia 引导完成支付操作。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

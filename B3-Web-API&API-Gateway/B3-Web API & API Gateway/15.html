@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - RESTful URI 命名规范与资源寻址最佳实践 (RESTful URI Naming Best Practices)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-cubes text-purple-600"></i>
+                <span>Part 02 · RESTful 架构风格与资源设计 (RESTful Architecture & Resource Design)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                RESTful URI 命名规范与资源寻址最佳实践
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Noun Plurals, Kebab-Case, Resource Nesting, Query Parameters &amp; API Versioning
+            </p>
+        </div>
+
+        <!-- Content Grid: 5 Core URI Rules (6 cols) vs Query Params & Versioning (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: 5 Core URI Design Rules (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-link text-purple-600"></i>
+                            <span>1. RESTful URI 命名的 5 大黄金准则</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">URI Naming Rules</span>
+                    </div>
+
+                    <!-- 5 Rules Cards -->
+                    <div class="space-y-2 font-sans">
+                        
+                        <!-- Rule 1: Plural Nouns -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-folder-tree text-purple-600"></i>
+                                    <span>① 使用复数名词表示资源集合 (Plural Nouns)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Plural Nouns</span>
+                            </div>
+                            <p class="text-[10.5px] text-slate-600 leading-tight">
+                                资源集合使用复数名词表达（如 <code class="text-purple-700 font-mono">/users</code>、<code class="text-purple-700 font-mono">/orders</code>）；定位特定单个实体时附加唯一 ID（如 <code class="text-purple-700 font-mono">/users/42</code>）。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: Nested Resources -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-diagram-nested text-indigo-600"></i>
+                                    <span>② 表达从属与关联资源 (Nested Resources)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Sub-Resources</span>
+                            </div>
+                            <p class="text-[10.5px] text-slate-600 leading-tight">
+                                使用层级结构表示资源从属关系：<code class="text-indigo-700 font-mono">GET /users/42/orders</code>（用户 42 的所有订单）或 <code class="text-indigo-700 font-mono">GET /orders/1001/items</code>。建议嵌套层级不超过 2 至 3 层。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3: Kebab-Case -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-font text-emerald-600"></i>
+                                    <span>③ 小写字母与连字符 (Kebab-Case)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">kebab-case</span>
+                            </div>
+                            <p class="text-[10.5px] text-slate-600 leading-tight">
+                                URI 路径一律使用全小写字母，单词分割优先使用连字符 <code class="text-emerald-700 font-mono">-</code>（如 <code class="text-emerald-700 font-mono">/order-items</code>），严禁使用下划线 <code class="text-slate-500 font-mono">_</code> 或驼峰命名 <code class="text-slate-500 font-mono">orderItems</code>。
+                            </p>
+                        </div>
+
+                        <!-- Rule 4: No Verbs Comparison Table -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <span class="text-amber-900 font-bold block text-[11px] font-mono flex items-center gap-1">
+                                <i class="fa-solid fa-ban text-amber-600"></i>
+                                <span>④ 严格排除动词：RPC 错误示范 vs. REST 正确范式</span>
+                            </span>
+                            <div class="grid grid-cols-2 gap-2 text-[9.5px] font-mono">
+                                <div class="p-1.5 rounded bg-rose-50 border border-rose-200 space-y-0.5">
+                                    <span class="text-rose-700 font-bold block"><i class="fa-solid fa-xmark text-rose-500 mr-1"></i>RPC 动词混入（错误）</span>
+                                    <code class="text-rose-600 block">POST /api/createUser</code>
+                                    <code class="text-rose-600 block">GET /api/getOrders</code>
+                                    <code class="text-rose-600 block">POST /api/deleteUser?id=42</code>
+                                </div>
+                                <div class="p-1.5 rounded bg-emerald-50 border border-emerald-200 space-y-0.5">
+                                    <span class="text-emerald-700 font-bold block"><i class="fa-solid fa-check text-emerald-500 mr-1"></i>REST 纯名词（正确）</span>
+                                    <code class="text-emerald-700 block">POST /v1/users</code>
+                                    <code class="text-emerald-700 block">GET /v1/orders</code>
+                                    <code class="text-emerald-700 block">DELETE /v1/users/42</code>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>规则总结：URL 定位资源名词，HTTP 动词执行动作，Query 参数过滤数据</span>
+                    <i class="fa-solid fa-route text-purple-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Query Parameters & Versioning Strategies (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-filter"></i>
+                            <span>2. 查询参数规范与 API 版本控制策略</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Filtering &amp; Versioning</span>
+                    </div>
+
+                    <!-- Query Filtering & Pagination Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <span class="text-amber-300 font-bold block text-[10.5px]">查询参数 (Query Parameters) 过滤、排序与分页规范</span>
+                        <p class="text-[10px] text-slate-400 font-sans leading-tight">
+                            URI 资源路径不应随着过滤条件而改变，过滤、排序与分页参数应当统一作为 Query String 提交：
+                        </p>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9.5px] leading-relaxed text-emerald-300">
+                            <code>GET /v1/orders?<span class="text-amber-300">status</span>=PAID&amp;<span class="text-amber-300">page</span>=2&amp;<span class="text-amber-300">limit</span>=20&amp;<span class="text-amber-300">sort</span>=-created_at</code>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1.5 text-[9px] text-slate-400">
+                            <div class="p-1 rounded bg-slate-900 text-center"><strong class="text-slate-200">status=PAID:</strong> 条件过滤</div>
+                            <div class="p-1 rounded bg-slate-900 text-center"><strong class="text-slate-200">page/limit:</strong> 分页控制</div>
+                            <div class="p-1 rounded bg-slate-900 text-center"><strong class="text-slate-200">sort=-created_at:</strong> 倒序排列</div>
+                        </div>
+                    </div>
+
+                    <!-- API Versioning Strategies Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[10.5px] space-y-2">
+                        <span class="text-indigo-300 font-bold block">API 版本控制 3 大主流策略对比</span>
+                        <div class="space-y-1.5 text-[9.5px]">
+                            
+                            <!-- Strategy 1: URI Path -->
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-0.5">
+                                <div class="flex items-center justify-between font-bold">
+                                    <span class="text-emerald-300">① URI 路径版本化 (URI Path Versioning - 工业界首选)</span>
+                                    <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8.5px]">Most Popular</span>
+                                </div>
+                                <code class="text-slate-300 block text-[9px]">GET /v1/users/42</code>
+                                <span class="text-slate-400 block text-[8.5px] font-sans">简单直观，对 API 网关路由、CDN 缓存及浏览器调试极度友好。</span>
+                            </div>
+
+                            <!-- Strategy 2: Custom Header -->
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-0.5">
+                                <div class="flex items-center justify-between font-bold">
+                                    <span class="text-purple-300">② 自定义 Request Header 版本化</span>
+                                    <span class="text-slate-400 text-[8.5px]">Header Based</span>
+                                </div>
+                                <code class="text-slate-300 block text-[9px]">GET /users/42  [Header: X-API-Version: 2.0]</code>
+                                <span class="text-slate-400 block text-[8.5px] font-sans">保持 URI 纯净，但无法直接在浏览器地址栏复制分享 URL。</span>
+                            </div>
+
+                            <!-- Strategy 3: Media Type / Accept Header -->
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-0.5">
+                                <div class="flex items-center justify-between font-bold">
+                                    <span class="text-amber-300">③ 内容协商 Media Type 版本化</span>
+                                    <span class="text-slate-400 text-[8.5px]">HATEOAS Alignment</span>
+                                </div>
+                                <code class="text-slate-300 block text-[9px]">Accept: application/vnd.company.v2+json</code>
+                                <span class="text-slate-400 block text-[8.5px] font-sans">最符合 REST 纯粹理论规范，但客户端使用复杂度较高。</span>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一页案例：星巴克 RESTful 购咖啡“表述性状态机”状态流转实战</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (RESTful URI Naming Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        好的 URI 命名设计能达到**“自描述”与“符合人类直觉”**的效果。将 URI 严格限定为指向客观名词资源的地址，用 HTTP 动词修饰操作，Query 参数修饰约束条件，能够大幅降低前端开发者与第三方生态的集成门槛。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 15 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[42.85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">RESTful URI 命名规范 (RESTful URI Naming Best Practices)</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生掌握 RESTful URI 命名要领：</span>
+                    “向学员强调：RESTful URI 设计的关键是‘只留名词、排除动词’。复数名词表示资源集合，子路径表示层级从属。连字符 kebab-case 比下划线和驼峰更符合 Web SEO 标准。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 分析 API 版本化与查询参数策略：</span>
+                    “请学员对比右侧的版本化策略：虽然 Header 与 Accept 标头版本化更符合 REST 理论，但工业界 90% 以上的企业（如 GitHub, Stripe, 微信开放平台）均采用 URI 路径版本化（如 `/v1/users`），因为它对 API 网关路由、路由限流以及浏览器测试最为简便。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

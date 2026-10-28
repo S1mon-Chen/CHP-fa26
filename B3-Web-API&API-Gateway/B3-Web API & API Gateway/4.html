@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 04 - SOAP 协议结构与 XML Schema (SOAP Architecture & XML Envelope)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-cubes text-indigo-600"></i>
+                <span>Part 01 · SOAP 协议与 XML 契约机制 (SOAP & XML Schema)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                SOAP 协议架构与 Envelope 消息信封结构
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                SOAP Protocol Architecture, XML Schema Namespaces & Message Envelope Anatomy
+            </p>
+        </div>
+
+        <!-- Content Grid: Envelope Breakdown (6 cols) vs Code Example (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Envelope Anatomical Structure Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-box-archive text-indigo-600"></i>
+                            <span>1. SOAP 消息信封 Anatomy (Envelope Structure)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">XML Protocol Standard</span>
+                    </div>
+
+                    <!-- SOAP Protocol Definition -->
+                    <div class="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-3">
+                        <p>
+                            SOAP（Simple Object Access Protocol）是一种基于 <strong class="text-indigo-900">XML 的轻量级消息交换协议</strong>，高度依赖 XML Namespace 消除同名节点歧义，包含三大核心结构节点：
+                        </p>
+                    </div>
+
+                    <!-- Three Structural Nodes -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Node 1: Envelope -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-code text-indigo-600"></i>
+                                    <span>&lt;env:Envelope&gt; (根元素 / Root Element)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Mandatory</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                SOAP 消息的顶层根节点，定义了 XML 命名空间（`xmlns:env`）与协议边界，告知接收方此 XML 为合法 SOAP 报文。
+                            </p>
+                        </div>
+
+                        <!-- Node 2: Header -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                                    <span>&lt;env:Header&gt; (消息头 / Metadata)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Optional</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                存储上下文元数据，例如 WS-Security 身份认证凭证、分布式事务 ID、路由路由指示（Routing）等非业务 Payload。
+                            </p>
+                        </div>
+
+                        <!-- Node 3: Body & Fault -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-database text-emerald-600"></i>
+                                    <span>&lt;env:Body&gt; 与 &lt;env:Fault&gt; (载荷/异常)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">Mandatory</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                承载实际远程调用的 RPC 方法名、参数及返回数据 payload。若发生异常，`Body` 内部将包含 `<env:Fault>` 节点输出错误码。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>关键理念：用 XML Namespaces 解耦异构系统调用的同名标签</span>
+                    <i class="fa-solid fa-network-wired text-indigo-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Snippet & XML Syntax Highlighting (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. SOAP 客户端请求报文范例 (SOAP Request XML)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Titan Reservation XML</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div><span class="text-slate-500">&lt;?xml version='1.0' encoding='UTF-8' ?&gt;</span></div>
+                        <div><span class="text-indigo-400">&lt;env:Envelope</span></div>
+                        <div class="pl-4"><span class="text-purple-300">xmlns:env</span>=<span class="text-emerald-300">"http://schemas.xmlsoap.org/soap/envelope/"</span><span class="text-indigo-400">&gt;</span></div>
+                        
+                        <div class="pl-4 mt-1 text-slate-500">&lt;!-- 消息头 Header：保存安全令牌或路由（可选） --&gt;</div>
+                        <div class="pl-4"><span class="text-purple-400">&lt;env:Header /&gt;</span></div>
+                        
+                        <div class="pl-4 mt-1 text-slate-500">&lt;!-- 消息体 Body：具体的 RPC 方法与参数 payload --&gt;</div>
+                        <div class="pl-4"><span class="text-emerald-400">&lt;env:Body&gt;</span></div>
+                        <div class="pl-8"><span class="text-blue-300">&lt;reservation</span> <span class="text-purple-300">xmlns</span>=<span class="text-amber-200">"http://www.titan.com/Reservation"</span><span class="text-blue-300">&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;customer&gt;</span></div>
+                        <div class="pl-16"><span class="text-slate-400">&lt;id&gt;</span><span class="text-amber-300">1001</span><span class="text-slate-400">&lt;/id&gt;</span></div>
+                        <div class="pl-16"><span class="text-slate-400">&lt;name&gt;</span><span class="text-amber-300">John Doe</span><span class="text-slate-400">&lt;/name&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;/customer&gt;</span></div>
+                        <div class="pl-8"><span class="text-blue-300">&lt;/reservation&gt;</span></div>
+                        <div class="pl-4"><span class="text-emerald-400">&lt;/env:Body&gt;</span></div>
+                        <div><span class="text-indigo-400">&lt;/env:Envelope&gt;</span></div>
+                    </div>
+
+                    <!-- Highlight Key Takeaways Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-amber-300 font-bold block mb-0.5">强类型契约 (Typed Payload)</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                入参 id（1001）与 name 需严格符合 XML Schema 中定义的数据类型。
+                            </p>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-indigo-300 font-bold block mb-0.5">命名空间隔离</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                `http://www.titan.com/Reservation` 精确防止不同微服务间 `reservation` 节点重名。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>传输载体：普遍借由 HTTP POST 协议包装 SOAP XML 文本传输</span>
+                    <i class="fa-solid fa-code text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启示 (SOAP Envelope Key Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        SOAP 将请求调用的所有信息（元数据 + 数据载荷）完整打包封装在标准的 **XML Envelope** 信封中，使得 SOAP 报文具备了与底层传输协议（HTTP, SMTP, JMS）无关的自包含性。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 4 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">04</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[11.43%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">SOAP 协议结构与 XML Schema</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学生透视 SOAP 信封三结构：</span>
+                    “向学员剖析：SOAP 报文最外层是 `env:Envelope`；`env:Header` 用来传递如 WS-Security 身份 Token 或路由元数据；而 `env:Body` 保存具体的业务远程方法和入参。强调与后续 RESTful JSON 直接发数据体相比，SOAP 的包装非常严密但也导致 Payload 较大。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 XML Namespaces 的作用：</span>
+                    “请学员特别关注代码中的 `xmlns:env` 和 `xmlns="http://www.titan.com/Reservation"`。在分布式系统跨机构集成时，不同公司可能定义了同名的 `<reservation>` 或 `<customer>` 节点，XML 命名空间是保障分布式解析无歧义的关键约束。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

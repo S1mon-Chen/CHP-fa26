@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 06 - WSDL 契约解析：绑定与服务 (WSDL Contract Anatomy: Binding & Service)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-file-contract text-indigo-600"></i>
+                <span>Part 01 · SOAP 协议与 XML 契约机制 (SOAP & XML Schema)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                WSDL 契约结构：协议绑定与网络服务终节点
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                WSDL Contract Anatomy: Concrete Layer Mapping (&lt;binding&gt;, &lt;service&gt; &amp; &lt;port&gt;)
+            </p>
+        </div>
+
+        <!-- Content Grid: Concrete Elements (6 cols) vs WSDL XML Snippet (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: WSDL Concrete Layer Elements Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                            <span>1. WSDL 具体实现组件解析 (WSDL Concrete Layer)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Implementation Binding</span>
+                    </div>
+
+                    <!-- Concrete Layer Definition -->
+                    <div class="p-3 rounded-xl bg-purple-50/50 border border-purple-100 text-xs font-sans text-slate-700 leading-relaxed mb-3">
+                        <p>
+                            如果说抽象层（`<message>` 与 `<portType>`）定义了服务**“能做什么”**，那么具体实现层（`<binding>` 与 `<service>`）则指定了服务**“如何传输”**以及**“在何处访问”**。
+                        </p>
+                    </div>
+
+                    <!-- Concrete Elements Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        <!-- Component 1: binding -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gears text-purple-600"></i>
+                                    <span>&lt;binding&gt; 节点 (协议与编码绑定)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Protocol &amp; Style</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                将抽象接口 `<portType>` 绑定到具体传输协议（如 SOAP over HTTP），并规定消息的编码样式（如 `rpc` 或 `document`，以及 `literal` 或 `encoded`）。
+                            </p>
+                        </div>
+
+                        <!-- Component 2: service & port -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-location-dot text-indigo-600"></i>
+                                    <span>&lt;service&gt; 与 &lt;port&gt; (终节点与访问地址)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Endpoint Address</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                汇总一组关联的网络端口（`<port>`）。子节点 `<soap:address>` 指定客户端发起远程调用的物理网络 URL（例如 `http://www.titan.com/webservices/TravelAgent`）。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Abstract vs Concrete Layer Comparison -->
+                    <div class="mt-3 p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[10.5px]">
+                        <span class="text-amber-300 font-bold block mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-layer-group text-amber-400"></i>
+                            <span>WSDL 抽象层 vs 具体实现层 对比</span>
+                        </span>
+                        <div class="grid grid-cols-2 gap-2 text-[9.5px] text-slate-300">
+                            <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-indigo-300 font-bold block">抽象层 (Abstract)</span>
+                                `<message>`, `<portType>`<br/>
+                                <span class="text-slate-400">仅描述 Java 接口、方法及强类型参数</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-purple-300 font-bold">具体层 (Concrete)</span>
+                                `<binding>`, `<service>`<br/>
+                                <span class="text-slate-400">指定 HTTP 传输、SOAP 编码及物理 URL</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>高度灵活：同一个 &lt;portType&gt; 可以绑定多种不同的传输协议或网络终节点</span>
+                    <i class="fa-solid fa-sliders text-indigo-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: WSDL XML Snippet & Concrete Binding Code (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. WSDL 具体绑定 XML 范例 (WSDL Concrete Snippet)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">TravelAgent.wsdl</span>
+                    </div>
+
+                    <!-- WSDL Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[11px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div class="text-slate-500">&lt;!-- 1. 传输协议与消息编码绑定 --&gt;</div>
+                        <div><span class="text-purple-400">&lt;binding</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"TravelAgentBinding"</span> <span class="text-purple-300">type</span>=<span class="text-amber-200">"titan:TravelAgent"</span><span class="text-purple-400">&gt;</span></div>
+                        <div class="pl-4"><span class="text-blue-300">&lt;soap:binding</span> <span class="text-purple-300">style</span>=<span class="text-amber-200">"rpc"</span> <span class="text-purple-300">transport</span>=<span class="text-emerald-300">"http://schemas.xmlsoap.org/soap/http"</span><span class="text-blue-300">/&gt;</span></div>
+                        
+                        <div class="pl-4 mt-1"><span class="text-indigo-400">&lt;operation</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"makeReservation"</span><span class="text-indigo-400">&gt;</span></div>
+                        <div class="pl-8"><span class="text-blue-300">&lt;soap:operation</span> <span class="text-purple-300">soapAction</span>=<span class="text-amber-200">""</span> <span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-400">&lt;input&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;soap:body</span> <span class="text-purple-300">use</span>=<span class="text-amber-200">"literal"</span> <span class="text-purple-300">namespace</span>=<span class="text-emerald-300">"http://www.titan.com/TravelAgent"</span><span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-400">&lt;/input&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-400">&lt;output&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;soap:body</span> <span class="text-purple-300">use</span>=<span class="text-amber-200">"literal"</span> <span class="text-purple-300">namespace</span>=<span class="text-emerald-300">"http://www.titan.com/TravelAgent"</span><span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-400">&lt;/output&gt;</span></div>
+                        <div class="pl-4"><span class="text-indigo-400">&lt;/operation&gt;</span></div>
+                        <div><span class="text-purple-400">&lt;/binding&gt;</span></div>
+
+                        <div class="mt-2 text-slate-500">&lt;!-- 2. 服务访问终节点与物理 URL --&gt;</div>
+                        <div><span class="text-indigo-400">&lt;service</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"TravelAgentService"</span><span class="text-indigo-400">&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-400">&lt;port</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"TravelAgentPort"</span> <span class="text-purple-300">binding</span>=<span class="text-amber-200">"titan:TravelAgentBinding"</span><span class="text-purple-400">&gt;</span></div>
+                        <div class="pl-8"><span class="text-blue-300">&lt;soap:address</span> <span class="text-purple-300">location</span>=<span class="text-emerald-300">"http://www.titan.com/webservices/TravelAgent"</span> <span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-400">&lt;/port&gt;</span></div>
+                        <div><span class="text-indigo-400">&lt;/service&gt;</span></div>
+                    </div>
+
+                    <!-- Highlight Takeaways Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-purple-300 font-bold block mb-0.5">传输协议与编码样式</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                `style="rpc"` 指明 RPC 方式调用，`use="literal"` 承诺 XML 消息严格遵循 Schema。
+                            </p>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-emerald-300 font-bold block mb-0.5">网络 Endpoint 寻址</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                `<soap:address>` 为 JAX-RPC / JAX-WS 客户端 Stub 代理生成网络调用的真实 Target URL。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>自动化契约：客户端可通过 WSDL 自动生成 JAX-WS 访问 Stub 代理类</span>
+                    <i class="fa-solid fa-code text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启示 (WSDL Concrete Binding Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        将 `<binding>` 与 `<service>` 独立定义，是 WSDL 实现**面向服务架构 (SOA)** 灵活性的关键：同一个业务逻辑接口，可以在测试环境、生产环境绑定不同的 URL，或者同时暴露 SOAP/HTTP 和 JMS/AMQP 两种传输通道，而无需修改任何上层业务代码。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 6 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">06</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[17.14%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (5.html <- 6.html -> 7.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">WSDL 契约解析：绑定与服务 (Binding &amp; Service)</span>
+            <a href="7.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="5.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="7.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学生透视具体绑定层的作用：</span>
+                    “向学员剖析：上一页我们讲了抽象层的 `<message>` 和 `<portType>`，本页着重讲具体实现层。重点解释 `<binding>` 节点是如何把抽象的 `makeReservation` 方法绑定到 HTTP 协议之上的，以及 `<soap:address>` 是如何指定网络端点 URL 的。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调解耦物理地址的核心优势：</span>
+                    “请学员体会：这种设计允许客户端（如 Titan JAX-RPC Proxy）根据 WSDL 自动生成网络 Stub 代理类，而无需手动拼接 HTTP 请求。后续我们讲解 Spring WS 模式优先开发时，会自动生成这类 WSDL 文档。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '7.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

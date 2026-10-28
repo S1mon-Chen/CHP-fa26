@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - REST 架构风格诞生与 6 大核心约束原则 (The Shift to REST: Principles & Architectural Style)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-cubes text-purple-600"></i>
+                <span>Part 02 · RESTful 架构风格与资源设计 (RESTful Architecture & Resource Design)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                REST 架构风格诞生与 6 大核心约束原则
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Roy Fielding (2000) Architectural Style vs. Protocol Specification &amp; Core Constraints
+            </p>
+        </div>
+
+        <!-- Content Grid: What is REST (6 cols) vs 6 Core Constraints (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: REST Origins & Concept Definition (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-graduation-cap text-purple-600"></i>
+                            <span>1. 什么是 REST？ (What is REST?)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Roy Fielding PhD Thesis (2000)</span>
+                    </div>
+
+                    <!-- Origin Banner -->
+                    <div class="p-3 rounded-xl bg-purple-50/50 border border-purple-100 text-xs font-sans text-slate-700 leading-relaxed mb-3 space-y-1.5">
+                        <p>
+                            <strong class="text-purple-900">REST</strong> 是 **REpresentational State Transfer**（表述性状态转移）的缩写，由 HTTP 规范核心作者 **Roy Fielding 博士** 于 2000 年在其博士论文中正式提出。
+                        </p>
+                        <p class="text-[11px] text-slate-600">
+                            不同于 SOAP，REST **不是一种强制的技术标准或协议**，而是一种指导分布式超媒体系统设计的**架构风格 (Architectural Style)**。
+                        </p>
+                    </div>
+
+                    <!-- Comparison Card: RPC vs REST Paradigm -->
+                    <div class="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs mb-3 space-y-2">
+                        <span class="text-amber-300 font-bold block text-[10.5px]">范式转变：RPC 过程调用 vs REST 资源视角</span>
+                        <div class="grid grid-cols-2 gap-2 text-[9.5px]">
+                            <div class="p-2 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                                <span class="text-rose-400 font-bold block">传统面向 RPC 范式</span>
+                                <span class="text-slate-400">关注“服务方法调用”</span>
+                                <code class="text-rose-300 block mt-1">POST /getOrders.do</code>
+                                <code class="text-rose-300 block">POST /updateUser.action</code>
+                            </div>
+                            <div class="p-2 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                                <span class="text-emerald-400 font-bold block">现代面向 REST 范式</span>
+                                <span class="text-slate-400">关注“资源表述与动作”</span>
+                                <code class="text-emerald-300 block mt-1">GET /v1/orders</code>
+                                <code class="text-emerald-300 block">PUT /v1/users/42</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Insights Card -->
+                    <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5 font-sans">
+                        <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-900">
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
+                                <span>为什么 REST 能够迅速席卷现代 Web API？</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Simplicity</span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 leading-tight">
+                            它极度复用了已经无比成功的 Web 通用基础设施（HTTP 动词、HTTP Header、状态码与 URL 寻址），避免了 SOAP 复杂的序列化与工具链绑定。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心理念：深度复用标准 Web 基础设施，而不是在 Web 之上重复造轮子</span>
+                    <i class="fa-solid fa-globe text-purple-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Roy Fielding's 6 Architectural Constraints (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders"></i>
+                            <span>2. Roy Fielding 提出的 6 大核心架构约束</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Fielding's 6 Constraints</span>
+                    </div>
+
+                    <!-- 6 Constraint Cards Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-mono mb-3">
+                        
+                        <!-- Constraint 1: Client-Server -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-purple-300 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>① 客户-服务器 (Client-Server)</span>
+                                <i class="fa-solid fa-desktop text-purple-400"></i>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                                严格分离 UI 前端交互与后端数据存储，两者独立演进与水平扩展。
+                            </p>
+                        </div>
+
+                        <!-- Constraint 2: Stateless -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-amber-300 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>② 无状态 (Stateless)</span>
+                                <i class="fa-solid fa-bolt text-amber-400"></i>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                                服务端不保存客户端 Session 状态。每次请求必须包含处理所需的全部上下文。
+                            </p>
+                        </div>
+
+                        <!-- Constraint 3: Cacheable -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-emerald-300 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>③ 可缓存 (Cacheable)</span>
+                                <i class="fa-solid fa-database text-emerald-400"></i>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                                响应必须隐式或显式标明是否可缓存，深度复用 HTTP Header 缓存提升性能。
+                            </p>
+                        </div>
+
+                        <!-- Constraint 4: Uniform Interface -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-indigo-300 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>④ 统一接口 (Uniform Interface)</span>
+                                <i class="fa-solid fa-network-wired text-indigo-400"></i>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                                核心基石：资源标识 (URI)、表述操作、自描述消息及超媒体链接 (HATEOAS)。
+                            </p>
+                        </div>
+
+                        <!-- Constraint 5: Layered System -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-cyan-300 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>⑤ 分层系统 (Layered System)</span>
+                                <i class="fa-solid fa-layer-group text-cyan-400"></i>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-tight">
+                                客户端无需感知连接的是目标服务器还是中间网关/反向代理/CDN 缓存。
+                            </p>
+                        </div>
+
+                        <!-- Constraint 6: Code on Demand -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-slate-400 font-bold flex items-center justify-between text-[10.5px]">
+                                <span>⑥ 按需代码 (Code on Demand)</span>
+                                <span class="text-[8.5px] px-1 rounded bg-slate-800 text-slate-400">可选 / Optional</span>
+                            </div>
+                            <p class="text-[9.5px] text-slate-500 font-sans leading-tight">
+                                服务端可临时下发可执行脚本（如 JS / Applet）扩展客户端功能。
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <!-- Highlight Key Takeaway Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-purple-800 text-[10px] font-mono">
+                        <span class="text-purple-300 font-bold block mb-0.5">REST 架构风格带来的核心收益</span>
+                        <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                            通过遵守这 6 大架构约束，软件系统能获得极佳的**可见性、可扩展性、易用性、组件独立演进能力以及长期的跨平台生命力**。
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一页精讲：REST 四要素 —— 资源 (Resource)、表述 (Representation)、URI 与状态转移</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启示 (Architectural Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        理解 REST 的第一步是**放下“RPC 方法调用”的思维惯性**。REST 的本质是利用互联网天然的统一接口与超媒体链接，将服务端的功能抽象为“资源”，并驱动客户端在不同的资源表述状态之间平滑流转。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 11 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">11</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[31.42%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (10.html <- 11.html -> 12.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">REST 架构风格诞生与 6 大约束</span>
+            <a href="12.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="10.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="12.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 开启 Part 02 RESTful 架构风格学习：</span>
+                    “向学员强调：从本页开始，我们正式开启第二部分 RESTful 架构风格的学习。提醒大家注意：REST 不是规范，而是一种架构风格！Roy Fielding 博士在 2000 年的论文中提出了这 6 大核心约束原则。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 引导学生对比 RPC 与 REST 的思维差异：</span>
+                    “请学员对比左侧的 RPC 与 REST 对比表：RPC 关注的是‘调什么方法（action）’；而 REST 关注的是‘有什么资源（resource），用什么 HTTP 动词操作它’。理解这种视角转变，是掌握后续资源命名与星巴克状态机案例的关键。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

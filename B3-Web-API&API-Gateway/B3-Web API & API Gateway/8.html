@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 08 - Spring WS 核心代码实现：Schema 契约与 Endpoint 端点 (Spring WS Server Implementation)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-code text-indigo-600"></i>
+                <span>Part 01 · SOAP 协议与 XML 契约机制 (SOAP & XML Schema)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring WS 核心代码实现：Schema 契约与 Endpoint 端点
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                XML Schema Definition (countries.xsd) &amp; Spring WS Annotation-Driven Endpoint (CountryEndpoint.java)
+            </p>
+        </div>
+
+        <!-- Content Grid: XSD Contract (6 cols) vs CountryEndpoint Java Implementation (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: XSD Definition & Annotation Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-lines text-indigo-600"></i>
+                            <span>1. XSD 契约定义 (`countries.xsd`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">src/main/resources/countries.xsd</span>
+                    </div>
+
+                    <!-- XSD Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[10.5px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div class="text-slate-500">&lt;!-- 1. 请求节点: 接收国家名称进行查询 --&gt;</div>
+                        <div><span class="text-indigo-400">&lt;xs:element</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"getCountryRequest"</span><span class="text-indigo-400">&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-300">&lt;xs:complexType&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-300">&lt;xs:sequence&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;xs:element</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"name"</span> <span class="text-amber-300">type</span>=<span class="text-emerald-300">"xs:string"</span><span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-300">&lt;/xs:sequence&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-300">&lt;/xs:complexType&gt;</span></div>
+                        <div><span class="text-indigo-400">&lt;/xs:element&gt;</span></div>
+
+                        <div class="mt-2 text-slate-500">&lt;!-- 2. 响应节点: 返回强类型的 Country 实体 --&gt;</div>
+                        <div><span class="text-indigo-400">&lt;xs:element</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"getCountryResponse"</span><span class="text-indigo-400">&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-300">&lt;xs:complexType&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-300">&lt;xs:sequence&gt;</span></div>
+                        <div class="pl-12"><span class="text-blue-300">&lt;xs:element</span> <span class="text-amber-300">name</span>=<span class="text-emerald-300">"country"</span> <span class="text-amber-300">type</span>=<span class="text-emerald-300">"tns:country"</span><span class="text-blue-300">/&gt;</span></div>
+                        <div class="pl-8"><span class="text-purple-300">&lt;/xs:sequence&gt;</span></div>
+                        <div class="pl-4"><span class="text-purple-300">&lt;/xs:complexType&gt;</span></div>
+                        <div><span class="text-indigo-400">&lt;/xs:element&gt;</span></div>
+                    </div>
+
+                    <!-- Annotation Explanations -->
+                    <div class="space-y-2 font-sans">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-stamp text-indigo-600"></i>
+                                    <span>`@Endpoint` 核心端点注解</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Spring WS Managed</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                将当前 Java 类注册为 Spring WS 的 SOAP 处理端点（类似于 Spring MVC 中的 `@Controller`）。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-crosshairs text-purple-600"></i>
+                                    <span>`@PayloadRoot` 请求路由映射</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Routing Rule</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                根据 SOAP Body 中 XML 元素的 `namespace`（命名空间）和 `localPart`（节点名称 `getCountryRequest`）把请求精确路由到目标 Java 方法。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>自动化契约：JAXB 将 XML 中的 `getCountryRequest` 自动反序列化为 Java DTO</span>
+                    <i class="fa-solid fa-arrows-split-up-and-left text-indigo-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: CountryEndpoint.java Implementation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. Spring WS 端点组件实现 (`CountryEndpoint.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">CountryEndpoint.java</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[10.5px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div><span class="text-purple-400">package</span> io.spring.guides.gs_producing_web_service;</div>
+                        <div class="mt-1"><span class="text-purple-400">import</span> org.springframework.ws.server.endpoint.annotation.*;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.beans.factory.annotation.Autowired;</div>
+                        
+                        <div class="mt-2 text-indigo-400">@Endpoint</div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">CountryEndpoint</span> {</div>
+                        <div class="pl-4"><span class="text-purple-400">private static final</span> String NAMESPACE_URI =</div>
+                        <div class="pl-8"><span class="text-emerald-300">"http://spring.io/guides/gs-producing-web-service"</span>;</div>
+                        
+                        <div class="pl-4 mt-1"><span class="text-purple-400">private</span> CountryRepository countryRepository;</div>
+                        
+                        <div class="pl-4 mt-1"><span class="text-indigo-400">@Autowired</span></div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> <span class="text-amber-300">CountryEndpoint</span>(CountryRepository countryRepository) {</div>
+                        <div class="pl-8"><span class="text-purple-400">this</span>.countryRepository = countryRepository;</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 mt-2 text-indigo-400">@PayloadRoot<span class="text-slate-300">(namespace = NAMESPACE_URI, localPart = </span><span class="text-emerald-300">"getCountryRequest"</span><span class="text-slate-300">)</span></div>
+                        <div class="pl-4 text-indigo-400">@ResponsePayload</div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> GetCountryResponse <span class="text-blue-300">getCountry</span>(</div>
+                        <div class="pl-8"><span class="text-indigo-400">@RequestPayload</span> GetCountryRequest request) {</div>
+                        <div class="pl-8">GetCountryResponse response = <span class="text-purple-400">new</span> GetCountryResponse();</div>
+                        <div class="pl-8">response.<span class="text-blue-300">setCountry</span>(countryRepository.<span class="text-blue-300">findCountry</span>(request.<span class="text-blue-300">getName</span>()));</div>
+                        <div class="pl-8"><span class="text-purple-400">return</span> response;</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Highlight Takeaways Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-amber-300 font-bold block mb-0.5">@RequestPayload 参数解包</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                告知 Spring WS 将输入的 SOAP `<env:Body>` Payload 自动解包并转换成 Java 对象。
+                            </p>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-indigo-300 font-bold block mb-0.5">@ResponsePayload 返回封包</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                告知 Spring WS 将方法的返回值 `GetCountryResponse` 序列化为标准的 XML SOAP Response 报文。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构收益：无需处理底层的 SAAJ XML DOM 节点树，直接以面向对象 OOP 方式编写业务</span>
+                    <i class="fa-solid fa-gears text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构机制 (Spring WS Processing Mechanism)</h4>
+                    <p class="text-xs text-slate-700">
+                        Spring WS 在收到 HTTP SOAP 请求时，首先由核心 Servlet 拦截 XML 报文，提取出 `<env:Body>` 内容，利用 **`@PayloadRoot`** 中定义的命名空间和元素名称匹配目标 Handler 方法，最后借助 JAXB2 插件生成的 DTO 类实现 XML 与 Java 对象的自动转换。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 8 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">08</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[22.85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (7.html <- 8.html -> 9.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring WS 核心代码实现 (Endpoint &amp; Config)</span>
+            <a href="9.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="7.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="9.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学生理解 Spring WS 的端点注解：</span>
+                    “向学员强调：Spring WS 中的 `@Endpoint` 和 `@PayloadRoot` 与 Spring MVC 中的 `@RestController` 和 `@GetMapping` 极为相似，区别在于 Spring WS 是基于 XML 命名空间和 payload 节点进行路由，而不是依据 HTTP 请求路径（URI）。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调上一页产生的 DTO 类：</span>
+                    “请学员注意代码中的 `GetCountryRequest` 与 `GetCountryResponse` 类：这些正是我们在 Slide 7 中通过 `jaxb2-maven-plugin` 读取 `countries.xsd` 自动生成的带 JAXB 注解的 DTO 类。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

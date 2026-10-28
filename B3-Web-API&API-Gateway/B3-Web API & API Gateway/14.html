@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - HTTP 响应状态码分类与 REST 错误处理机制 (HTTP Status Codes & Error Handling)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-cubes text-purple-600"></i>
+                <span>Part 02 · RESTful 架构风格与资源设计 (RESTful Architecture & Resource Design)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                HTTP 响应状态码分类与 REST 错误处理机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Standardized Status Codes (2xx / 3xx / 4xx / 5xx) &amp; RFC 7807 Problem Details
+            </p>
+        </div>
+
+        <!-- Content Grid: Status Codes Classification (6 cols) vs Anti-pattern & RFC 7807 (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: HTTP Status Codes Classification (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-purple-600"></i>
+                            <span>1. 标准 HTTP 响应状态码语义分类</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">RFC 7231 Standard</span>
+                    </div>
+
+                    <!-- 4 Status Code Category Cards -->
+                    <div class="space-y-2 font-sans">
+                        
+                        <!-- 2xx Success -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200 hover:border-emerald-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                    <span>2xx 成功 (Success)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">Client Action Succeeded</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-700 font-mono space-y-0.5">
+                                <div><strong class="text-emerald-800">200 OK:</strong> 请求成功，返回资源表述。</div>
+                                <div><strong class="text-emerald-800">201 Created:</strong> 资源创建成功，<code class="text-purple-700">Location</code> Header 指向新 URI。</div>
+                                <div><strong class="text-emerald-800">204 No Content:</strong> 执行成功但响应体无返回内容 (如 DELETE)。</div>
+                            </div>
+                        </div>
+
+                        <!-- 3xx Redirection -->
+                        <div class="p-2.5 rounded-xl bg-blue-50/50 border border-blue-200 hover:border-blue-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-blue-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-split-up-and-left text-blue-600"></i>
+                                    <span>3xx 重定向与缓存 (Redirection)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[9.5px] font-bold">Cache / Shift</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-700 font-mono">
+                                <div><strong class="text-blue-800">304 Not Modified:</strong> 资源未变更，告知客户端/CDN 读取本地缓存。</div>
+                            </div>
+                        </div>
+
+                        <!-- 4xx Client Error -->
+                        <div class="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-user-xmark text-amber-600"></i>
+                                    <span>4xx 客户端错误 (Client Error)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Caller Responsibility</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-700 font-mono space-y-0.5">
+                                <div><strong class="text-amber-800">400 Bad Request:</strong> 参数校验失败或 Payload 格式错误。</div>
+                                <div><strong class="text-amber-800">401 Unauthorized:</strong> 未提供身份凭证；<strong class="text-amber-800">403 Forbidden:</strong> 缺乏权限。</div>
+                                <div><strong class="text-amber-800">404 Not Found:</strong> 资源不存在；<strong class="text-amber-800">409 Conflict:</strong> 状态冲突 (如并发更新)。</div>
+                            </div>
+                        </div>
+
+                        <!-- 5xx Server Error -->
+                        <div class="p-2.5 rounded-xl bg-rose-50/50 border border-rose-200 hover:border-rose-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-rose-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bug text-rose-600"></i>
+                                    <span>5xx 服务端错误 (Server Error)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[9.5px] font-bold">Callee Fault</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-700 font-mono">
+                                <div><strong class="text-rose-800">500 Internal Server Error:</strong> 服务端未捕获的严重内部异常。</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心原则：充分利用 HTTP 协议原生的状态码传达准确语义</span>
+                    <i class="fa-solid fa-code text-purple-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Anti-Pattern vs RFC 7807 Standard Error Handling (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-compare"></i>
+                            <span>2. 反范式警告 vs RFC 7807 规范化错误定义</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Problem Details Standard</span>
+                    </div>
+
+                    <!-- Anti-Pattern Warning Box -->
+                    <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 font-mono text-xs mb-3 space-y-1.5">
+                        <span class="text-rose-400 font-bold block flex items-center gap-1 text-[11px]">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>伪 REST Anti-Pattern：盲目返回 HTTP 200</span>
+                        </span>
+                        <div class="p-2 rounded bg-slate-950 border border-slate-800 text-[10px] text-rose-300">
+                            <code>HTTP/1.1 200 OK</code><br/>
+                            <code>{"code": 500, "msg": "User Not Found"}</code>
+                        </div>
+                        <p class="text-[10px] text-slate-400 font-sans leading-tight">
+                            这种破坏 HTTP 语义的做法会导致浏览器、API 网关、CDN 缓存及自动监控系统无法感知真实的请求成败，极大地破坏了 REST 统一接口契约。
+                        </p>
+                    </div>
+
+                    <!-- RFC 7807 Problem Details Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[10.5px] space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-emerald-300 font-bold">RFC 7807 标准错误格式 (Problem Details)</span>
+                            <span class="text-slate-400 text-[9px]">application/problem+json</span>
+                        </div>
+
+                        <!-- JSON Example -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9.5px] leading-relaxed text-slate-300 overflow-x-auto">
+                            <div><span class="text-purple-300">HTTP/1.1 404 Not Found</span></div>
+                            <div><span class="text-amber-300">Content-Type:</span> application/problem+json</div>
+                            <div class="mt-1 text-slate-400">{</div>
+                            <div class="pl-4"><span class="text-purple-400">"type"</span>: <span class="text-emerald-300">"https://example.com/errors/user-not-found"</span>,</div>
+                            <div class="pl-4"><span class="text-purple-400">"title"</span>: <span class="text-emerald-300">"User Resource Not Found"</span>,</div>
+                            <div class="pl-4"><span class="text-purple-400">"status"</span>: <span class="text-amber-300">404</span>,</div>
+                            <div class="pl-4"><span class="text-purple-400">"detail"</span>: <span class="text-emerald-300">"User with ID 42 does not exist."</span>,</div>
+                            <div class="pl-4"><span class="text-purple-400">"instance"</span>: <span class="text-emerald-300">"/v1/users/42"</span></div>
+                            <div class="text-slate-400">}</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：RESTful URI 命名最佳实践 (Plural Nouns, Kebab-Case & Versioning)</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (HTTP Status Codes Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        RESTful 架构契约的基础在于**准确地使用 HTTP 响应头状态码分类**。将业务处理错误与 HTTP 协议层状态解耦或强行隐藏在 `200 OK` 之后，将使得网关层的自动降级、限流与可观测性告警完全失灵。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 14 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">14</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[40.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (13.html <- 14.html -> 15.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">HTTP 响应状态码分类与错误处理 (Status Codes &amp; Error Handling)</span>
+            <a href="15.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="13.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="15.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生明确状态码语义的重要性：</span>
+                    “向学员强调：RESTful API 必须充分利用 HTTP 标准状态码。200 表成功、201 表已创建新资源、204 表无返回体，400 表参数校验失败、401/403 表未登录与未授权、404 表资源不存在、409 表资源状态冲突。严禁盲目返回 200 OK 并在 JSON 内部藏错误码！”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 引入 RFC 7807 Problem Details 规范：</span>
+                    “请学员关注右侧的 RFC 7807 规范：它通过 `application/problem+json` 格式统一了 RESTful 错误的 Payload 结构（`type`, `title`, `status`, `detail`, `instance`），这也是现代 Spring Boot 与 ASP.NET Core 的标准错误响应格。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - Web 服务应用场景决策与技术选型树 (When to Use vs. When NOT to Use)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-sitemap text-emerald-600"></i>
+                <span>Part 03/04 · 场景决策与网关演进 (Scenario Decision & Gateway Transition)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Web API 应用场景决策与架构选型决策树
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                When to Use vs. When NOT to Use: Trade-off Matrix &amp; Architectural Choice Tree
+            </p>
+        </div>
+
+        <!-- Content Grid: Applicable Scenarios vs Selection Decision Tree (6 cols each) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Applicable vs Inapplicable Scenarios (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-emerald-600"></i>
+                            <span>1. 适用场景 vs. 避坑反模式场景</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Applicability Matrix</span>
+                    </div>
+
+                    <!-- Applicable Scenarios Box -->
+                    <div class="space-y-2 font-sans mb-3">
+                        <span class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1">
+                            <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                            <span>什么时候【强烈推荐】采用 Web API (RESTful)?</span>
+                        </span>
+
+                        <!-- Item 1: B2B Integration -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-emerald-950">
+                                <span>① 跨企业/跨机构 B2B 系统能力对接</span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px]">B2B Integration</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                银行支付通道、物流履约查询、第三方 SMS/邮件服务。跨防火墙通信与高度通用性是第一需求。
+                            </p>
+                        </div>
+
+                        <!-- Item 2: Heterogeneous Clients -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-emerald-950">
+                                <span>② 多端异构客户端统一支持 (iOS/Android/Web)</span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px]">Heterogeneous Clients</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                同一个后端服务需要同时为 iOS 客户端、Android App、React SPA 单页应用及 IoT 硬件提供数据表述。
+                            </p>
+                        </div>
+
+                        <!-- Item 3: Public Open Platform -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-emerald-950">
+                                <span>③ 开放平台与公共 API 生态 (Public Open APIs)</span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px]">Open API Ecosystem</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                类似 GitHub、Stripe、微信开放平台。通过 HTTP + JSON + OpenAPI 契约降到最低的三方开发者集成门槛。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Inapplicable Scenarios Box -->
+                    <div class="space-y-2 font-sans">
+                        <span class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1">
+                            <i class="fa-solid fa-circle-xmark text-rose-600"></i>
+                            <span>什么时候【不建议】采用 Web API (RESTful)?</span>
+                        </span>
+
+                        <!-- Anti-Scenario 1: High Frequency LAN IPC -->
+                        <div class="p-2.5 rounded-xl bg-rose-50/60 border border-rose-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-rose-950">
+                                <span>① 局域网内部超高频微服务 IPC (高吞吐低延时)</span>
+                                <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[9.5px]">Prefer gRPC/Dubbo</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                数据中心内部每秒数十万次互调。文本 JSON 序列化和 HTTP/1.1 头部开销过大，应首选基于 HTTP/2 + Protobuf 的 **gRPC**。
+                            </p>
+                        </div>
+
+                        <!-- Anti-Scenario 2: Standalone Desktop Apps -->
+                        <div class="p-2.5 rounded-xl bg-rose-50/60 border border-rose-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-rose-950">
+                                <span>② 单机进程内调用与客户端本地组件 (Desktop Tools)</span>
+                                <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[9.5px]">In-Memory Call</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                进程内部模块调用（如桌面 IDE 或本地办公软件），无需引入网络层 Web API 的网络寻址与序列化损耗。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>选型法则：通用性优先选 Web API (REST)；极致性能优先选二进制 RPC</span>
+                    <i class="fa-solid fa-scale-balanced text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Visual Web API Selection Decision Tree (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-nested"></i>
+                            <span>2. Web API 通信架构选型决策树</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Architecture Decision Tree</span>
+                    </div>
+
+                    <!-- Decision Tree Visual Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed space-y-2 mb-2 overflow-x-auto">
+                        <div class="text-center text-slate-400 border-b border-slate-800 pb-1 font-bold">
+                            你的服务端通信场景类型与网络拓扑？
+                        </div>
+
+                        <!-- Step 1 Branching -->
+                        <div class="grid grid-cols-2 gap-2 text-center">
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
+                                <span class="text-cyan-300 font-bold block text-[9px]">分支 A：外网 / 开放平台 / 移动端 / SPA</span>
+                                <span class="text-slate-400 text-[8.5px] block font-sans">要求：极致通用性、低集成门槛、防火墙穿透</span>
+                                <i class="fa-solid fa-arrow-down text-slate-600 my-0.5 block"></i>
+                                <div class="p-1.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold text-[9px]">
+                                    选型：RESTful Web API (JSON/HTTP)
+                                </div>
+                            </div>
+
+                            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
+                                <span class="text-purple-300 font-bold block text-[9px]">分支 B：数据中心内部局域网微服务 (IPC)</span>
+                                <span class="text-slate-400 text-[8.5px] block font-sans">要求：极致吞吐量、低 CPU 序列化损耗、强类型</span>
+                                <i class="fa-solid fa-arrow-down text-slate-600 my-0.5 block"></i>
+                                <div class="p-1.5 rounded bg-purple-950 border border-purple-800 text-purple-300 font-bold text-[9px]">
+                                    选型：Binary RPC (gRPC / Protobuf)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Special Branch: Legacy SOAP -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-center space-y-0.5">
+                            <span class="text-amber-300 font-bold block text-[9px]">分支 C：传统金融银行/医疗 B2B 异构系统 (合规需求)</span>
+                            <span class="text-slate-400 text-[8.5px] font-sans">要求：强严格 XML 契约、WS-Security 消息级加密验签</span>
+                            <div class="p-1 rounded bg-amber-950 border border-amber-800 text-amber-300 font-bold text-[8.5px] mt-1 inline-block px-3">
+                                选型：SOAP / WSDL Web Service
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hybrid Architecture Callout Grid -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <strong class="text-emerald-400 font-mono text-[10px] block flex items-center gap-1">
+                            <i class="fa-solid fa-network-wired text-emerald-500"></i>
+                            <span>现代云原生“对外 REST，对内 gRPC”混合选型范式</span>
+                        </strong>
+                        <p class="text-[10px] text-slate-300 font-sans leading-tight">
+                            互联网大厂与微服务架构的工业标准：外部 HTTP 请求通过 **API 网关 (API Gateway)** 统一接入为 RESTful API；网关内部完成协议转换与 SSL 卸载后，以 **gRPC** 在内部局域网微服务之间极速转发。
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-1">
+                    <span>下一个核心：从单体路由演进到现代化微服务 API 网关 (Part 04 开启)</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Architectural Scenario Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        架构设计没有绝对的优劣，只有适不适合。**对外面向多端与开发者，选用 RESTful API 获得极致的通用性；对内面向微服务高频通信，选用 gRPC 获得极致的性能**。理解这套决策树是构建现代化企业级后端系统的必修课。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 27 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[77.14%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">应用场景决策与选型树 (Scenario Decisions)</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视 Web API 的适用场景：</span>
+                    “向学员强调：不要将 Web API / RESTful 视为万能灵药。它的核心优势在于‘跨防火墙’与‘多端通用性’，最适合 B2B 对接、移动端 App、Web SPA 以及三方开放平台。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析决策树与“对外 REST，对内 gRPC”架构：</span>
+                    “请学员关注右侧的决策树：在公司内部局域网微服务集群间，每秒数万次的超高频 IPC 调用的场景下，文本 REST API 的序列化损耗会凸显，应当选用二进制 gRPC。现代云原生架构普遍采用‘API 网关统一接入对外 REST，网关内部转 gRPC’的混合选型策略。这就顺理成章引出了 Part 04 现代化 API 网关的学习！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - 跨域资源共享 (CORS) 机制与 OPTIONS 预检请求 (CORS Mechanics & Preflight Flow)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                <span>Part 03 · Spring Boot REST 开发与 CORS 安全 (Spring Boot REST & CORS)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                跨域资源共享 (CORS) 机制与 OPTIONS 预检请求流程
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Same-Origin Policy (SOP), Preflight Request (OPTIONS), Header Contracts &amp; Browser Security Guard
+            </p>
+        </div>
+
+        <!-- Content Grid: SOP Principles (6 cols) vs OPTIONS Preflight Interaction Flow (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Same-Origin Policy & CORS Mechanics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-shield text-emerald-600"></i>
+                            <span>1. 浏览器同源策略 (SOP) 与 CORS 契约解防</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">SOP &amp; CORS Contract</span>
+                    </div>
+
+                    <!-- Principle Breakdown Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Card 1: Same-Origin Policy Definition -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-lock text-emerald-600"></i>
+                                    <span>同源策略 (Same-Origin Policy - SOP) 铁律</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">Browser Defense</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                浏览器安全基石：当请求的 <code class="text-purple-700 font-mono">协议 (Scheme)</code>、<code class="text-purple-700 font-mono">域名 (Host)</code>、<code class="text-purple-700 font-mono">端口 (Port)</code> 任意一项不一致时（如 React <code class="text-slate-800 font-mono">:3000</code> $\rightarrow$ Spring <code class="text-slate-800 font-mono">:8080</code>），即属于**跨域**。默认拦截脚本读取跨域响应！
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Simple vs Preflighted Request -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-code-compare text-amber-600"></i>
+                                    <span>简单请求 vs. 预检请求 (Preflighted Request)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Request Classifier</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                若请求使用非简单动词（<code class="text-purple-700 font-mono">PUT</code>/<code class="text-purple-700 font-mono">DELETE</code>）、自定义标头（<code class="text-purple-700 font-mono">Authorization</code>）或 <code class="text-purple-700 font-mono">application/json</code> 类型，浏览器**必须先自动发起 `OPTIONS` 预检嗅探**，获准后才真正发送业务请求！
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Core CORS Headers Contract -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tags text-purple-600"></i>
+                                    <span>核心 CORS 响应标头契约 (Headers Contract)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">W3C Standard</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-600 font-mono space-y-0.5 mt-1">
+                                <div><strong class="text-purple-800">Access-Control-Allow-Origin:</strong> 允许的客户端源地址</div>
+                                <div><strong class="text-purple-800">Access-Control-Allow-Methods:</strong> 允许调用的 HTTP 动词</div>
+                                <div><strong class="text-purple-800">Access-Control-Max-Age:</strong> 预检结果在浏览器的缓存时长（秒）</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>关键认知：跨域拦截行为发生在【浏览器端】而非服务端（请求已送达服务端）</span>
+                    <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Interactive OPTIONS Preflight Flow Diagram (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project"></i>
+                            <span>2. OPTIONS 预检请求与真实请求双向交互时序</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Preflight Sequence</span>
+                    </div>
+
+                    <!-- Flow Sequence Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed space-y-2 mb-2 overflow-x-auto">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1 text-slate-400">
+                            <span class="text-cyan-300 font-bold"><i class="fa-brands fa-react mr-1"></i>Browser (port 3000)</span>
+                            <span class="text-emerald-400 font-bold"><i class="fa-brands fa-java mr-1"></i>Spring REST (port 8080)</span>
+                        </div>
+
+                        <!-- Step 1: Preflight Request -->
+                        <div class="p-2 rounded bg-slate-900 border border-amber-900/60 space-y-0.5">
+                            <div class="flex items-center justify-between font-bold">
+                                <span class="text-amber-300">阶段 1：自动预检请求 (Browser $\rightarrow$ Server)</span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px]">OPTIONS</span>
+                            </div>
+                            <div class="text-slate-300 text-[8.5px]">
+                                <span class="text-purple-300">OPTIONS /v1/orders/1234</span> HTTP/1.1<br/>
+                                <span class="text-slate-400">Origin:</span> http://localhost:3000<br/>
+                                <span class="text-slate-400">Access-Control-Request-Method:</span> PUT<br/>
+                                <span class="text-slate-400">Access-Control-Request-Headers:</span> Content-Type, Authorization
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Preflight Response -->
+                        <div class="p-2 rounded bg-slate-900 border border-emerald-900/60 space-y-0.5">
+                            <div class="flex items-center justify-between font-bold">
+                                <span class="text-emerald-300">阶段 2：服务端批准放行 (Server $\rightarrow$ Browser)</span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px]">200 OK / 204</span>
+                            </div>
+                            <div class="text-slate-300 text-[8.5px]">
+                                <span class="text-emerald-400 font-bold">HTTP/1.1 200 OK</span><br/>
+                                <span class="text-amber-300">Access-Control-Allow-Origin:</span> http://localhost:3000<br/>
+                                <span class="text-amber-300">Access-Control-Allow-Methods:</span> GET, POST, PUT, DELETE, OPTIONS<br/>
+                                <span class="text-amber-300">Access-Control-Allow-Headers:</span> Content-Type, Authorization<br/>
+                                <span class="text-amber-300">Access-Control-Max-Age:</span> 1800
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Actual Request & Response -->
+                        <div class="p-2 rounded bg-slate-900 border border-indigo-900/60 space-y-0.5">
+                            <div class="flex items-center justify-between font-bold">
+                                <span class="text-indigo-300">阶段 3：发送真正业务 Payload (PUT /v1/orders/1234)</span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px]">Actual Request</span>
+                            </div>
+                            <div class="text-slate-300 text-[8.5px]">
+                                <span class="text-purple-300">PUT /v1/orders/1234</span> &nbsp;&rArr;&nbsp; <span class="text-emerald-400 font-bold">HTTP/1.1 200 OK</span><br/>
+                                Payload: <code class="text-slate-200">{"id": 1234, "drink": "Latte", "status": "PAID"}</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Highlight Takeaway Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[9px] font-mono">
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <strong class="text-amber-300 block mb-0.5">Access-Control-Max-Age</strong>
+                            <span class="text-slate-400 font-sans">缓存预检结果，避免后续每次请求都重复触发 OPTIONS 损耗性能</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <strong class="text-emerald-300 block mb-0.5">Credentials 支持</strong>
+                            <span class="text-slate-400 font-sans">允许跨域传递 Cookie 时，`Allow-Origin` 严禁写泛域名通配符 `*`</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：Spring Boot 中的三种 CORS 全局与局部配置实现</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (CORS Security &amp; Performance Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        CORS 是**前端 Web 容器与后端 API 服务之间达成信任的安全机制**。合理配置 <code class="font-mono text-emerald-900 font-bold">Access-Control-Max-Age</code> 能有效降低 OPTIONS 预检产生的双倍 HTTP 延迟，而精确限定 <code class="font-mono text-emerald-900 font-bold">Allow-Origin</code> 则是防止 CSRF 攻击与数据泄露的第一道防线。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 24 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[68.57%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">CORS 跨域机制与 OPTIONS 预检请求 (CORS Mechanics)</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视同源策略 (SOP) 与 CORS 触发条件：</span>
+                    “向学员强调：跨域并非‘请求发不出去’，而是‘请求已经到了服务端并处理完毕，但浏览器拦截了响应’。重点讲解同源三要素（协议、域名、端口），只要端口不同（3000 vs 8080）就会触发 SOP 限制。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 OPTIONS 预检请求的作用与缓存：</span>
+                    “请学员关注右侧的 3 阶段时序图：当包含非简单方法（PUT/DELETE）或自定义标头时，浏览器会先自动发出 `OPTIONS` 嗅探请求。服务端通过 `Access-Control-Allow-Origin` 和 `Access-Control-Max-Age` 批准放行并缓存预检结果，随后浏览器才发起真正的 PUT 业务请求。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

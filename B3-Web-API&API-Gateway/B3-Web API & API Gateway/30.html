@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 主流 API 网关架构对比 (Spring Cloud Gateway vs. Apache APISIX / Kong)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-network-wired text-amber-600"></i>
+                <span>Part 04 · 现代化 API 网关与治理决策 (API Gateway &amp; Governance)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                主流 API 网关架构对比：Spring Cloud Gateway vs. Apache APISIX / Kong
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Architectural Trade-offs: Java Reactive Netty Engine vs. OpenResty Nginx C/Lua High-Performance Gateway
+            </p>
+        </div>
+
+        <!-- Content Grid: SCG & APISIX Features (6 cols) vs Multi-dimensional Comparison Matrix (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Gateway Architectural Features (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes-stacked text-amber-600"></i>
+                            <span>1. 两种典型网关架构路线深度解构</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Architecture Paradigms</span>
+                    </div>
+
+                    <!-- Gateway Paradigm 1: Spring Cloud Gateway -->
+                    <div class="space-y-2.5 font-sans mb-3">
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-brands fa-java text-amber-600"></i>
+                                    <span>Spring Cloud Gateway (Java 响应式生态代表)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Netty + Reactor</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **机制**：基于 Spring 5、Spring Boot 2/3 和 Project Reactor，底层采用 Netty 非阻塞响应式事件循环 (Event Loop)。取代了旧版基于阻塞式 Servlet 的 Netflix Zuul 1.x。<br/>
+                                **核心优势**：与 Java / Spring 生态 (Eureka, Nacos, Sentinel) 无缝集成，开发者可以直接使用 Java 编写复杂的自定义 Filter 逻辑。
+                            </p>
+                        </div>
+
+                        <!-- Gateway Paradigm 2: Apache APISIX / Kong -->
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-emerald-600"></i>
+                                    <span>Apache APISIX / Kong (云原生极致性能代表)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">Nginx + Lua + etcd</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **机制**：基于 Nginx / OpenResty 高性能 C 语言引擎，配合 Lua 脚本实现极低延迟处理；配合 **etcd** 分布式 Key-Value 数据库实现路由与规则的毫秒级热加载。<br/>
+                                **核心优势**：单核 QPS 达到数万级，内存开销极小；通过 Plugin Runner 支持 Go、Python、Wasm 多语言编写插件，天然适配 Kubernetes Ingress Controller。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>选型要领：业务复杂度高的 Java 团队选 SCG；极致吞吐与多语言云原生选 APISIX</span>
+                    <i class="fa-solid fa-scale-balanced text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Multidimensional Comparison Matrix Table (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells"></i>
+                            <span>2. 多维技术选型矩阵 (Comparison Matrix)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Gateway Matrix</span>
+                    </div>
+
+                    <!-- Comparison Matrix Table Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed mb-2 overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-800 text-amber-300 text-[9px]">
+                                    <th class="pb-1.5 font-bold w-1/5">特性维度</th>
+                                    <th class="pb-1.5 font-bold text-amber-400 w-2/5">Spring Cloud Gateway</th>
+                                    <th class="pb-1.5 font-bold text-emerald-400 w-2/5">Apache APISIX / Kong</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800 text-[9px] text-slate-300">
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">底层引擎</td>
+                                    <td class="py-1.5 text-slate-200">Java, Netty, Project Reactor</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">C / Nginx / OpenResty, Lua</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">吞吐与延迟</td>
+                                    <td class="py-1.5 text-slate-200">高 (毫秒级，受 GC 抖动影响)</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">极致 (微秒/亚毫秒级，C 语言内存)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">生态集成</td>
+                                    <td class="py-1.5 text-amber-300 font-bold">Spring Boot / Cloud 零门槛无缝融合</td>
+                                    <td class="py-1.5 text-slate-200">云原生 K8s Native, 多语言支持</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">动态配置</td>
+                                    <td class="py-1.5 text-slate-200">依赖 Nacos / Actuator 刷新配置</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">etcd 长轮询，热更新**无需重启**</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">二次开发扩展</td>
+                                    <td class="py-1.5 text-amber-300 font-bold">Java 编写 Filter，降低 Java 团队门槛</td>
+                                    <td class="py-1.5 text-slate-200">Lua / Go / Python / Wasm 插件Runner</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">最佳适用场景</td>
+                                    <td class="py-1.5 text-slate-200">纯 Java / Spring 微服务架构企业</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">异构语言集群、超高并发流量入口</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Strategic Guidance Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[9px] font-mono space-y-1">
+                        <strong class="text-cyan-300 block mb-0.5 flex items-center gap-1">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                            <span>云原生“双层网关 (Two-Tier Gateway)”工业界演进范式</span>
+                        </strong>
+                        <p class="text-[9.5px] text-slate-300 font-sans leading-tight">
+                            大型互联网架构普遍采用分层治理：外网流量入口采用 **Apache APISIX / Kong** 担当边缘南北向流量网关（负责 SSL 卸载、全局 WAF 与 DDoS 拦截）；进入内网后再由 **Spring Cloud Gateway** 担当业务东西向/部门级网关（负责细粒度业务鉴权与聚合）。
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-1">
+                    <span>下一个核心：网关流量控制实战 —— Redis 令牌桶分布式限流 (Slide 31)</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (API Gateway Selection Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        网关选型没有绝对的优劣，只有**团队技术栈匹配度与性能诉求的权衡**。对于深度依赖 Spring 基础设施的 Java 团队，Spring Cloud Gateway 带来极低的研发维护成本；而面向多语言云原生集群与极致吞吐场景，Apache APISIX 则能释放更高的硬件效能。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 30 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[85.71%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">主流 API 网关架构对比 (Gateway Architectures)</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生对比两大网关技术路线：</span>
+                    “向学员强调：API 网关选型主要分为两条路线——一条是以 Spring Cloud Gateway 为代表的‘Java 响应式生态（Netty + Project Reactor）’；另一条是以 Apache APISIX / Kong 为代表的‘云原生 C/Lua 高性能路线（Nginx + etcd）’。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析工业界‘双层网关’架构：</span>
+                    “请学员关注右下角框图：大型企业普遍采用‘外网 APISIX + 内网 SCG’的双层架构。APISIX 在最外层担当入口网关（南北向），抗住极致高并发并卸载 SSL；内网再由 SCG 担当业务网关（东西向），方便 Java 开发人员用 Spring 生态快速编写复杂业务 Filter。下一页我们将学习 SCG 中基于 Redis 令牌桶的限流实战。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

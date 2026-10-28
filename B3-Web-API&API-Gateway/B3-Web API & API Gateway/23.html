@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 23 - React 单页应用消费 RESTful API (Consuming RESTful Services in React)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-brands fa-react text-emerald-600"></i>
+                <span>Part 03 · Spring Boot REST 开发与 CORS 安全 (Spring Boot REST & CORS)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                React 单页应用 (SPA) 消费 RESTful API 模式
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Frontend Integration: React Functional Components, Hooks (useState / useEffect) &amp; Fetch API Consumption
+            </p>
+        </div>
+
+        <!-- Content Grid: Integration Principles (6 cols) vs React Component Code & UI Preview (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Frontend SPA & REST Integration Principles (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-laptop-code text-emerald-600"></i>
+                            <span>1. 前后端分离架构与 React 数据消费准则</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">SPA Architecture</span>
+                    </div>
+
+                    <!-- Principle Breakdown Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Card 1: Uncoupled Architecture -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-cubes-stacked text-emerald-600"></i>
+                                    <span>前后端解耦 (Decoupled SPA &amp; REST)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">JSON Data Contract</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                前端 React 应用作为纯静态资源（部署在独立 Web 容器，如 Nginx 或 Node.js，端口 3000），通过 AJAX / Fetch 异步请求与 Spring Boot RESTful 后端（端口 8080）传输 JSON Payload。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: React Hooks State Lifecycle -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-cyan-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-cyan-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-spin text-cyan-600"></i>
+                                    <span>React Hooks 声明式生命周期管理</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 text-[9.5px] font-bold">useState + useEffect</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                使用 <code class="text-cyan-700 font-mono">useState</code> 管理三态（<code class="text-emerald-700 font-mono">data</code> 数据、<code class="text-amber-700 font-mono">loading</code> 加载状态与 <code class="text-rose-700 font-mono">error</code> 异常）；使用 <code class="text-cyan-700 font-mono">useEffect</code> 挂载组件初始化时的异步副作用请求。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Error Boundary & HTTP Status Checks -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-triangle-exclamation text-purple-600"></i>
+                                    <span>`response.ok` 状态码校验与 Promise 异常捕获</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Robust Fetch</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                原生 <code class="text-purple-700 font-mono">fetch()</code> 在收到 <code class="text-rose-700 font-mono">404</code> 或 <code class="text-rose-700 font-mono">500</code> 时**不会**自动 Reject！必须显式判断 <code class="text-purple-700 font-mono">if (!response.ok)</code> 并抛出 Error，确保客户端防护健全。
+                            </p>
+                        </div>
+
+                        <!-- Card 4: CORS Foresight -->
+                        <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                                    <span>跨域挑战引出：Origin (端口 3000 $\rightarrow$ 8080) 阻断</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">CORS Preview</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                当 React (3000) 直接调用 Spring (8080) 时，浏览器同源策略会触发跨域拦截！这引出了下一页核心：CORS 安全机制与 OPTIONS 预检请求。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构原则：前端通过标准的 HTTP Accept 标头驱动后端的 Content Negotiation</span>
+                    <i class="fa-solid fa-network-wired text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: React Code Implementation & Render Preview (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. React 消费端组件代码 (`App.jsx`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">App.jsx</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div><span class="text-purple-400">import</span> React, { useState, useEffect } <span class="text-purple-400">from</span> <span class="text-emerald-300">'react'</span>;</div>
+
+                        <div class="mt-1"><span class="text-purple-400">function</span> <span class="text-amber-300">OrderInfo</span>({ orderId }) {</div>
+                        <div class="pl-4"><span class="text-purple-400">const</span> [order, setOrder] = <span class="text-blue-300">useState</span>(<span class="text-purple-400">null</span>);</div>
+                        <div class="pl-4"><span class="text-purple-400">const</span> [loading, setLoading] = <span class="text-blue-300">useState</span>(<span class="text-purple-400">true</span>);</div>
+                        <div class="pl-4"><span class="text-purple-400">const</span> [error, setError] = <span class="text-blue-300">useState</span>(<span class="text-purple-400">null</span>);</div>
+
+                        <div class="pl-4 mt-1"><span class="text-blue-300">useEffect</span>(() =&gt; {</div>
+                        <div class="pl-8"><span class="text-blue-300">fetch</span>(<span class="text-emerald-300">`http://localhost:8080/v1/orders/${orderId}`</span>, {</div>
+                        <div class="pl-12">headers: { <span class="text-emerald-300">'Accept'</span>: <span class="text-emerald-300">'application/json'</span> }</div>
+                        <div class="pl-8">})</div>
+                        <div class="pl-12">.<span class="text-blue-300">then</span>(res =&gt; {</div>
+                        <div class="pl-16"><span class="text-purple-400">if</span> (!res.ok) <span class="text-purple-400">throw new</span> <span class="text-amber-300">Error</span>(<span class="text-emerald-300">`HTTP error! status: ${res.status}`</span>);</div>
+                        <div class="pl-16"><span class="text-purple-400">return</span> res.<span class="text-blue-300">json</span>();</div>
+                        <div class="pl-12">})</div>
+                        <div class="pl-12">.<span class="text-blue-300">then</span>(data =&gt; { <span class="text-blue-300">setOrder</span>(data); <span class="text-blue-300">setLoading</span>(<span class="text-purple-400">false</span>); })</div>
+                        <div class="pl-12">.<span class="text-blue-300">catch</span>(err =&gt; { <span class="text-blue-300">setError</span>(err.message); <span class="text-blue-300">setLoading</span>(<span class="text-purple-400">false</span>); });</div>
+                        <div class="pl-4">}, [orderId]);</div>
+
+                        <div class="pl-4 mt-1"><span class="text-purple-400">if</span> (loading) <span class="text-purple-400">return</span> <span class="text-indigo-300">&lt;div&gt;</span>Loading order...<span class="text-indigo-300">&lt;/div&gt;</span>;</div>
+                        <div class="pl-4"><span class="text-purple-400">if</span> (error) <span class="text-purple-400">return</span> <span class="text-indigo-300">&lt;div className=</span><span class="text-emerald-300">"text-rose-400"</span><span class="text-indigo-300">&gt;</span>Error: {error}<span class="text-indigo-300">&lt;/div&gt;</span>;</div>
+
+                        <div class="pl-4 mt-1"><span class="text-purple-400">return</span> (</div>
+                        <div class="pl-8"><span class="text-indigo-300">&lt;div className=</span><span class="text-emerald-300">"card"</span><span class="text-indigo-300">&gt;</span></div>
+                        <div class="pl-12"><span class="text-indigo-300">&lt;h3&gt;</span>Order #{order.id}<span class="text-indigo-300">&lt;/h3&gt;</span></div>
+                        <div class="pl-12"><span class="text-indigo-300">&lt;p&gt;</span>Drink: {order.drink} | Price: ${order.cost}<span class="text-indigo-300">&lt;/p&gt;</span></div>
+                        <div class="pl-8"><span class="text-indigo-300">&lt;/div&gt;</span></div>
+                        <div class="pl-4">);</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Component UI Render Preview Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[8.5px]">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
+                            <span class="text-emerald-400 font-bold flex items-center gap-1">
+                                <i class="fa-brands fa-react"></i>
+                                <span>前端 DOM 状态渲染预览 (UI Render Preview)</span>
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] font-bold">Status: 200 OK</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between text-slate-200">
+                                <span class="font-bold text-emerald-300">Order #1234 (星巴克订单)</span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-200 font-bold text-[8px]">PAID</span>
+                            </div>
+                            <div class="text-slate-400 text-[8.5px] font-sans">
+                                饮品: <strong class="text-slate-100">Latte (加浓缩 Shot)</strong> | 金额: <strong class="text-amber-300">$4.00</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-2">
+                    <span>下一个核心：CORS 跨域资源共享机制与 OPTIONS 预检请求剖析</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Frontend-Backend Decoupling Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        单页应用 (SPA) 消费 RESTful 服务体现了**现代 Web 极佳的契约隔离**。前端只需要按照 API 规范通过异步通道请求 JSON，就能与 Java / Spring Boot 后端无缝协作，甚至可以独立于后端实现模版化与 Mock 测试。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 23 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">23</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[65.71%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (22.html <- 23.html -> 24.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="22.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">前端消费 RESTful API (Consuming RESTful Services)</span>
+            <a href="24.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="22.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="24.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视前端 React 如何消费 REST 接口：</span>
+                    “向学员强调：在前后端分离架构中，前端通过 React Hooks (`useState`, `useEffect`) 配合 `fetch()` 发起异步请求。请大家注意代码中的 `if (!res.ok)` 显式判断：原生 `fetch` 遇到 404/500 时不会自动进入 `catch` 块，必须根据 HTTP 状态码手动抛出错误。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 承上启下引出下一个核心主题 CORS：</span>
+                    “请学员思考：如果前端部署在 `http://localhost:3000`，而后端 Spring Boot 运行在 `http://localhost:8080`，当浏览器发起这个 `fetch` 请求时会发生什么？这就引出了下一页 Slide 24 的核心——CORS 跨域机制与 OPTIONS 预检请求。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '24.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '22.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

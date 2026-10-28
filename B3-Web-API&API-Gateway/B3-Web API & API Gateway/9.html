@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 09 - Spring WS 配置与 WSDL 动态生成 (Spring WS Config & Dynamic WSDL)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-sliders text-indigo-600"></i>
+                <span>Part 01 · SOAP 协议与 XML 契约机制 (SOAP & XML Schema)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring WS 配置与 WSDL 契约动态生成
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                MessageDispatcherServlet, DefaultWsdl11Definition &amp; Dynamic WSDL Exposure
+            </p>
+        </div>
+
+        <!-- Content Grid: Architecture Breakdown (6 cols) vs WebServiceConfig.java Code (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Architecture Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gears text-indigo-600"></i>
+                            <span>1. Spring WS 核心配置组件机制</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Servlet &amp; WSDL Publishing</span>
+                    </div>
+
+                    <!-- Description Banner -->
+                    <div class="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-3">
+                        <p>
+                            Spring WS 通过独立于 Spring MVC 的核心前端控制器 **`MessageDispatcherServlet`** 拦截 SOAP 请求，并利用 **`DefaultWsdl11Definition`** 在内存中基于 `.xsd` 模式文档动态构建出符合规范的 `.wsdl` 契约文档。
+                        </p>
+                    </div>
+
+                    <!-- Key Component Explanations -->
+                    <div class="space-y-2.5 font-sans">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-filter text-indigo-600"></i>
+                                    <span>`MessageDispatcherServlet` 拦截器</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">SOAP Front Controller</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                替代 Spring MVC 的 `DispatcherServlet`，专门解析 XML/SOAP 报文并把请求路由给 `@Endpoint` 标注的处理类。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-file-contract text-purple-600"></i>
+                                    <span>`DefaultWsdl11Definition` 契约生成器</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Dynamic WSDL</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                自动将内存中的 XSD Schema 包装为 WSDL 1.1 规范文档。其 Bean 名称（如 `countries`）决定了暴露的 WSDL 访问 URL 路径（`http://localhost:8080/ws/countries.wsdl`）。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Flow Metric Box -->
+                    <div class="mt-3 p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[10.5px]">
+                        <span class="text-amber-300 font-bold block mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-network-wired text-amber-400"></i>
+                            <span>Spring WS 运行时访问端点 (Runtime Endpoints)</span>
+                        </span>
+                        <div class="grid grid-cols-2 gap-2 text-[9.5px] text-slate-300">
+                            <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-indigo-300 font-bold block">SOAP 消息服务入口</span>
+                                <code class="text-emerald-300">POST http://localhost:8080/ws</code>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-purple-300 font-bold block">动态 WSDL 契约 URL</span>
+                                <code class="text-emerald-300">GET http://localhost:8080/ws/countries.wsdl</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>自动化增强：`transformWsdlLocations(true)` 自动修正绝对物理 IP 地址</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-indigo-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: WebServiceConfig.java Code Implementation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. WebService 配置类 (`WebServiceConfig.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">WebServiceConfig.java</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[10.5px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div><span class="text-purple-400">package</span> io.spring.guides.gs_producing_web_service;</div>
+                        <div class="mt-1"><span class="text-purple-400">import</span> org.springframework.ws.config.annotation.*;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.ws.transport.http.MessageDispatcherServlet;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.ws.wsdl.wsdl11.DefaultWsdl11Definition;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.xml.xsd.*;</div>
+
+                        <div class="mt-2 text-indigo-400">@EnableWs</div>
+                        <div class="text-indigo-400">@Configuration</div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">WebServiceConfig</span> <span class="text-purple-400">extends</span> WsConfigurerAdapter {</div>
+
+                        <div class="pl-4 mt-1 text-indigo-400">@Bean</div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> ServletRegistrationBean&lt;MessageDispatcherServlet&gt; <span class="text-blue-300">messageDispatcherServlet</span>(ApplicationContext context) {</div>
+                        <div class="pl-8">MessageDispatcherServlet servlet = <span class="text-purple-400">new</span> MessageDispatcherServlet();</div>
+                        <div class="pl-8">servlet.<span class="text-blue-300">setApplicationContext</span>(context);</div>
+                        <div class="pl-8">servlet.<span class="text-blue-300">setTransformWsdlLocations</span>(<span class="text-amber-300">true</span>);</div>
+                        <div class="pl-8"><span class="text-purple-400">return new</span> ServletRegistrationBean&lt;&gt;(servlet, <span class="text-emerald-300">"/ws/*"</span>);</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 mt-2 text-indigo-400">@Bean<span class="text-slate-300">(name = </span><span class="text-emerald-300">"countries"</span><span class="text-slate-300">)</span></div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> DefaultWsdl11Definition <span class="text-blue-300">defaultWsdl11Definition</span>(XsdSchema countriesSchema) {</div>
+                        <div class="pl-8">DefaultWsdl11Definition wsdl = <span class="text-purple-400">new</span> DefaultWsdl11Definition();</div>
+                        <div class="pl-8">wsdl.<span class="text-blue-300">setPortTypeName</span>(<span class="text-emerald-300">"CountriesPort"</span>);</div>
+                        <div class="pl-8">wsdl.<span class="text-blue-300">setLocationUri</span>(<span class="text-emerald-300">"/ws"</span>);</div>
+                        <div class="pl-8">wsdl.<span class="text-blue-300">setTargetNamespace</span>(<span class="text-emerald-300">"http://spring.io/guides/gs-producing-web-service"</span>);</div>
+                        <div class="pl-8">wsdl.<span class="text-blue-300">setSchema</span>(countriesSchema);</div>
+                        <div class="pl-8"><span class="text-purple-400">return</span> wsdl;</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 mt-2 text-indigo-400">@Bean</div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> XsdSchema <span class="text-blue-300">countriesSchema</span>() {</div>
+                        <div class="pl-8"><span class="text-purple-400">return new</span> SimpleXsdSchema(<span class="text-purple-400">new</span> ClassPathResource(<span class="text-emerald-300">"countries.xsd"</span>));</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Highlight Takeaways Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-amber-300 font-bold block mb-0.5">@EnableWs 激活 Web Service</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                开启 Spring WS 框架的注解驱动与请求处理器映射注册机制。
+                            </p>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-indigo-300 font-bold block mb-0.5">动态契约拼接 (WSDL 1.1)</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                根据 `countries.xsd` 自动生成对应的 `<message>`、`<portType>`、`<binding>` 和 `<service>` 节点。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构亮点：无需手工维护易错的 .wsdl 静态文件，修改 XSD 即可自动更新契约</span>
+                    <i class="fa-solid fa-arrows-rotate text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构机制 (Dynamic WSDL Generation Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        通过注册 **`DefaultWsdl11Definition`**，Spring WS 会在运行时扫描内存中的 `XsdSchema`，自动拼装出符合 WSDL 1.1 规范的完整的 WSDL 文本。当客户端访问 `http://localhost:8080/ws/countries.wsdl` 时，Spring 实时回传此 XML 契约文档。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 9 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">09</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[25.71%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (8.html <- 9.html -> 10.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="8.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring WS 配置与 WSDL 动态生成</span>
+            <a href="10.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="8.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="10.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导学生透视 MessageDispatcherServlet：</span>
+                    “向学员强调：Spring WS 使用专门的 `MessageDispatcherServlet` 拦截 SOAP 路径（`/ws/*`），区别于 Spring MVC 的 `DispatcherServlet`。这种清晰隔离使得服务端可以同时支持 RESTful JSON 与 SOAP Web Services 两套服务端点。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调动态 WSDL 生成的优越性：</span>
+                    “请学员体会：在传统开发中，手动手写 WSDL 文档容易出现格式与路径错误。`DefaultWsdl11Definition` 根据内存中的 `countries.xsd` 动态拼装生成 WSDL，不仅降低了维护成本，而且 `transformWsdlLocations(true)` 能自动根据当前服务器域名和端口动态修正 `<soap:address>` 的物理 URL。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 31 - 网关流量控制实战 (Gateway Rate Limiting & Resilience)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-gauge-high text-amber-600"></i>
+                <span>Part 04 · 现代化 API 网关与治理决策 (API Gateway &amp; Governance)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                网关流量控制实战：Redis 分布式令牌桶限流
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Gateway Rate Limiting in Practice: Distributed Token Bucket Algorithm with Spring Cloud Gateway &amp; Redis
+            </p>
+        </div>
+
+        <!-- Content Grid: Token Bucket Algorithm (6 cols) vs SCG Redis Configuration & Java KeyResolver (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Token Bucket Algorithm Principles & Redis Lua Architecture (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-hourglass-half text-amber-600"></i>
+                            <span>1. 分布式令牌桶 (Token Bucket) 算法原理</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Token Bucket Mechanism</span>
+                    </div>
+
+                    <!-- Token Bucket Principles Breakdown Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Token Generation & Capacity -->
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-coins text-amber-600"></i>
+                                    <span>① 速率填充与突发容量 (Replenish Rate &amp; Capacity)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Burst Tolerant</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **机制**：系统以固定速率（<code class="text-amber-800 font-mono">replenishRate</code>，如 100/s）往桶中添加令牌，桶的最大容量为 <code class="text-amber-800 font-mono">burstCapacity</code>。当并发请求到来时，从桶中取走 1 个令牌；若桶空，则直接触发降级响应（HTTP 429 Too Many Requests）。<br/>
+                                **优势**：相较于漏桶 (Leaky Bucket) 的绝对匀速限制，令牌桶**天然支持应对瞬间突发流量 (Burst Traffic)**。
+                            </p>
+                        </div>
+
+                        <!-- Redis + Lua Atomicity -->
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-indigo-600"></i>
+                                    <span>② Redis + Lua 脚本原子的无锁高并发计数</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Atomic Redis Lua</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **无锁架构**：集群模式下多个 Spring Cloud Gateway 节点共享集中式 Redis。<code class="text-indigo-800 font-mono">RequestRateLimiter</code> 利用底层原子的 Lua 脚本在 Redis 内部计算令牌填补充扣减，避免多网关节点并发竞态，且延迟低于 1ms。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>限流状态码：被限流请求返回 `HTTP 429 Too Many Requests`</span>
+                    <i class="fa-solid fa-shield-cat text-amber-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: SCG YAML Filter Config & KeyResolver Java Code (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. 网关限流配置 (`application.yml` &amp; `KeyResolver.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">SCG RequestRateLimiter</span>
+                    </div>
+
+                    <!-- YAML Configuration Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed mb-2 overflow-x-auto">
+                        <div class="text-slate-500 mb-0.5"># application.yml: 激活分布式 RequestRateLimiter 限流过滤器</div>
+                        <div class="text-purple-400">spring:</div>
+                        <div class="pl-2 text-purple-400">cloud:</div>
+                        <div class="pl-4 text-purple-400">gateway:</div>
+                        <div class="pl-6 text-purple-400">routes:</div>
+                        <div class="pl-8 text-amber-300">- id: <span class="text-slate-200">order_service_route</span></div>
+                        <div class="pl-10 text-slate-300">uri: <span class="text-emerald-300">lb://order-service</span></div>
+                        <div class="pl-10 text-slate-300">predicates:</div>
+                        <div class="pl-12 text-slate-300">- Path=/api/v1/orders/**</div>
+                        <div class="pl-10 text-slate-300">filters:</div>
+                        <div class="pl-12 text-amber-300">- name: <span class="text-slate-200">RequestRateLimiter</span></div>
+                        <div class="pl-14 text-slate-300">args:</div>
+                        <div class="pl-16 text-indigo-300">redis-rate-limiter.replenishRate: <span class="text-amber-300">100</span> <span class="text-slate-500"># 令牌生成速率 (100/s)</span></div>
+                        <div class="pl-16 text-indigo-300">redis-rate-limiter.burstCapacity: <span class="text-amber-300">200</span> <span class="text-slate-500"># 令牌桶最大容量上限</span></div>
+                        <div class="pl-16 text-indigo-300">key-resolver: <span class="text-emerald-300">"#{@userKeyResolver}"</span> <span class="text-slate-500"># 引用限流维度 Bean</span></div>
+                    </div>
+
+                    <!-- Java KeyResolver Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed overflow-x-auto">
+                        <div class="text-slate-500 mb-0.5">// RateLimiterConfig.java: 自定义基于 User ID 或 Client IP 的限流解析器</div>
+                        <div><span class="text-purple-400">@Configuration</span></div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">RateLimiterConfig</span> {</div>
+                        <div class="pl-4"><span class="text-indigo-400">@Bean</span></div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> KeyResolver <span class="text-blue-300">userKeyResolver</span>() {</div>
+                        <div class="pl-8"><span class="text-purple-400">return</span> exchange -&gt; {</div>
+                        <div class="pl-12">String userId = exchange.<span class="text-blue-300">getRequest</span>().<span class="text-blue-300">getHeaders</span>().<span class="text-blue-300">getFirst</span>(<span class="text-emerald-300">"X-User-Id"</span>);</div>
+                        <div class="pl-12"><span class="text-purple-400">if</span> (userId != <span class="text-purple-400">null</span>) <span class="text-purple-400">return</span> Mono.<span class="text-blue-300">just</span>(userId); <span class="text-slate-500">// 1. 按登录用户维度</span></div>
+                        <div class="pl-12"><span class="text-purple-400">return</span> Mono.<span class="text-blue-300">just</span>(exchange.<span class="text-blue-300">getRequest</span>().<span class="text-blue-300">getRemoteAddress</span>().<span class="text-blue-300">getAddress</span>().<span class="text-blue-300">getHostAddress</span>()); <span class="text-slate-500">// 2. 备选 IP 维度</span></div>
+                        <div class="pl-8">};</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-1">
+                    <span>下一个核心：微服务设计演进总结 —— 从架构选型到云原生部署 (Slide 32)</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (Rate Limiting Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        网关限流是抵御突发秒杀大流量、恶意爬虫及防范微服务级联雪崩的第一道“防护闸门”。通过 **Redis + Lua 实现无锁高并发分布式限流**，既能保障后端服务稳定性，又能提供优雅的 HTTP 429 降级体验。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 31 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">31</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[88.57%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (30.html <- 31.html -> 32.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="30.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">网关流量控制实战 (Rate Limiting &amp; Resilience)</span>
+            <a href="32.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="30.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="32.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生透视网关流量调控机制：</span>
+                    “向学员强调：当系统遭受秒杀冲高流量或恶意刷接口时，网关层的流量削峰与限流至关重要。令牌桶算法允许一定程度的突发流量（`burstCapacity`），比漏桶算法更适合互联网真实业务场景。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 Redis + Lua 脚本原子限流与 KeyResolver：</span>
+                    “请学员关注右侧代码：`replenishRate` 控制稳定生成速率，`burstCapacity` 控制桶上限。通过自定义 `KeyResolver`，我们可以针对用户 ID、IP 或 API 路径做隔离限流，防止单户异常流量拖垮全局。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '32.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '30.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

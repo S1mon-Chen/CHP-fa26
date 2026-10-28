@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - OpenAPI 规范与 Swagger 接口文档自动化 (OpenAPI Specification & Swagger Contract)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                <span>Part 03 · Spring Boot REST 开发与 CORS 安全 (Spring Boot REST & CORS)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                OpenAPI 3.0 规范与 Swagger 契约文档自动化
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                OpenAPI Specification (OAS 3.0), Springdoc Integration &amp; Interactive Swagger UI Generation
+            </p>
+        </div>
+
+        <!-- Content Grid: Principles & Annotations (6 cols) vs Java Implementation Code & UI Preview (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: OpenAPI Concepts & Springdoc Integration (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-book-bookmark text-emerald-600"></i>
+                            <span>1. OpenAPI 3.0 契约机制与 Springdoc 集成</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">OAS 3.0 Standard</span>
+                    </div>
+
+                    <!-- Principle Breakdown Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Card 1: What is OpenAPI? -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-map-location-dot text-emerald-600"></i>
+                                    <span>替代 WSDL 的现代 REST 契约标准 (OpenAPI)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">REST Contract</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                **OpenAPI 规范 (OAS)** 是一种跨语言的 REST API 描述标准（前身为 Swagger）。以 JSON 或 YAML 格式精确勾勒 API 的端点路径、数据模型、状态码及安全校验规则。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Springdoc Spring Boot Starter -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-puzzle-piece text-indigo-600"></i>
+                                    <span>Springdoc-OpenAPI 零配置起步依赖</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">springdoc-starter</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                在 Spring Boot 3 项目中引入 <code class="text-indigo-700 font-mono">springdoc-openapi-starter-webmvc-ui</code>，框架会自动扫描反射 Handler 节点，零代码生成标准的 <code class="text-indigo-700 font-mono">/v3/api-docs</code> 契约文档与 Swagger UI 页面。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Core Annotations -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tags text-purple-600"></i>
+                                    <span>声明式语义元数据注解 (Core Annotations)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Declarative Metadata</span>
+                            </div>
+                            <div class="text-[10.5px] text-slate-600 font-mono space-y-0.5 mt-1">
+                                <div><strong class="text-purple-800">@Tag:</strong> 控制器层面分类分组标签</div>
+                                <div><strong class="text-purple-800">@Operation:</strong> 方法级别说明 (summary &amp; description)</div>
+                                <div><strong class="text-purple-800">@ApiResponses:</strong> 状态码契约映射机制</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>自动化效益：解决传统 Word/Markdown 手写文档容易与后端代码脱节的痛点</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Spring Boot OpenAPI Controller Code & Swagger UI Preview (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. Springdoc 标注与 Swagger UI 自动生成</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">OrderController.java</span>
+                    </div>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div><span class="text-purple-400">package</span> com.example.restservice.controller;</div>
+                        <div class="mt-0.5"><span class="text-purple-400">import</span> io.swagger.v3.oas.annotations.*;</div>
+                        <div><span class="text-purple-400">import</span> io.swagger.v3.oas.annotations.responses.*;</div>
+                        <div><span class="text-purple-400">import</span> io.swagger.v3.oas.annotations.tags.Tag;</div>
+
+                        <div class="mt-1 text-indigo-400">@Tag<span class="text-slate-300">(name = </span><span class="text-emerald-300">"Order API"</span><span class="text-slate-300">, description = </span><span class="text-emerald-300">"星巴克订单管理接口"</span><span class="text-slate-300">)</span></div>
+                        <div class="text-indigo-400">@RestController</div>
+                        <div class="text-indigo-400">@RequestMapping<span class="text-slate-300">(</span><span class="text-emerald-300">"/v1/orders"</span><span class="text-slate-300">)</span></div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">OrderController</span> {</div>
+
+                        <div class="pl-4 mt-1 text-indigo-400">@Operation<span class="text-slate-300">(summary = </span><span class="text-emerald-300">"查询指定订单详情"</span><span class="text-slate-300">, description = </span><span class="text-emerald-300">"返回订单状态与金额"</span><span class="text-slate-300">)</span></div>
+                        <div class="pl-4 text-indigo-400">@ApiResponses<span class="text-slate-300">(value = {</span></div>
+                        <div class="pl-8 text-indigo-400">@ApiResponse<span class="text-slate-300">(responseCode = </span><span class="text-emerald-300">"200"</span><span class="text-slate-300">, description = </span><span class="text-emerald-300">"成功获取订单表述"</span><span class="text-slate-300">),</span></div>
+                        <div class="pl-8 text-indigo-400">@ApiResponse<span class="text-slate-300">(responseCode = </span><span class="text-emerald-300">"404"</span><span class="text-slate-300">, description = </span><span class="text-emerald-300">"订单资源不存在"</span><span class="text-slate-300">)</span></div>
+                        <div class="pl-4 text-slate-300">})</div>
+                        <div class="pl-4 text-indigo-400">@GetMapping<span class="text-slate-300">(</span><span class="text-emerald-300">"/{id}"</span><span class="text-slate-300">)</span></div>
+                        <div class="pl-4"><span class="text-purple-400">public</span> OrderResponse <span class="text-blue-300">getOrder</span>(</div>
+                        <div class="pl-8"><span class="text-indigo-400">@Parameter</span>(description = <span class="text-emerald-300">"订单唯一标识 ID"</span>) <span class="text-indigo-400">@PathVariable</span> Long id) {</div>
+                        <div class="pl-8"><span class="text-purple-400">return</span> orderService.<span class="text-blue-300">findById</span>(id);</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Interactive Swagger UI Preview Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 text-[8.5px] font-mono">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1 mb-1">
+                            <span class="text-emerald-400 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-laptop-code"></i>
+                                <span>自动生成的 Swagger UI 端点 (http://localhost:8080/swagger-ui.html)</span>
+                            </span>
+                            <span class="text-xs font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">OAS 3.0</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold text-[8px]">GET</span>
+                                    <code class="text-slate-200">/v1/orders/{id}</code>
+                                </div>
+                                <span class="text-slate-400 text-[8px]">查询指定订单详情</span>
+                            </div>
+                            <div class="text-slate-400 text-[8px] pl-2 border-l-2 border-emerald-600">
+                                Responses: <span class="text-emerald-300 font-bold">200 OK</span> (application/json), <span class="text-rose-400 font-bold">404 Not Found</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：跨域资源共享 (CORS) 安全策略与 OPTIONS 预检请求机制</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (OpenAPI Contract Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        OpenAPI 3.0 代表了现代 RESTful 架构中**代码即契约 (Code as Contract)** 的思想。通过注解声明接口元数据，系统能够自动维持代码与 API 契约文档的绝对同步，甚至为前端、iOS、Android 客户端自动生成 SDK 代码。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 22 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[62.85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">OpenAPI 规范与 Swagger 文档 (OpenAPI &amp; Swagger)</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视 OpenAPI 对比 WSDL 的演进意义：</span>
+                    “向学员强调：在 SOAP 时代，我们使用 WSDL 描述 XML 契约；而在 RESTful 时代，OpenAPI 3.0 (OAS) 充当了同样的角色。它让 RESTful API 具备了机器可读的自描述能力。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 Springdoc 自动化集成的便捷性：</span>
+                    “请学员关注右侧代码中的 `@Tag`、`@Operation` 与 `@ApiResponses` 注解：只需要在 Spring Boot 控制器中添加这些注解，`springdoc-openapi-starter-webmvc-ui` 就会在运行期自动渲染出交互式的 Swagger UI (http://localhost:8080/swagger-ui.html)。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

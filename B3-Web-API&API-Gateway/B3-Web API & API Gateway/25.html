@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - Spring Boot CORS 跨域配置实现 (CORS Implementation in Spring Boot)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                <span>Part 03 · Spring Boot REST 开发与 CORS 安全 (Spring Boot REST & CORS)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Boot CORS 跨域治理实现策略
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Granular @CrossOrigin, Global WebMvcConfigurer &amp; Filter-Level CorsFilter for Spring Security
+            </p>
+        </div>
+
+        <!-- Content Grid: 3 Configuration Approaches (6 cols) vs Java Implementation & Safety Guidelines (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: 3 Levels of CORS Configurations in Spring (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-emerald-600"></i>
+                            <span>1. Spring Boot 中的 3 种 CORS 配置粒度</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Configuration Levels</span>
+                    </div>
+
+                    <!-- Approach Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Approach 1: @CrossOrigin Annotation -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tag text-emerald-600"></i>
+                                    <span>① `@CrossOrigin` 细粒度注解 (局部级别)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9.5px] font-bold">Controller / Method</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                直接标注在 Controller 类或具体 Handler 方法上：<code class="text-emerald-800 font-mono">@CrossOrigin(origins = "http://localhost:3000")</code>。适合局部端点快速定制，但不推荐大规模项目零散维护。
+                            </p>
+                        </div>
+
+                        <!-- Approach 2: WebMvcConfigurer Global Mapping -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sliders text-indigo-600"></i>
+                                    <span>② `WebMvcConfigurer` 全局配置 (推荐方式)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Global Web MVC</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                重写 <code class="text-indigo-700 font-mono">addCorsMappings(CorsRegistry registry)</code> 方法。统一对路由通配符（如 <code class="text-indigo-700 font-mono">/**</code>）设置 Origins、Methods、Headers 与 <code class="text-indigo-700 font-mono">maxAge</code> 预检缓存时长。
+                            </p>
+                        </div>
+
+                        <!-- Approach 3: CorsFilter for Spring Security -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-filter text-purple-600"></i>
+                                    <span>③ `CorsFilter` 过滤器级别 (Spring Security 必备)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Filter Chain</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                结合 Spring Security 时，MVC 拦截器生效时间晚于 Security 过滤器，会导致 `OPTIONS` 预检被 401 拦截。必须通过注册最高优先级的 <code class="text-purple-700 font-mono">CorsFilter</code> Bean 来保证预检顺利放行！
+                            </p>
+                        </div>
+
+                        <!-- Security Warning Card: Credentials & Wildcards -->
+                        <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                                    <span>凭证允许陷阱：`allowCredentials(true)` 与通配符 `*`</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">W3C Strict Guard</span>
+                            </div>
+                            <p class="text-[11px] text-slate-700 leading-tight">
+                                当允许跨域传递 Cookie 凭证（<code class="text-amber-800 font-mono">allowCredentials(true)</code>）时，<code class="text-rose-700 font-mono">allowedOrigins</code> 绝对不允许配置为泛通配符 <code class="text-rose-700 font-mono">*</code>！必须改用 <code class="text-emerald-800 font-mono">allowedOriginPatterns</code> 支持正则匹配。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构提示：结合微服务 API 网关时，建议将 CORS 配置统一收拢在网关层执行</span>
+                    <i class="fa-solid fa-shield-cat text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Spring Boot CORS Java Implementation & Config Details (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. 全局跨域配置类实现 (`CorsConfig.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">CorsConfig.java</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div><span class="text-purple-400">package</span> com.example.restservice.config;</div>
+                        <div class="mt-0.5"><span class="text-purple-400">import</span> org.springframework.context.annotation.*;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.http.HttpHeaders;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.web.servlet.config.annotation.*;</div>
+
+                        <div class="mt-1.5"><span class="text-purple-400">@Configuration</span></div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">CorsConfig</span> <span class="text-purple-400">implements</span> WebMvcConfigurer {</div>
+
+                        <div class="pl-4 mt-1"><span class="text-indigo-400">@Override</span></div>
+                        <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">addCorsMappings</span>(CorsRegistry registry) {</div>
+                        <div class="pl-8">registry.<span class="text-blue-300">addMapping</span>(<span class="text-emerald-300">"/**"</span>) <span class="text-slate-500">// 1. 映射所有 REST 端点路径</span></div>
+                        <div class="pl-12">.<span class="text-blue-300">allowedOriginPatterns</span>(<span class="text-emerald-300">"http://localhost:3000"</span>, <span class="text-emerald-300">"https://*.example.com"</span>)</div>
+                        <div class="pl-12">.<span class="text-blue-300">allowedMethods</span>(<span class="text-emerald-300">"GET"</span>, <span class="text-emerald-300">"POST"</span>, <span class="text-emerald-300">"PUT"</span>, <span class="text-emerald-300">"DELETE"</span>, <span class="text-emerald-300">"OPTIONS"</span>)</div>
+                        <div class="pl-12">.<span class="text-blue-300">allowedHeaders</span>(<span class="text-emerald-300">"*"</span>) <span class="text-slate-500">// 允许携带 Authorization 等自定义 Header</span></div>
+                        <div class="pl-12">.<span class="text-blue-300">exposedHeaders</span>(HttpHeaders.SET_COOKIE, <span class="text-emerald-300">"X-Total-Count"</span>) <span class="text-slate-500">// 暴露自定义 Header</span></div>
+                        <div class="pl-12">.<span class="text-blue-300">allowCredentials</span>(<span class="text-purple-400">true</span>) <span class="text-slate-500">// 允许客户端跨域携带 Cookie</span></div>
+                        <div class="pl-12">.<span class="text-blue-300">maxAge</span>(<span class="text-amber-300">1800</span>); <span class="text-slate-500">// OPTIONS 预检结果在浏览器缓存 30 分钟</span></div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Highlight Takeaway Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[9px] font-mono">
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <strong class="text-amber-300 block mb-0.5">maxAge(1800) 性能优化</strong>
+                            <span class="text-slate-400 font-sans">告知浏览器在 30 分钟内复用 preflight 批准，避免后续业务请求产生双倍 RTT 延迟</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800">
+                            <strong class="text-emerald-300 block mb-0.5">exposedHeaders 字段暴露</strong>
+                            <span class="text-slate-400 font-sans">默认情况下，JavaScript 仅能读取 6 个基本响应标头，暴露属性后才可读取分页或 Token</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-1">
+                    <span>下一个核心：Web API 权衡法则（SOAP vs REST）与应用场景决策</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Spring Boot CORS Configuration Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        CORS 是 Web 容器在客户端与服务端之间达成的信任契约。在 Spring Boot 项目中，正确使用 <code class="font-mono text-emerald-900 font-bold">allowedOriginPatterns</code> 与 <code class="font-mono text-emerald-900 font-bold">maxAge</code>，既能保障携带 Credential Cookie 时的安全防御，又能避免 OPTIONS 预检请求造成的性能损耗。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 25 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">25</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[71.42%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (24.html <- 25.html -> 26.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Boot CORS 跨域配置 (Spring Boot CORS)</span>
+            <a href="26.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="24.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="26.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视 Spring Boot 中 3 种 CORS 配置级别：</span>
+                    “向学员强调：Spring 提供 `@CrossOrigin` 局部注解、`WebMvcConfigurer` 全局配置以及 `CorsFilter` 过滤器 3 种配置粒度。重点引导大家理解 `CorsFilter` 级别的必要性：当项目引入 Spring Security 时，由于安全过滤器链生效早于 Spring MVC 拦截器，`WebMvcConfigurer` 可能会失效，此时必须通过 `CorsFilter` 确保 OPTIONS 预检请求在进入 Security Filter 之前被优先放行。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调生产安全规范与 maxAge 缓存：</span>
+                    “请学员关注右侧代码：一是在开启 `allowCredentials(true)` 时，W3C 规范禁止将 `allowedOrigins` 设置为 `*`，必须使用 `allowedOriginPatterns`；二是 `maxAge(1800)` 能够在浏览器侧将预检结果缓存 30 分钟，大幅降低重复 OPTIONS 造成的双倍 HTTP RTT 延时。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

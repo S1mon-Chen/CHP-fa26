@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 29 - 网关四大核心职责 (Four Core Responsibilities of API Gateways)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                <span>Part 04 · 现代化 API 网关与治理决策 (API Gateway &amp; Governance)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                现代化 API 网关的 4 大核心架构职责
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Four Pillars of API Gateways: Smart Routing, Centralized Security, Rate Limiting &amp; Protocol Offloading
+            </p>
+        </div>
+
+        <!-- Content Grid: Responsibilities 1 & 2 (Left Column, 6 cols) vs Responsibilities 3 & 4 (Right Column, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: Smart Routing & Centralized Security (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-amber-600"></i>
+                            <span>1. 智能路由分发 &amp; 2. 边界统一安全防护</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Routing &amp; Security</span>
+                    </div>
+
+                    <!-- Responsibility 1: Smart Routing & Dynamic Dispatching -->
+                    <div class="space-y-2.5 font-sans mb-3">
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-route text-amber-600"></i>
+                                    <span>① 动态路由分发 (Smart Routing &amp; Load Balancing)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Dynamic Dispatch</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **隐藏内部网络拓扑**：对外暴露单一统一域名（如 <code class="text-slate-800 font-mono">api.example.com</code>），网关根据断言 (Predicates，如 URI <code class="text-slate-800 font-mono">/v1/orders/**</code>、Header、Query 参数) 结合服务发现 (Nacos / Eureka) 动态分发至后端微服务节点，并支持金丝雀灰度发布 (Canary Release)。
+                            </p>
+                        </div>
+
+                        <!-- Responsibility 2: Centralized Authentication & Security -->
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-key text-purple-600"></i>
+                                    <span>② 统一认证鉴权与安全防护 (Centralized Auth &amp; Defense)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">Boundary Defense</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-relaxed">
+                                **拦截非法请求于边缘**：集中处理 JWT Token 验签、OAuth2 授权校验、IP 黑白名单过滤以及 WAF（Web 应用防火墙）防 SQL 注入与防重放攻击 (Anti-replay)，避免每一个业务微服务重复编写安全代码。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构原则：路由与鉴权收拢至边缘网关，微服务专心处理领域模型业务</span>
+                    <i class="fa-solid fa-circle-check text-emerald-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Traffic Governance & Protocol Transformation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-amber-400"></i>
+                            <span>3. 流量治理限流 &amp; 4. 协议转换与 SSL 卸载</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Resilience &amp; Transcoding</span>
+                    </div>
+
+                    <div class="space-y-2.5 font-sans mb-3">
+                        <!-- Responsibility 3: Rate Limiting & Circuit Breaking -->
+                        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-emerald-300 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-high text-emerald-400"></i>
+                                    <span>③ 流量限流与熔断降级 (Rate Limiting &amp; Resilience)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[9.5px] font-bold">Token Bucket / Fallback</span>
+                            </div>
+                            <p class="text-[11px] text-slate-300 leading-relaxed">
+                                **抵御突发大流量**：施加分布式令牌桶 (Token Bucket) / 漏桶限流阀门，针对 Client IP、User ID 维度配额限制；当后端服务异常时触发熔断 (Circuit Breaking) 并回传优雅降级 (Fallback) 响应，防止微服务雪崩。
+                            </p>
+                        </div>
+
+                        <!-- Responsibility 4: Protocol Offloading & Transformation -->
+                        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500/50 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-cyan-300 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-split-up-and-left text-cyan-400"></i>
+                                    <span>④ 协议转换与 SSL 极速卸载 (Protocol Transcoding)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[9.5px] font-bold">SSL Decryption / gRPC</span>
+                            </div>
+                            <p class="text-[11px] text-slate-300 leading-relaxed">
+                                **提高内网通信吞吐**：网关在边缘统一解密 HTTPS 证书 (SSL Offloading)，释放内部微服务 CPU 算力；同时将外网公有 RESTful HTTP/JSON 请求在网关内部转码转换为高性能的内网 gRPC / Protobuf 协议。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Visual Summary Diagram Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[9px] grid grid-cols-2 gap-2">
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-0.5">
+                            <strong class="text-amber-300 block">对网关前 (Public Edge)</strong>
+                            <span class="text-slate-400 font-sans">HTTPS + REST / JSON + Token 验证 + 限流拦截</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-0.5">
+                            <strong class="text-emerald-300 block">对网关后 (Private Cluster)</strong>
+                            <span class="text-slate-400 font-sans">HTTP/2 + gRPC / Protobuf + VPC 内网明文高性能互调</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between mt-1">
+                    <span>下一个核心：主流 API 网关架构对比 —— Spring Cloud Gateway vs. APISIX</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (API Gateway Responsibilities Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        API 网关是现代化微服务集群的**“前哨站”与“治理大脑”**。将路由分发、身份鉴权、流量限流与 SSL 卸载这四大横切关注点 (Cross-cutting Concerns) 下沉收拢至网关层，能极大简化内部微服务逻辑，实现业务解耦与统一运维。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 29 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">29</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[82.85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (28.html <- 29.html -> 30.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="28.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">API 网关四大核心职责 (Gateway Responsibilities)</span>
+            <a href="30.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="28.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="30.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生透视 API 网关四大职责：</span>
+                    “向学员深入剖析：API 网关是 Facade 门面模式与 AOP 切面思想在分布式架构中的终极落地。请重点记住网关的四大核心职责：① 动态路由分发（屏蔽网络拓扑）；② 统一认证鉴权（拦截非法请求于边缘）；③ 流量治理与限流熔断（抵御雪崩）；④ 协议转换与 SSL 卸载（释放内部 CPU 算力）。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 承上启下引出主流网关选型：</span>
+                    “请学员关注第 4 项协议转换：网关对外暴露通用的 REST/JSON 接口给前端，对内转成高性能 gRPC 二进制协议给微服务。这就引出了下一页 Slide 30——主流网关选型（Spring Cloud Gateway vs. Apache APISIX / Kong）。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '30.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - SOAP 架构痛点分析 (Limitations of SOAP-based Web Services)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 3 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1.5">
+                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                <span>Part 01 · SOAP 协议与 XML 契约机制 (SOAP & XML Schema)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                SOAP 架构痛点分析与向 REST 演进
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Limitations of SOAP-based Web Services &amp; Paradigm Shift to RESTful Architecture
+            </p>
+        </div>
+
+        <!-- Content Grid: 4 Limitations (6 cols) vs SOAP vs REST Paradigm Matrix (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-1">
+            
+            <!-- Left Column: 4 Core Limitations of SOAP (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bug text-rose-600"></i>
+                            <span>1. SOAP Web Service 4 大核心痛点</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Architectural Bottlenecks</span>
+                    </div>
+
+                    <!-- 4 Limitation Cards -->
+                    <div class="space-y-2.5 font-sans">
+                        
+                        <!-- Limitation 1: Heavy Coupling -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-rose-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-rose-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-link-slash text-rose-600"></i>
+                                    <span>① 强类型的“重度耦合” (Heavy Coupling)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[9.5px] font-bold">Tight Coupling</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                客户端严重依赖服务端发布的 WSDL 契约文件以及自动生成的 Stub 代理代码（如 `wsimport` 或 JAX-RPC）。服务端契约微小变更极易引发客户端破坏性编译失败。
+                            </p>
+                        </div>
+
+                        <!-- Limitation 2: Payload & Parse Overhead -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-amber-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-weight-hanging text-amber-600"></i>
+                                    <span>② 高昂的报文体与 CPU 解析开销 (Payload &amp; CPU Cost)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[9.5px] font-bold">Verbose XML</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                SOAP 报文被包装在繁琐的 `<env:Envelope>` 中，充满大量的 XML 命名空间与闭合标签，有效载荷比 (Payload Efficiency) 极低，且 DOM/SAX 树解析消耗大量的 CPU 算力。
+                            </p>
+                        </div>
+
+                        <!-- Limitation 3: WS-* Complexity -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-graduation-cap text-purple-600"></i>
+                                    <span>③ 陡峭的学习曲线与臃肿的 WS-* 规范</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[9.5px] font-bold">WS-* Overkill</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                除了 SOAP 与 WSDL，还强加了 WS-Security、WS-Addressing、WS-ReliableMessaging、UDDI 等数十个极其复杂的补丁规范，大大增加了企业开发者的学习与维护成本。
+                            </p>
+                        </div>
+
+                        <!-- Limitation 4: Toolchain Dependence -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold">
+                                <span class="text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-screwdriver-wrench text-indigo-600"></i>
+                                    <span>④ 强工具链依赖 (Toolchain Lock-in)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9.5px] font-bold">Tool Dependency</span>
+                            </div>
+                            <p class="text-[11px] text-slate-600 leading-tight">
+                                离开重型 IDE（如 Eclipse/IntelliJ）或专用编译插件（`jaxb2-maven-plugin`），开发者几乎无法通过朴素的 HTTP Client 手动构造并调试复杂的 SOAP XML 报文。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>演进必然：移动互联网与前端 SPA 的兴起加速了 SOAP 向轻量 RESTful 的转变</span>
+                    <i class="fa-solid fa-arrow-trend-up text-rose-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: SOAP vs REST Paradigm Shift Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-right-left"></i>
+                            <span>2. 架构范式转换：SOAP Web Service vs RESTful API</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Paradigm Shift Matrix</span>
+                    </div>
+
+                    <!-- Comparison Matrix Table -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[10.5px] leading-relaxed mb-3">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-800 text-amber-300 text-[10px]">
+                                    <th class="pb-1.5 font-bold">对比维度</th>
+                                    <th class="pb-1.5 font-bold text-rose-400">SOAP 传统架构</th>
+                                    <th class="pb-1.5 font-bold text-emerald-400">RESTful 现代架构</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800 text-[10px] text-slate-300">
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">核心范式</td>
+                                    <td class="py-1.5 text-rose-300">面向 RPC 过程调用</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">面向 Resource 资源抽象</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">数据载体</td>
+                                    <td class="py-1.5 text-slate-400">仅限 XML (带 Envelope 包装)</td>
+                                    <td class="py-1.5 text-emerald-300">JSON (主) / XML / Protobuf / HTML</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">契约定义</td>
+                                    <td class="py-1.5 text-slate-400">WSDL (静态且冗长)</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">OpenAPI 3.0 / Swagger (自描述)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">协议层使用</td>
+                                    <td class="py-1.5 text-slate-400">仅把 HTTP 当做传输隧道 (POST)</td>
+                                    <td class="py-1.5 text-emerald-300">深度复用 HTTP 语义 (GET/POST/PUT/DELETE)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">客户端耦合</td>
+                                    <td class="py-1.5 text-rose-300">强耦合 (须生成 Stub 代理类)</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">松耦合 (无须 Stub，通用 HTTP/JSON)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 text-slate-400 font-bold">缓存与性能</td>
+                                    <td class="py-1.5 text-rose-300">难以利用标准 Web 缓存</td>
+                                    <td class="py-1.5 text-emerald-300 font-bold">利用 HTTP Cache Header 轻松缓存</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Highlight Key Takeaways Grid -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-rose-300 font-bold block mb-0.5">SOAP 历史定位</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                适合企业内部严苛的 B2B 银行支付网关、WS-Security 安全审计机制。
+                            </p>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-emerald-300 font-bold block mb-0.5">REST 时代选择</span>
+                            <p class="text-[9px] text-slate-400 font-sans leading-tight">
+                                成为微服务对外暴露 API、移动 Web 端及单页应用 (SPA) 的绝对主流标准。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构导向：下一部分 Part 02 即将全面开启 RESTful 架构原则与资源设计学习</span>
+                    <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-rose-200 bg-rose-50/60 p-3 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-rose-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-rose-900">核心架构启发 (Architectural Evolution Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        SOAP 的“重度契约”与 RPC 范式曾经代表了企业集成的最高标准，但其昂贵的报文体与高度耦合的工具链制约了高并发与敏捷迭代需求。了解 SOAP 的局限性，有助于我们深刻理解**为何 Roy Fielding 博士提出的 REST 架构风格能够迅速席卷现代 WebAPI 开发**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-700 font-bold">Slide 10 / 35</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">35</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[28.57%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">SOAP 架构痛点分析与向 REST 演进</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导学生总结 Part 01 SOAP 的核心局限：</span>
+                    “向学员总结：在本讲的前半部分（Slide 3-9），我们学习了 SOAP 协议与 XML 契约、WSDL 结构以及如何在 Spring WS 中生产与消费。本页重点帮助学员理清：为什么随着移动互联网与微服务的发展，SOAP 逐渐被轻量级的 RESTful JSON 架构所取代？核心原因就在于强耦合、臃肿的 XML payload 以及极高的学习调优开销。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 承上启下引出 Part 02 RESTful 架构：</span>
+                    “请学员关注右侧的对比表：下一页开始（Part 02），我们将正式进入面向资源（Resource-Oriented）的 RESTful 架构风格学习，深入 Roy Fielding 博士论文提出的 6 大架构约束以及星巴克状态机购餐案例。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
