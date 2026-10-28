@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 高性能并发容器：ConcurrentHashMap 与 CopyOnWrite 机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-gears"></i>
+                <span>Part 02 · J.U.C 高并发工具包 (J.U.C Deep Dive)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                高性能并发容器与细粒度锁设计
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                剖析 ConcurrentHashMap 从分段锁 (Segment) 到 CAS + synchronized 节点锁演进，与 CopyOnWrite 写时复制机制
+            </p>
+        </div>
+
+        <!-- Content Grid: ConcurrentHashMap Evolution (6 cols) vs CopyOnWrite & Queues (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: ConcurrentHashMap Architecture Evolution (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap"></i>
+                            <span>ConcurrentHashMap 架构演进与无锁读机制</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">JDK 7 Segment vs JDK 8+ CAS Node</span>
+                    </div>
+
+                    <!-- Comparison Architecture Box -->
+                    <div class="space-y-2 text-xs mb-3 font-mono">
+                        <!-- JDK 7 Segment Lock -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                            <div class="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-1">
+                                <span>JDK 7：Segment 分段锁 (ReentrantLock)</span>
+                                <span class="text-rose-400 text-[9px]">锁粒度：Segment 数组</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 font-sans leading-relaxed">
+                                内部维护 Segment 数组，每个 Segment 继承 ReentrantLock，锁住对应 Hash 桶段。并发度受限为 Segment 数组长度（默认 16）。
+                            </p>
+                        </div>
+
+                        <!-- JDK 8 Node Synchronized + CAS -->
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-purple-900/80">
+                            <div class="flex items-center justify-between text-[11px] font-bold text-purple-300 mb-1">
+                                <span>JDK 8+：Node 链表首节点锁 + CAS + 树化</span>
+                                <span class="text-emerald-400 text-[9px]">锁粒度：Node 槽位首节点</span>
+                            </div>
+                            <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                                弃用 Segment，直接采用 <strong>Node[] + CAS + synchronized</strong>。写节点时仅锁定数组首节点，链表长度 $\ge 8$ 且容量 $\ge 64$ 时自动转换为**红黑树 (TreeBin)**。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Code Snippet: Lock-Free Read -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300 mb-2">
+                        <div class="text-slate-500">// ConcurrentHashMap get() 方法完全不加锁的原因</div>
+                        <div><span class="text-purple-400">transient volatile</span> Node&lt;K,V&gt;[] table; <span class="text-slate-500">// 数组修饰为 volatile</span></div>
+                        <div><span class="text-purple-400">volatile</span> V val;                        <span class="text-slate-500">// 节点的 val/next 均修饰为 volatile</span></div>
+                        <div class="text-emerald-400 mt-1">// 读操作依赖 volatile 内存语义强刷保证可见性，实现高并发无锁读！</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>警告：绝对禁止在并发场景使用 Collections.synchronizedMap</span>
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: CopyOnWriteArrayList & Concurrent Queues (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-purple-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-copy"></i>
+                            <span>CopyOnWrite 与并发队列矩阵</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Lock-Free Reads & Blocking Queue</span>
+                    </div>
+
+                    <!-- CopyOnWrite Feature Box -->
+                    <div class="p-3 bg-purple-50/80 rounded-xl border border-purple-200 text-xs mb-3 space-y-1.5">
+                        <div class="font-bold text-purple-900 text-[11px] flex items-center justify-between">
+                            <span>CopyOnWriteArrayList (写时复制列表)</span>
+                            <span class="text-purple-700 font-mono text-[9px]">适合：读多写极少场景</span>
+                        </div>
+                        <p class="text-[10px] text-slate-700 leading-relaxed font-sans">
+                            写操作（<code class="font-mono text-purple-800 font-bold">add/set</code>）使用 ReentrantLock 加锁，复制一份全新的底层数组进行修改，修改完成后更新指针。<strong>读操作零锁控制</strong>，彻底避免迭代器抛出 <code class="font-mono text-rose-600 font-bold">ConcurrentModificationException</code>。
+                        </p>
+                    </div>
+
+                    <!-- Concurrent Queues Matrix -->
+                    <div class="space-y-1.5 text-xs">
+                        <div class="font-mono font-bold text-slate-800 text-[11px] mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                            <span>J.U.C 并发队列方案选型矩阵</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-indigo-700">ConcurrentLinkedQueue</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">基于 CAS 无锁算法的链表无界非阻塞队列，性能极高。</div>
+                            </div>
+
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-purple-700">ArrayBlockingQueue</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">基于数组的有界阻塞队列，单 ReentrantLock + 两 Condition。</div>
+                            </div>
+
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-amber-700">LinkedBlockingQueue</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">分离锁 (takeLock / putLock)，若未设上限易致 OOM。</div>
+                            </div>
+
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-emerald-700">SynchronousQueue</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">不存元素的挂接队列，生产必须等待消费，用于线程池。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>核心原则：优先根据读写比例与阻塞需求挑选特定并发容器</span>
+                    <i class="fa-solid fa-cubes text-purple-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-shapes"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">并发设计哲学 (Concurrency Collection Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        高并发容器的设计精髓在于**解耦读写锁粒度**。无论是 ConcurrentHashMap 的“槽位粗细粒度锁”、CopyOnWrite 的“空间换锁时间”，还是 SynchronousQueue 的“零容量直接配对”，都是消除全局锁瓶颈的范式。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 13 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[41.94%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">高性能并发容器</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 ConcurrentHashMap 的演进逻辑：</span>
+                    “向学生说明：JDK 7 的 Segment 分段锁仍然存在并发度上限（默认 16）；JDK 8 摒弃 Segment，直接采用数组首节点锁（Node synchronized + CAS），锁粒度细化到了每个散列槽。配合 volatile 修饰 Node 的 val/next 指针，实现了 get() 读操作完全不加锁的高吞吐架构。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调 CopyOnWriteArrayList 的适用边界与内存副作用：</span>
+                    “提示学生：`CopyOnWriteArrayList` 虽然解决了读写并发竞争，但每次写入都全量复制原数组，在大对象或高频写场景下会频繁触发垃圾回收 (GC) 甚至 OOM！必须强调它只适用于**黑白名单、路由规则表等写极少、读极频繁**的场景。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 20 - 并发扩展性定律：Amdahl 定律与 Gunther USL 模型</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Part 03 · 传统并发架构瓶颈 (Limitations of Platform Threads)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                并发扩展性定律：Amdahl 定律与 Gunther USL 模型
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                量化分析串行占比 (Serial Fraction) 对理论加速比的天花板限制，与多核 Cache 冲突 (Crosstalk) 引起的倒退瓶颈
+            </p>
+        </div>
+
+        <!-- Content Grid: Amdahl's Law (6 cols) vs Gunther USL & Architectural Implication (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: Amdahl's Law Analysis & Speedup Cap (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-rose-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-calculator"></i>
+                            <span>1. 阿姆达尔定律 (Amdahl's Law)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Theoretical Parallel Speedup</span>
+                    </div>
+
+                    <!-- Formula Banner Card -->
+                    <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 font-mono text-slate-100 text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center uppercase tracking-wider">
+                            阿姆达尔并发加速比计算公式
+                        </div>
+
+                        <!-- Mathematical Formula Visual Box -->
+                        <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-center space-y-1">
+                            <div class="text-base md:text-lg font-bold text-rose-400 py-1">
+                                $$S(s) = \frac{1}{(1 - p) + \frac{p}{s}}$$
+                            </div>
+                            <div class="text-[9px] text-slate-400 font-sans grid grid-cols-3 gap-1 pt-1 border-t border-slate-800">
+                                <span>$p$: 可并行计算比例</span>
+                                <span>$1-p$: 强制串行比例</span>
+                                <span>$s$: CPU 处理器核数</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 bg-rose-950/40 border border-rose-800/80 rounded text-[9px] text-rose-200 leading-tight">
+                            <strong>极限结论 ($s \to \infty$)：</strong> 当 CPU 核心数增加至无穷大时，系统的理论最大加速比上限仅仅取决于串行部分：<strong class="text-amber-300">$S_{\text{max}} = \frac{1}{1-p}$</strong>！
+                        </div>
+                    </div>
+
+                    <!-- Concrete Examples Grid -->
+                    <div class="space-y-2 text-xs font-mono">
+                        <div class="font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                            <i class="fa-solid fa-chart-line text-rose-600"></i>
+                            <span>串行占比 (1-p) 对最大加速比的绝对封顶</span>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 text-[10px]">
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                                <div class="text-slate-500">若串行占比 10%</div>
+                                <div class="text-rose-600 font-bold text-xs mt-0.5">S ≤ 10 倍</div>
+                                <div class="text-[8px] text-slate-400 font-sans">哪怕给 10,000 核</div>
+                            </div>
+                            <div class="p-2 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                                <div class="text-slate-500">若串行占比 5%</div>
+                                <div class="text-rose-600 font-bold text-xs mt-0.5">S ≤ 20 倍</div>
+                                <div class="text-[8px] text-slate-400 font-sans">哪怕给 10,000 核</div>
+                            </div>
+                            <div class="p-2 rounded-xl bg-rose-50 border border-rose-200 text-center">
+                                <div class="text-rose-800 font-bold">若串行占比 1%</div>
+                                <div class="text-rose-700 font-bold text-xs mt-0.5">S ≤ 100 倍</div>
+                                <div class="text-[8px] text-rose-600 font-sans font-bold">硬件扩展边际递减</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>瓶颈来源：锁竞争 (Lock Contention)、上下文切换、I/O 阻塞串行化</span>
+                    <i class="fa-solid fa-lock text-rose-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Gunther's USL & Real-World Crosstalk (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-area"></i>
+                            <span>2. 真实物理世界：Gunther 通用扩展性定律 (USL)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Universal Law of Scalability</span>
+                    </div>
+
+                    <!-- Gunther USL Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center uppercase tracking-wider">
+                            考虑锁排队与多核 Cache 协调通信损耗 (Crosstalk)
+                        </div>
+
+                        <!-- USL Formula Box -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-center text-rose-300 font-bold text-sm py-1.5">
+                            $$X(N) = \frac{\gamma \cdot N}{1 + \sigma(N - 1) + \kappa N(N - 1)}$$
+                        </div>
+
+                        <!-- Factor Explanation -->
+                        <div class="grid grid-cols-2 gap-2 text-[9px] font-sans pt-1">
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                <span class="font-bold text-amber-300 font-mono">$\sigma$ (Sigma): 排队延迟</span>
+                                <p class="text-[8px] text-slate-400">线程等待抢锁或进排队队列造成的串行阻塞开销。</p>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 border border-rose-900/60 text-slate-300">
+                                <span class="font-bold text-rose-400 font-mono">$\kappa$ (Kappa): 节点通信开销</span>
+                                <p class="text-[8px] text-slate-400">多 CPU 核心间 L1/L2 缓存一致性 (MESI) 状态刷新与总线冲突。</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Retrograde Scalability Warning -->
+                    <div class="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800/80 text-xs font-mono mb-2">
+                        <div class="font-bold text-rose-300 text-[11px] mb-1 flex items-center justify-between">
+                            <span>扩展性倒退现象 (Retrograde Scalability)</span>
+                            <span class="text-rose-400 text-[9px]">The Negative Return</span>
+                        </div>
+                        <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                            当并发线程数/核心数过大时，<span class="font-mono text-rose-300 font-bold">$\kappa N(N-1)$</span> 二次项损耗爆发，吞吐量不仅不再增加，反而**急剧下降甚至引发系统卡死崩塌**！
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>破局之道：减小锁粒度、消除上下文切换、全面使用非阻塞轻量协程</span>
+                    <i class="fa-solid fa-bolt text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-rose-200 bg-rose-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-rose-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-route"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-rose-900">并发模型演进总结 (The End of Part 03 & Bridge to Part 04)</h4>
+                    <p class="text-xs text-slate-700">
+                        阿姆达尔定律与 Gunther USL 表明：**单纯堆砌平台线程与硬件核心无法突破物理吞吐上限**。高并发架构的解法是——彻底消除操作系统线程上下文切换损耗与 I/O 阻塞锁定！这直接引出了下一章的革命性方案：**Java 21 虚拟线程 (Project Loom)**！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-700 font-bold">Slide 20 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">20</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-rose-600 h-full w-[64.52%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (19.html <- 20.html -> 21.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="19.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">并发扩展性定律 (Amdahl & USL)</span>
+            <a href="21.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="19.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="21.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导学生透视阿姆达尔定律对软件设计的限制：</span>
+                    “向学生强调：很多人以为购买 64 核甚至 128 核服务器就能让应用性能提升 64 倍，这是不切实际的幻觉。如果你的代码中有 5% 的逻辑是必须串行执行的（如排队加锁、同步写日志），阿姆达尔定律决定了加速比上限绝对不会超过 20 倍！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析 Gunther USL 模型与倒退吞吐现象：</span>
+                    “提示学生：Gunther 扩展性模型解释了为什么在高并发压力测试时，当增加平台线程超过一定阈值，吞吐量（TPS）不升反降，响应时间（RT）陡增。这就是 Cache 一致性通信与线程上下文切换损耗带来的扩展性倒退（Retrograde Scalability）。这为下一章引入用户态低开销的 Java 21 虚拟线程奠定了最终理论基础！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

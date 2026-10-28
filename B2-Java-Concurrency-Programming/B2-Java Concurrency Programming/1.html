@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 01 - 现代 Java 高并发编程与并发模型演进</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>第 2 讲：并发模型演进与现代 Java 高并发编程</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                现代 Java 高并发编程与并发模型演进
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-indigo-600 mb-3 font-semibold">
+                Modern Java Concurrent Programming & Concurrency Model Evolution
+            </p>
+            
+            <p class="text-sm sm:text-base md:text-lg font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                深入解析 <span class="text-indigo-600 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Java 内存模型 (JMM)</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">J.U.C 锁与无锁并发</span>，剖析 1:1 平台线程在大规模阻塞 I/O 下的<span class="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 underline-offset-4">性能瓶颈</span>，全景掌握 Java 21 <span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">虚拟线程 (Project Loom)</span> 与结构化并发实战。
+            </p>
+        </div>
+
+        <!-- Three Pillars Grid -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+            
+            <!-- Pillar 1: JMM & J.U.C -->
+            <div class="group relative rounded-2xl border border-slate-200 bg-white p-5 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-lg shrink-0">
+                            <i class="fa-solid fa-microchip"></i>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-mono font-bold">阶段 1: 经典基础</span>
+                    </div>
+
+                    <h3 class="text-base font-bold text-slate-900 mb-1">内存模型与 J.U.C 体系</h3>
+                    <p class="text-xs text-slate-500 font-mono mb-3">JMM & Concurrent Utilities</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i>
+                            <span>JMM Happens-Before 机制与可见性</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i>
+                            <span>Monitor 锁升级与 AQS 核心架构</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-indigo-500 mt-0.5 shrink-0"></i>
+                            <span>CAS 无锁算法与高并发 ThreadPool 调优</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-book-open text-indigo-600"></i>
+                    <span>对应章节：第一部分 & 第二部分 (Slide 3-17)</span>
+                </div>
+            </div>
+
+            <!-- Pillar 2: Platform Thread Limitations -->
+            <div class="group relative rounded-2xl border border-rose-100 bg-rose-50/30 p-5 soft-shadow transition hover:border-rose-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-600 text-lg shrink-0">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-rose-100 border border-rose-200 text-rose-800 text-[11px] font-mono font-bold">阶段 2: 架构瓶颈</span>
+                    </div>
+
+                    <h3 class="text-base font-bold text-slate-900 mb-1">1:1 平台线程性能瓶颈</h3>
+                    <p class="text-xs text-rose-700 font-mono mb-3">Limitation of Platform Threads</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-circle-exclamation text-rose-500 mt-0.5 shrink-0"></i>
+                            <span>1:1 OS 线程的内存开销 (1MB/Thread Stack)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-circle-exclamation text-rose-500 mt-0.5 shrink-0"></i>
+                            <span>内核态上下文切换 (Context Switch) 损耗</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-circle-exclamation text-rose-500 mt-0.5 shrink-0"></i>
+                            <span>Blocking I/O 阻塞危机与 C1000K 挑战</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-rose-200/60 text-[11px] text-rose-800 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-gauge-high text-rose-600"></i>
+                    <span>对应章节：第三部分 (Slide 18-20)</span>
+                </div>
+            </div>
+
+            <!-- Pillar 3: Java 21 Virtual Threads -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg shrink-0">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-mono font-bold">阶段 3: 云原生协程</span>
+                    </div>
+
+                    <h3 class="text-base font-bold text-slate-900 mb-1">Java 21 虚拟线程 (Loom)</h3>
+                    <p class="text-xs text-emerald-800 font-mono mb-3">Virtual Threads & Concurrency</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span>M:N 调度原理与 Continuation 挂起机制</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span>Pinning 锁固定避坑与 Scoped Values</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0"></i>
+                            <span>Virtual Threads vs. Reactive (Reactor) 架构决策</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-emerald-200/60 text-[11px] text-emerald-900 font-mono flex items-center gap-1.5">
+                    <i class="fa-solid fa-rocket text-emerald-600"></i>
+                    <span>对应章节：第四部分 & 第五部分 (Slide 21-31)</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Evolution Pipeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-300">Java Concurrency Model Evolution Roadmap / Java 并发模型演进路线图</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">JDK 1.0 $\rightarrow$ JDK 5 $\rightarrow$ JDK 8 $\rightarrow$ JDK 21+</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-2 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-lock mr-1 text-slate-400"></i>JDK 1.0: OS Thread</div>
+                    <div class="text-[9px] text-slate-400">synchronized & Monitor</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-indigo-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-indigo-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-gears mr-1 text-indigo-400"></i>JDK 5: J.U.C Era</div>
+                    <div class="text-[9px] text-slate-400">AQS, CAS & ReentrantLock</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-network-wired mr-1 text-purple-400"></i>JDK 8: Async/NIO</div>
+                    <div class="text-[9px] text-slate-400">CompletableFuture & Reactor</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-bolt mr-1 text-emerald-400"></i>JDK 21+: Loom Era</div>
+                    <div class="text-[9px] text-slate-400">Virtual Threads & Structured</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-600 text-white text-base shrink-0">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Lecturer & Course Info / 主讲信息</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>主讲人：Haopeng Chen</strong> · REINS Group, Shanghai Jiao Tong University (SJTU)
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:block text-right">
+                <span class="inline-block px-3 py-1 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-700">
+                    SJTU Server-Side Development
+                </span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">01</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[3.2%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (01.html -> 02.html) -->
+        <div class="flex items-center space-x-3">
+            <span title="已是第一页" class="p-2 rounded-lg border border-slate-200 bg-slate-100 text-slate-300 cursor-not-allowed flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </span>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">封面与概览 (Title & Overview)</span>
+            <a href="2.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <span title="已是第一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </span>
+                <a href="2.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 课程导入致辞与定位：</span>
+                    “欢迎大家来到《服务端开发》第二单元的第 2 讲。高并发是服务端架构的核心命题。在过去的 20 年里，Java 的并发体系经历了从原生操作系统线程到 J.U.C 锁、无锁并发，再到响应式编程的演进。今天，Java 21 带来了革命性的 Project Loom 虚拟线程。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 本讲核心教学主线：</span>
+                    “提示学员：本讲共有 31 页，我们将按照‘底层 JMM $\rightarrow$ 经典 J.U.C $\rightarrow$ 1:1 平台线程瓶颈 $\rightarrow$ Java 21 虚拟线程 $\rightarrow$ 架构选型与实战’的层次逐步展开。重点帮助大家建立高吞吐服务端的模型思维，解决高并发 I/O 阻塞危机。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '2.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

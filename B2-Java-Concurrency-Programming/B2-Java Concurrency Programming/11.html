@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - AbstractQueuedSynchronizer (AQS) 机制与底层队列原理</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-gears"></i>
+                <span>Part 02 · J.U.C 高并发工具包 (J.U.C Deep Dive)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                J.U.C 基石：AbstractQueuedSynchronizer (AQS) 机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                探究 volatile state 状态管理、CLH 双向变体队列入队与 LockSupport 线程挂起/唤醒机制
+            </p>
+        </div>
+
+        <!-- Content Grid: AQS Core Architecture (5 cols) vs Queue State Flow & Source Logic (7 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: AQS Core 3 Pillars & CLH Topology (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap"></i>
+                            <span>AQS 核心三要素 (Core Pillars)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">AbstractQueuedSynchronizer</span>
+                    </div>
+
+                    <!-- 3 Pillars Box -->
+                    <div class="space-y-2 text-xs mb-3">
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                            <div class="font-mono text-[11px] font-bold text-indigo-300 flex items-center justify-between mb-1">
+                                <span>1. State 状态变量</span>
+                                <code class="text-amber-400 text-[10px]">private volatile int state</code>
+                            </div>
+                            <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                                使用 CAS 进行原子更新。在 Lock 中代表重入次数，在 Semaphore 中代表可用许可数，在 CountDownLatch 中代表剩余倒计数。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                            <div class="font-mono text-[11px] font-bold text-purple-300 flex items-center justify-between mb-1">
+                                <span>2. CLH 双向 FIFO 队列</span>
+                                <code class="text-slate-400 text-[10px]">Head & Tail Node</code>
+                            </div>
+                            <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                                抢锁失败的线程被封装为 Node 节点插入尾部，形成虚拟双向链表。节点自旋检查前驱状态或挂起。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                            <div class="font-mono text-[11px] font-bold text-emerald-400 flex items-center justify-between mb-1">
+                                <span>3. LockSupport 挂起/唤醒</span>
+                                <code class="text-emerald-300 text-[10px]">park() / unpark()</code>
+                            </div>
+                            <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                                底层使用 POSIX pthread_mutex / condition 挂起与恢复线程，避免低效自旋浪费 CPU 资源。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- CLH Visual Queue Diagram -->
+                    <div class="p-2.5 bg-slate-950 rounded-xl border border-purple-900/60 font-mono text-[10px]">
+                        <div class="text-purple-300 font-bold mb-1.5 flex items-center justify-between">
+                            <span>CLH 双向队列拓扑示意图</span>
+                            <span class="text-[9px] text-slate-400">Dummy Head Node</span>
+                        </div>
+                        <div class="flex items-center justify-between text-center gap-1 text-[9px]">
+                            <div class="p-1.5 rounded bg-purple-950 border border-purple-700 text-purple-200 flex-1">
+                                <div class="font-bold">HEAD</div>
+                                <div class="text-[8px] text-slate-400">Virtual Node</div>
+                            </div>
+                            <span class="text-purple-400 font-bold">&lt;=&gt;</span>
+                            <div class="p-1.5 rounded bg-slate-900 border border-amber-800 text-amber-200 flex-1">
+                                <div class="font-bold">Node A</div>
+                                <div class="text-[8px] text-rose-400">SIGNAL (-1)</div>
+                            </div>
+                            <span class="text-purple-400 font-bold">&lt;=&gt;</span>
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-700 text-slate-300 flex-1">
+                                <div class="font-bold">TAIL</div>
+                                <div class="text-[8px] text-slate-400">Node B</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>模式切分：独占模式 (Exclusive) 与 共享模式 (Shared)</span>
+                    <i class="fa-solid fa-code-branch text-amber-400"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: AQS Acquire/Release Flow & Template Method Design (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-purple-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-purple-600"></i>
+                            <span>AQS 独占式获取锁核心流程 (acquire 方法源码逻辑)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Template Method Pattern</span>
+                    </div>
+
+                    <!-- Code Snippet: AQS acquire() logic -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div class="text-slate-500">// AQS 模板方法：acquire(int arg)</div>
+                        <div><span class="text-purple-400">public final void</span> <span class="text-blue-400">acquire</span>(<span class="text-purple-400">int</span> arg) {</div>
+                        <div class="pl-4 text-amber-300">// 1. 子类重写 tryAcquire 尝试 CAS 改 state 抢锁</div>
+                        <div class="pl-4"><span class="text-purple-400">if</span> (!<span class="text-blue-300">tryAcquire</span>(arg) &amp;&amp;</div>
+                        <div class="pl-8 text-rose-300">// 2. 抢锁失败则封装 Node 并 CAS 压入 CLH 队列尾部</div>
+                        <div class="pl-8"><span class="text-blue-300">acquireQueued</span>(<span class="text-blue-300">addWaiter</span>(Node.EXCLUSIVE), arg)) {</div>
+                        <div class="pl-8 text-emerald-400">// 3. 若在等待过程中被中断，自我补发中断信号</div>
+                        <div class="pl-8"><span class="text-blue-300">selfInterrupt</span>();</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Node Status Table / Callout -->
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-bold text-slate-900 text-[11px] mb-1 flex items-center justify-between">
+                                <span class="flex items-center gap-1.5 font-mono text-purple-700">
+                                    <i class="fa-solid fa-tags"></i>
+                                    <span>CLH Node 关键状态标志 (waitStatus)</span>
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                <div class="bg-white p-1.5 rounded border border-slate-200">
+                                    <span class="text-rose-600 font-bold">SIGNAL (-1)</span>: 后继节点处于挂起状态，当前节点释放锁时必须唤醒后继。
+                                </div>
+                                <div class="bg-white p-1.5 rounded border border-slate-200">
+                                    <span class="text-amber-600 font-bold">CANCELLED (1)</span>: 线程因超时或中断放弃抢锁，需从队列中剔除。
+                                </div>
+                                <div class="bg-white p-1.5 rounded border border-slate-200">
+                                    <span class="text-purple-600 font-bold">CONDITION (-2)</span>: 节点处于 Condition 条件等待队列中。
+                                </div>
+                                <div class="bg-white p-1.5 rounded border border-slate-200">
+                                    <span class="text-emerald-600 font-bold">PROPAGATE (-3)</span>: 共享模式下无条件向后传播释放通知。
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Components powered by AQS -->
+                        <div class="p-2 rounded-xl bg-purple-50/70 border border-purple-200 text-purple-900 flex items-center justify-between text-[10px] font-mono">
+                            <span class="font-bold">AQS 驱动的顶级组件：</span>
+                            <span class="px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">ReentrantLock</span>
+                            <span class="px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">Semaphore</span>
+                            <span class="px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">CountDownLatch</span>
+                            <span class="px-2 py-0.5 rounded bg-white border border-purple-200 text-purple-800">ReentrantReadWriteLock</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>设计精髓：模板方法模式 (Template Method Pattern) 优雅解耦</span>
+                    <i class="fa-solid fa-shapes text-purple-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-cubes"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">架构抽象之美 (Architectural Elegance)</h4>
+                    <p class="text-xs text-slate-700">
+                        AQS 将复杂的“线程排队、阻塞唤醒、中断处理”统一封装在基类中，具体的同步组件（如 ReentrantLock、Semaphore）只需重写 <code class="font-mono text-purple-800 font-bold">tryAcquire / tryRelease</code> 定义具体的 state 改变规则——这是软件设计高内聚低耦合的经典范本！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 11 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">11</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[35.48%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (10.html <- 11.html -> 12.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">AbstractQueuedSynchronizer (AQS) 深度剖析</span>
+            <a href="12.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="10.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="12.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生理解 AQS 状态与排队机制：</span>
+                    “向学生强调：AQS 解决的核心问题是‘在竞争资源时，没抢到锁的线程去哪里、怎么安全地挂起和被唤醒’。它通过 CAS 原子修改 volatile state，结合双向 CLH 队列变体，避免了无意义的 CPU 死循环自旋。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析 Node 节点 state=SIGNAL 的妙用：</span>
+                    “提示学生：为什么 Node 需要 `SIGNAL (-1)` 状态？因为前驱节点在释放锁（unpark）时，必须知道后面有没有节点在挂起等待。后继节点挂起前，会显式将前驱节点的状态设置为 SIGNAL，表示‘哥们你释放时记得唤醒我’。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

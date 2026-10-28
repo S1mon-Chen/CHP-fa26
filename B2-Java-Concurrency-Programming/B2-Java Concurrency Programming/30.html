@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 总结与现代 Java 并发架构选型决策树</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-500"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-compass text-amber-600"></i>
+                <span>Part 05 · 现代服务端并发架构选型 (Architecture Choices & Practice)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                并发模型全景总结与现代 Java 选型决策树
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                融会贯通 JMM、J.U.C、平台线程物理瓶颈与 Java 21+ 虚拟线程 / 结构化并发体系，构建工程化高吞吐决策模型
+            </p>
+        </div>
+
+        <!-- Content Grid: Concurrency Model Roadmap (6 cols) vs Decision Tree Model (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: Concurrency Model Evolution Summary (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-timeline text-amber-600"></i>
+                            <span>1. Java 20 年并发技术演化里程碑</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Evolutionary Paradigm Shift</span>
+                    </div>
+
+                    <!-- Evolutionary Timeline Cards -->
+                    <div class="space-y-2 text-xs font-mono mb-3">
+                        <!-- Era 1: JDK 1.0 - 1.4 -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-bold text-[9px] shrink-0 mt-0.5">JDK 1.0+</span>
+                            <div>
+                                <div class="font-bold text-slate-800 text-[11px]">内置锁时代 (Monitored Thread Era)</div>
+                                <p class="text-[10px] text-slate-600 font-sans leading-relaxed mt-0.5">
+                                    依赖原生 `synchronized` 与 `Object.wait/notify`，基于重度 OS Mutex 锁，无法解决复杂的非阻塞排队与细粒度同步。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Era 2: JDK 5 - 7 -->
+                        <div class="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-indigo-200 text-indigo-800 font-bold text-[9px] shrink-0 mt-0.5">JDK 5/7</span>
+                            <div>
+                                <div class="font-bold text-indigo-900 text-[11px]">J.U.C 与 AQS 无锁时代 (Explicit Locks & Pools)</div>
+                                <p class="text-[10px] text-slate-700 font-sans leading-relaxed mt-0.5">
+                                    Doug Lea 引入 J.U.C 工具包、AQS 双向队列、CAS 原语与 `ThreadPoolExecutor`。解耦了锁机制，奠定了高性能服务端基础。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Era 3: JDK 8 - 17 -->
+                        <div class="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-purple-200 text-purple-800 font-bold text-[9px] shrink-0 mt-0.5">JDK 8/17</span>
+                            <div>
+                                <div class="font-bold text-purple-900 text-[11px]">声明式异步与响应式流 (Async Pipeline & WebFlux)</div>
+                                <p class="text-[10px] text-slate-700 font-sans leading-relaxed mt-0.5">
+                                    `CompletableFuture` 与 Netty / Project Reactor 解决非阻塞高吞吐，但牺牲了单线程直进直出语法与 StackTrace 调试体验。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Era 4: JDK 21+ -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start gap-2.5">
+                            <span class="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold text-[9px] shrink-0 mt-0.5">JDK 21+</span>
+                            <div>
+                                <div class="font-bold text-emerald-900 text-[11px]">虚拟线程与结构化并发 (Project Loom & Structured)</div>
+                                <p class="text-[10px] text-slate-700 font-sans leading-relaxed mt-0.5">
+                                    **回归最简单线程 Blocking 语法**，利用 M:N Continuation 卸载极致释放 CPU，彻底消除 1:1 平台线程瓶颈与复杂异步回调！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心演进准则：用最简单的代码语法，换取极致的云原生硬件吞吐</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Modern Java Concurrency Decision Tree (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap"></i>
+                            <span>2. 现代 Java 服务端并发选型决策树</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Production Decision Tree</span>
+                    </div>
+
+                    <!-- Decision Tree Visual Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center">
+                            生产环境业务负载类型 (Workload Profile)
+                        </div>
+
+                        <!-- Decision Branch 1: CPU-Bound -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[10px]">
+                            <div class="flex items-center justify-between font-bold text-rose-300 mb-1">
+                                <span>分支 A：CPU 密集型 (如加密/图像处理/巨型计算)</span>
+                                <span class="text-slate-400 text-[8.5px]">CPU-Bound Workload</span>
+                            </div>
+                            <p class="text-[9.5px] text-slate-400 font-sans leading-relaxed">
+                                决策：采用经典 <code class="text-amber-300">ThreadPoolExecutor</code> 或 <code class="text-amber-300">ForkJoinPool</code>。
+                                线程池大小设为 <strong class="text-slate-200">$N_{\text{cpu}} + 1$</strong>，切勿开辟超量虚拟线程避免无效切换！
+                            </p>
+                        </div>
+
+                        <!-- Decision Branch 2: IO-Bound CRUD -->
+                        <div class="p-2 rounded bg-emerald-950/70 border border-emerald-800 text-[10px]">
+                            <div class="flex items-center justify-between font-bold text-emerald-300 mb-1">
+                                <span>分支 B：I/O 密集型微服务 (JDBC/RPC/Rest/Redis)</span>
+                                <span class="text-emerald-400 text-[8.5px] font-bold">★ 黄金场景首选</span>
+                            </div>
+                            <p class="text-[9.5px] text-slate-300 font-sans leading-relaxed">
+                                决策：**全面升级 Java 21+ 虚拟线程** (`spring.threads.virtual.enabled=true`)！
+                                一任务一虚拟线程，使用 <code class="text-amber-300">Semaphore</code> 进行 DB 限流，用 <code class="text-amber-300">ReentrantLock</code> 替代 `synchronized`。
+                            </p>
+                        </div>
+
+                        <!-- Decision Branch 3: SSE / WebSocket / Streaming -->
+                        <div class="p-2 rounded bg-purple-950/60 border border-purple-800 text-[10px]">
+                            <div class="flex items-center justify-between font-bold text-purple-300 mb-1">
+                                <span>分支 C：大模型流式推送 (SSE) / 长连接反压 (WebSocket)</span>
+                                <span class="text-slate-400 text-[8.5px]">Reactive & Streaming</span>
+                            </div>
+                            <p class="text-[9.5px] text-slate-300 font-sans leading-relaxed">
+                                决策：结合 **Netty / WebFlux / Project Reactor** 处理网络底层的事件流与反压 (Backpressure)，业务聚合层依然可无缝衔接虚拟线程。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Summary Guidelines -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-amber-300 font-bold block mb-0.5">限制池化思想</span>
+                            <p class="text-[9px] text-slate-400 font-sans">
+                                不要池化虚拟线程！虚拟线程随用随建、用完即毁。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                            <span class="text-emerald-300 font-bold block mb-0.5">上下文传递演进</span>
+                            <p class="text-[9px] text-slate-400 font-sans">
+                                全面放弃 ThreadLocal，改用只读结构化 `ScopedValue`。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span>黄金法则：简单性大于复杂性，优先选择可读性最高的单线程 Blocking 代码</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-compass"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">现代并发终极抉择哲学 (Ultimate Concurrency Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        现代 Java 并发革新的终化目标是：**将高并发的复杂性屏蔽在 JVM 内部**。面对绝大多数 I/O 密集型 Web 微服务，无需牺牲代码可读性去写响应式流。开启 Java 21 虚拟线程，配合 `StructuredTaskScope` 结构化管控与 `Semaphore` 资源防护，就是最优雅、最高性价比的现代后端选型！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 30 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[96.77%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">全景总结与现代并发决策树</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 帮助学生串联全讲并发演化脉络：</span>
+                    “向学生总结：回顾整讲内容，我们经历了从 JDK 1.0 的操作系统线程 + synchronized，到 JDK 5 的 J.U.C 无锁并发，再到 JDK 8 的异步回调，直至 JDK 21+ 虚拟线程。本质上是不断降低并发编程的门槛，把底层的并发调度复杂性收回到 JVM 内部。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 强调工程落地时的架构决策逻辑：</span>
+                    “引导学生记住决策树：面对 CPU 密集型任务，依然要用固定大小的 Platform 线程池；面对占 90% 以上的 I/O 密集型微服务，直接启用 Java 21 虚拟线程，用简单的单线程同步 Blocking 代码换取极高的吞吐量。而在大模型 SSE 流式输出等特殊反压场景下，依然可以保留 Netty / Reactive 处理！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - 虚拟线程踩坑指南：Pinning (线程固定) 瓶颈剖析与重构</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                <span>Part 04 · Java 21 虚拟线程 (Project Loom)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                避坑指南：Pinning (线程固定) 瓶颈剖析与重构
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                探究 synchronized 与 JNI 导致 Carrier Thread 无法卸载卡死机制、-Djdk.tracePinnedThreads 排查与 ReentrantLock 替代方案
+            </p>
+        </div>
+
+        <!-- Content Grid: Pinning Cause Breakdown (6 cols) vs Diagnostics & ReentrantLock Refactoring (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: What is Pinning & Root Causes (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-rose-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-link-slash"></i>
+                            <span>1. 什么是 Pinning (线程固定)？</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Carrier Thread Stall</span>
+                    </div>
+
+                    <!-- Pinning Definition Card -->
+                    <div class="p-3 bg-rose-50/70 rounded-xl border border-rose-200 space-y-1.5 mb-3 font-mono text-xs">
+                        <div class="font-bold text-rose-900 text-[11px] flex items-center justify-between">
+                            <span>Pinning 现象致命危害：卸载失败致 OS 线程被卡死</span>
+                            <span class="text-rose-600 font-bold text-[9px]">C1000K Collapse</span>
+                        </div>
+                        <p class="text-[10px] text-slate-700 font-sans leading-relaxed">
+                            当虚拟线程进入 **Pinning 状态** 时，其调用栈无法在阻塞时被序列化卸载（Unmount）到 Java 堆。此时底层的载体 platform 线程（Carrier Thread）会被 **同步绑死硬挂起**。若海量虚拟线程同时触发 Pinning，底层 ForkJoinPool 的载体线程将被快速耗尽僵死！
+                        </p>
+                    </div>
+
+                    <!-- 2 Main Root Causes -->
+                    <div class="space-y-2 text-xs font-mono">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-rose-800 text-[11px] flex items-center justify-between">
+                                <span>触发原因 ①：在 synchronized 代码块/方法内部发起阻塞 I/O</span>
+                                <span class="text-rose-600 text-[9px] bg-rose-100 px-2 py-0.5 rounded border border-rose-300 font-bold">高频生产坑</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                Java 内置的 `synchronized` 依赖 C++ 的 `ObjectMonitor`，Monitor 锁结构目前与平台线程栈深度绑定。在 `synchronized` 内部进行网络调用、数据库查询或 `Thread.sleep` 会锁定 Carrier Thread！
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-indigo-700 text-[11px] flex items-center justify-between">
+                                <span>触发原因 ②：在 JNI (Native 方法) 执行期间发起阻塞操作</span>
+                                <span class="text-slate-400 text-[9px]">Native Code Barrier</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                当虚拟线程调用通过 JNI 嵌入的 C/C++ 本地原生方法时，JVM 无法干预 Native 栈帧，同样会导致虚拟线程不可 Unmount。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>演进展望：JDK 24+ (JEP 491) 将逐步彻底消除 synchronized 的 Pinning 限制</span>
+                    <i class="fa-solid fa-clock-rotate-left text-emerald-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: JVM Trace Flags & ReentrantLock Refactoring (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-screwdriver-wrench"></i>
+                            <span>Pinning 排查诊断标志与 ReentrantLock 重构</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">-Djdk.tracePinnedThreads</span>
+                    </div>
+
+                    <!-- JVM Flag Banner Box -->
+                    <div class="p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[10px] text-slate-300 mb-2.5 space-y-1">
+                        <div class="text-amber-300 font-bold flex items-center justify-between">
+                            <span>JVM 诊断启动参数 (Print Stack Trace on Pin)</span>
+                            <span class="text-slate-500">JVM Flag</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 text-emerald-300">
+                            -Djdk.tracePinnedThreads=full
+                        </div>
+                        <p class="text-[9px] text-slate-400 font-sans">
+                            当虚拟线程因 Pinning 导致 Carrier Thread 无法卸载并触发阻塞时，JVM 会在控制台打印详细的包含 `synchronized` 源码行号的 StackTrace！
+                        </p>
+                    </div>
+
+                    <!-- Bad vs Good Code Comparison -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300 mb-2 overflow-x-auto space-y-2">
+                        <!-- Bad Code -->
+                        <div>
+                            <div class="text-rose-400 font-bold">// ❌ 错误代码：synchronized 包裹同步阻塞 I/O (引发 Pinning)</div>
+                            <div><span class="text-purple-400">public synchronized</span> <span class="text-cyan-300">String</span> <span class="text-blue-300">fetchData</span>() {</div>
+                            <div class="pl-4 text-rose-300"><span class="text-purple-400">return</span> httpClient.<span class="text-blue-300">get</span>(url); <span class="text-slate-500">// 阻塞时绑死 Carrier Thread!</span></div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Good Code -->
+                        <div class="pt-1.5 border-t border-slate-800">
+                            <div class="text-emerald-400 font-bold">// ✅ 推荐重构：使用 J.U.C ReentrantLock 替代 synchronized</div>
+                            <div><span class="text-purple-400">private final</span> <span class="text-purple-400">ReentrantLock</span> lock = <span class="text-purple-400">new</span> <span class="text-purple-400">ReentrantLock</span>();</div>
+                            <div><span class="text-purple-400">public</span> <span class="text-cyan-300">String</span> <span class="text-blue-300">fetchDataRefactored</span>() {</div>
+                            <div class="pl-4">lock.<span class="text-blue-300">lock</span>();</div>
+                            <div class="pl-4"><span class="text-purple-400">try</span> {</div>
+                            <div class="pl-8 text-emerald-300"><span class="text-purple-400">return</span> httpClient.<span class="text-blue-300">get</span>(url); <span class="text-slate-500">// 虚拟线程可安全 Unmount，零 Pinning!</span></div>
+                            <div class="pl-4">} <span class="text-purple-400">finally</span> { lock.<span class="text-blue-300">unlock</span>(); }</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span>生产重构原则：升级 Java 21 虚拟线程前，全量扫描项目中的 synchronized I/O 模块</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-rose-200 bg-rose-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-rose-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-rose-900">Pinning 防御思考 (Pinning Mitigation Strategy)</h4>
+                    <p class="text-xs text-slate-700">
+                        Pinning 是 Java 21 虚拟线程迁移过程中最隐蔽的性能杀手。要避免生产环境高并发吞吐暴跌：**在临界区包含长耗时 I/O 或 RPC 调用时，务必将 `synchronized` 替换为 J.U.C 的 `ReentrantLock`**，并开启 JVM 诊断标志进行严格集成压测！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-700 font-bold">Slide 25 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">25</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[80.65%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (24.html <- 25.html -> 26.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">线程固定 Pinning 瓶颈与重构</span>
+            <a href="26.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="24.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="26.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导学生理解 Pinning 产生的本质原因：</span>
+                    “向学生强调：为什么 `synchronized` 会引起 Pinning？因为 Java 原生的 `synchronized` 对应 HotSpot C++ 的 `ObjectMonitor`，Monitor 锁帧目前直接压在平台线程栈上，使得 JVM 无法把当前的 `Continuation` 栈帧打包拉出来。当虚拟线程此时发起网络 I/O 阻塞时，连带底层的 Carrier Thread 也会被锁死！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调从 synchronized 到 ReentrantLock 的简单替换：</span>
+                    “提示学生：解决方案非常清晰——用 `ReentrantLock` 替换 `synchronized`。`ReentrantLock` 底层基于 AQS，其 `lock()` 调用已经被 JDK 21 团队用非阻塞写重构，即使在锁内部执行阻塞 I/O，虚拟线程依然可以平滑 Unmount 卸载！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 08 - JMM Happens-Before 规则与指令重排机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>Part 01 · 并发基础 (Concurrency Fundamentals)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                JMM Happens-Before 契约与指令重排机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                探究编译器/CPU 重排优化对有序性的破坏，剖析 JMM Happens-Before 内存可见性断言与屏障指令
+            </p>
+        </div>
+
+        <!-- Content Grid: Instruction Reordering Pipeline (5 cols) vs Happens-Before Guarantees (7 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: Instruction Reordering Pipeline & As-if-serial (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-[#fa8c16] fa-shuffle"></i>
+                            <span>指令重排序 (Instruction Reordering) Pipeline</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Optimization Pipeline</span>
+                    </div>
+
+                    <!-- Pipeline Diagram Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs space-y-2 mb-3">
+                        <div class="text-[10px] text-slate-400 text-center font-semibold">源代码到最终执行指令的三层重排阶段</div>
+                        
+                        <div class="space-y-1.5 text-[10px]">
+                            <!-- Stage 1 -->
+                            <div class="p-1.5 rounded bg-slate-900 border border-indigo-800/80 flex items-center justify-between">
+                                <span class="text-indigo-300 font-bold">1. 编译器优化重排</span>
+                                <span class="text-[9px] text-slate-400">JIT 编译器在不改变单线程语义前提下重排</span>
+                            </div>
+
+                            <div class="text-center text-[10px] text-slate-500"><i class="fa-solid fa-arrow-down"></i></div>
+
+                            <!-- Stage 2 -->
+                            <div class="p-1.5 rounded bg-slate-900 border border-purple-800/80 flex items-center justify-between">
+                                <span class="text-purple-300 font-bold">2. 指令级并行重排</span>
+                                <span class="text-[9px] text-slate-400">CPU ILP (Instruction-Level Parallelism) 重排</span>
+                            </div>
+
+                            <div class="text-center text-[10px] text-slate-500"><i class="fa-solid fa-arrow-down"></i></div>
+
+                            <!-- Stage 3 -->
+                            <div class="p-1.5 rounded bg-slate-900 border border-rose-800/80 flex items-center justify-between">
+                                <span class="text-rose-300 font-bold">3. 内存系统重排</span>
+                                <span class="text-[9px] text-slate-400">Store Buffer 缓存写回延迟引起的重排</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded bg-amber-950/40 border border-amber-800 text-[9px] text-amber-200 mt-2">
+                            <strong>as-if-serial 语义：</strong> 无论如何重排，单线程内程序的执行结果不能被改变。但对于**多线程并发**，重排将直接破坏线程间的逻辑依赖！
+                        </div>
+                    </div>
+
+                    <!-- Reordering Classic Code Danger -->
+                    <div class="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5">
+                        <div class="font-mono text-[10px] font-bold text-rose-400 flex items-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>经典乱序隐患：指令重排导致无锁双重检查锁 (DCL) 失效</span>
+                        </div>
+                        <div class="font-mono text-[9px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-800 leading-relaxed">
+                            <div>instance = <span class="text-purple-400">new</span> Singleton();</div>
+                            <div class="text-slate-500">// 正常：1. 分配内存 -> 2. 初始化对象 -> 3. 设置指针</div>
+                            <div class="text-rose-400">// 重排：1. 分配内存 -> 3. 设置指针 -> 2. 初始化对象</div>
+                            <div class="text-slate-400">// 导致其他线程拿到未初始化的半成品对象！</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>本质：重排序提升单核效率，却引发多核可见性混乱</span>
+                    <i class="fa-solid fa-microchip text-amber-400"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Happens-Before Rules Matrix & Guarantees (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-indigo-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>Happens-Before 八大核心规则 (JMM Guarantees)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Visibility Contract</span>
+                    </div>
+
+                    <!-- Happens-Before Definition Box -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 text-xs mb-3">
+                        <span class="font-bold text-indigo-900 block mb-0.5">DEFINITION (Happens-Before 含义)</span>
+                        <p class="text-[11px] text-slate-700 leading-relaxed">
+                            若操作 A Happens-Before (HB) 操作 B，则 A 操作产生的影响（写变量、方法调用等）**必然对 B 立即可见**，且 A 的执行顺序排在 B 之前。
+                        </p>
+                    </div>
+
+                    <!-- Rules List -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">1. 程序次序规则 (Program Order)</div>
+                            <p class="text-[10px] text-slate-600">单线程内，按代码控制流顺序，前面的操作 HB 于后面的操作。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">2. 管程锁定规则 (Monitor Lock)</div>
+                            <p class="text-[10px] text-slate-600">对一个锁的 unlock 操作 HB 于后续对同一个锁的 lock 操作。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">3. volatile 变量规则</div>
+                            <p class="text-[10px] text-slate-600">对 volatile 变量的写操作 HB 于后续对该变量的读操作。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">4. 线程启动规则 (Thread Start)</div>
+                            <p class="text-[10px] text-slate-600">Thread 对象的 start() 方法 HB 于该线程的每一个动作。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">5. 线程终止规则 (Thread Join)</div>
+                            <p class="text-[10px] text-slate-600">线程中的所有操作都 HB 于对此线程的 join() 检测返回。</p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                            <div class="font-mono font-bold text-indigo-700 text-[11px] mb-0.5">6. 传递性规则 (Transitivity)</div>
+                            <p class="text-[10px] text-slate-600">若 A HB B 且 B HB C，则操作 A 必然 HB 于操作 C。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>底层实现：JVM 通过插入**内存屏障指令 (Memory Barriers)** 禁重排与强刷缓存</span>
+                    <i class="fa-solid fa-lock text-indigo-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">契约思维 (Contract Takeaway)</h4>
+                    <p class="text-xs text-slate-700">
+                        Happens-Before 是 JVM 规范向开发者承诺的“内存可见性保证”。只要你的代码遵循 Happens-Before 规则（如加锁或使用 volatile），JVM 与底层 CPU 保证在任何硬件平台都能正确反映数据更新！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 8 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">08</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[25.80%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (7.html <- 8.html -> 9.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">JMM Happens-Before 契约与指令重排机制</span>
+            <a href="9.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="7.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="9.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学生理解指令重排与 as-if-serial：</span>
+                    “向学生强调：优化（重排）本身是为了榨干 CPU 的并行处理能力。在单线程下，重排绝不会改变执行结果；但在多线程场景下，如 DCL 双重检查锁（Singleton），指令重排会导致另一个线程拿到未初始化的内存对象，直接引发空指针或状态污染！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 解读 Happens-Before 契约的本质：</span>
+                    “提示学生：程序员不需要去记底层的 x86 `mfence` 或 ARM `dmb` 内存屏障指令，只需要记住 Happens-Before 规则。只要建立了 Happens-Before 关系（如 volatile 或 synchronized），JVM 就会自动插入相应的内存屏障，保证指令不被乱序且内存修改立即可见。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

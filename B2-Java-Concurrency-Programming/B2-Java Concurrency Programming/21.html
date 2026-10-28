@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 21 - Java 21 虚拟线程概念与 M:N 调度架构</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-bolt text-emerald-600"></i>
+                <span>Part 04 · Java 21 虚拟线程 (Project Loom)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                什么是虚拟线程？(What is a Virtual Thread?)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                剖析 Project Loom 物理线程解绑机制、M:N 用户态调度模型、百字节微型堆栈与百万级长连接支撑能力
+            </p>
+        </div>
+
+        <!-- Content Grid: M:N Model Architecture (6 cols) vs Comparison & Core Characteristics (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: M:N Mapping Topology & Architecture (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap"></i>
+                            <span>Project Loom：M:N 用户态线程解绑拓扑</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Virtual Thread vs Carrier Thread</span>
+                    </div>
+
+                    <!-- M:N Schematic Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center">
+                            M 个虚拟线程映射到 N 个平台/载体线程 ($M \gg N$)
+                        </div>
+
+                        <!-- Architecture Diagram -->
+                        <div class="space-y-1.5 text-[10px]">
+                            <!-- M Virtual Threads -->
+                            <div class="p-2 rounded bg-emerald-950/60 border border-emerald-800 flex justify-between items-center text-emerald-200">
+                                <div>
+                                    <span class="font-bold">M 个用户态虚拟线程 (Virtual Threads)</span>
+                                    <p class="text-[8px] text-emerald-400/80 font-sans">100,000+ 个微型线程，保存在 JVM 堆内存，无 OS 句柄限制</p>
+                                </div>
+                                <span class="px-2 py-0.5 rounded bg-emerald-900 border border-emerald-700 font-bold text-emerald-300">100 万级</span>
+                            </div>
+
+                            <!-- Down Arrows -->
+                            <div class="text-center text-amber-400 text-[9px] font-bold flex justify-center items-center gap-2">
+                                <i class="fa-solid fa-arrow-down"></i>
+                                <span>JVM 调度器 (ForkJoinPool FIFO 队列) 动态 Mount / Unmount</span>
+                                <i class="fa-solid fa-arrow-down"></i>
+                            </div>
+
+                            <!-- N Carrier Threads -->
+                            <div class="p-2 rounded bg-slate-900 border border-indigo-800/80 flex justify-between items-center text-indigo-200">
+                                <div>
+                                    <span class="font-bold">N 个载体平台线程 (Carrier Threads)</span>
+                                    <p class="text-[8px] text-slate-400 font-sans">即传统的 `java.lang.Thread`，数量 $N \approx \text{CPU 核心数}$</p>
+                                </div>
+                                <span class="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-700 font-bold text-indigo-300">N 核相近</span>
+                            </div>
+
+                            <!-- 1:1 OS Mapping -->
+                            <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-center text-[9px] text-slate-400">
+                                <span class="text-slate-300 font-bold">&lt;==== 1 : 1 内核绑定 ====&gt;</span>
+                                <span class="text-indigo-300 ml-1">OS Kernel Threads & CPU Cores</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Card: Platform Thread vs Virtual Thread -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-900/60">
+                            <span class="text-rose-400 font-bold block mb-1">传统平台线程 (Platform)</span>
+                            <ul class="text-[9px] text-slate-300 space-y-1 font-sans">
+                                <li>• 内存：预分配 <strong class="text-rose-300">~1MB 固定栈</strong></li>
+                                <li>• 数量限制：受限于 OS (~10k max)</li>
+                                <li>• 上下文切换：昂贵的 OS 内核态切换</li>
+                                <li>• 创建耗时：<strong class="text-rose-300">~1,000 微秒</strong> (Syscall)</li>
+                            </ul>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-800">
+                            <span class="text-emerald-300 font-bold block mb-1">Java 21 虚拟线程 (Virtual)</span>
+                            <ul class="text-[9px] text-slate-300 space-y-1 font-sans">
+                                <li>• 内存：初始仅 <strong class="text-emerald-300">~200-300 字节</strong></li>
+                                <li>• 数量限制：堆内存容量 (~1,000,000+)</li>
+                                <li>• 上下文切换：轻量级 JVM 用户态卸载</li>
+                                <li>• 创建耗时：<strong class="text-emerald-300">~1 微秒</strong> (Heap Alloc)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>本质演进：将线程管理的控制权从“操作系统内核”收回到“JVM 用户态”</span>
+                    <i class="fa-solid fa-bolt text-emerald-400"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Core Characteristics & Code Paradigm (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-emerald-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cube"></i>
+                            <span>虚拟线程三大核心特性与范式革新</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Zero Paradigm Shift</span>
+                    </div>
+
+                    <!-- Characteristics List -->
+                    <div class="space-y-2 text-xs font-mono mb-3">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5">
+                            <div class="font-bold text-emerald-800 text-[11px] flex items-center justify-between">
+                                <span>1. 极度轻量，随用随建 (Disposable & Cheap)</span>
+                                <span class="text-slate-400 text-[9px]">No Thread Pool Needed!</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                虚拟线程极其便宜且数量几乎无限，创建成本等同于实例化一个普通 Java 对象。<strong class="text-emerald-700">彻底摒弃“线程池复用/池化”思维！</strong>
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5">
+                            <div class="font-bold text-indigo-700 text-[11px] flex items-center justify-between">
+                                <span>2. 零范式转移 (Zero Paradigm Shift)</span>
+                                <span class="text-slate-400 text-[9px]">java.lang.Thread Subclass</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                虚拟线程依然是 <code class="text-indigo-800 font-bold">java.lang.Thread</code> 的实例！无缝继承已有的断点调试、`ThreadLocal`、`Thread.currentThread()` 与全部标准异常堆栈结构。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-0.5">
+                            <div class="font-bold text-emerald-900 text-[11px] flex items-center justify-between">
+                                <span>3. 保留同步阻塞代码编写体验 (Synchronous Coding)</span>
+                                <span class="text-emerald-700 font-bold text-[9px]">Write Sync, Run Async</span>
+                            </div>
+                            <p class="text-[10px] text-slate-700 font-sans leading-relaxed">
+                                开发者无需再写复杂难懂的响应式流回调（Flux/Mono）。像写单线程逻辑一样写 <code class="font-mono text-emerald-800 font-bold">jdbc.query()</code> 或 <code class="font-mono text-emerald-800 font-bold">http.send()</code>，底层自动转换为非阻塞挂起！
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Code Preview Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300">
+                        <div class="text-slate-500">// Java 21 启动虚拟线程的两种标准方式</div>
+                        <div><span class="text-purple-400">Thread</span>.ofVirtual().name(<span class="text-emerald-300">"vt-worker"</span>).start(() -&gt; {</div>
+                        <div class="pl-4 text-emerald-400">// 执行同步阻塞 I/O (底层自动非阻塞出栈)</div>
+                        <div class="pl-4"><span class="text-purple-400">var</span> response = httpClient.<span class="text-blue-300">send</span>(req, HttpResponse.BodyHandlers.<span class="text-blue-300">ofString</span>());</div>
+                        <div>});</div>
+
+                        <div class="text-slate-500 mt-1.5">// 生产级：为每个 incoming 任务派生独立虚拟线程</div>
+                        <div><span class="text-purple-400">try</span> (<span class="text-purple-400">var</span> executor = Executors.<span class="text-blue-300">newVirtualThreadPerTaskExecutor</span>()) {</div>
+                        <div class="pl-4">executor.<span class="text-blue-300">submit</span>(() -&gt; processUserOrder(orderId));</div>
+                        <div>} <span class="text-slate-500">// AutoCloseable 自动等待所有虚拟线程归队</span></div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>目标场景：高并发 I/O 密集型微服务与 Serverless 网关</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">高并发架构哲学革化 (Project Loom Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        虚拟线程让 Java 重新兼具了**“最简单易懂的同步串行编程模型”**与**“支撑 C1000K 百万并发的极端非阻塞吞吐”**。高并发不再需要牺牲代码可读性去硬写复杂的 Reactive 响应式流，Java 开发者终于迎来了云原生时代的协程红利！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 21 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">21</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[67.74%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (20.html <- 21.html -> 22.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="20.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">什么是虚拟线程？</span>
+            <a href="22.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="20.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="22.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生理解虚拟线程与 Go 语言 Goroutine 的异同：</span>
+                    “向学生说明：虚拟线程本质上就是 Java 官方实现的协程（Coroutine）。它与 Go 语言 Goroutine 的核心思想高度相似，即利用 M:N 调度让海量用户态线程共享极少数操作系统平台线程，从而解决传统 1:1 平台线程创建成本昂贵和内核态上下文切换损耗。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调思维转变：不要去‘池化’虚拟线程！</span>
+                    “提醒学生注意：过去我们在 Java 中使用 `ThreadPoolExecutor` 是因为操作系统平台线程太贵（1MB 栈 + Syscall）。但虚拟线程初始仅占 200 多字节，创建极为廉价，用完即丢即可。<strong class="text-amber-900">池化虚拟线程不仅没有任何性能收益，反倒增加了锁竞争与内存泄漏风险！</strong>”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '22.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

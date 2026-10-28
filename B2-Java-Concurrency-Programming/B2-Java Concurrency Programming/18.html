@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 1:1 平台线程物理瓶颈与内核开销剖析</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Part 03 · 传统并发架构瓶颈 (Limitations of Platform Threads)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                1:1 平台线程物理瓶颈与内核开销剖析
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                探究 OS 内核线程 1:1 映射机制、预分配 1MB 栈内存膨胀危机与上下文切换 CPU 损耗
+            </p>
+        </div>
+
+        <!-- Content Grid: 1:1 Model Architecture (6 cols) vs Overhead Analysis & Math (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: 1:1 Thread Mapping & Memory Footprint (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-rose-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired"></i>
+                            <span>1:1 平台线程与 OS 内核线程映射关系</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">java.lang.Thread (Classic)</span>
+                    </div>
+
+                    <!-- 1:1 Mapping Visual Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center">
+                            JVM Platform Thread 物理绑死 OS Kernel Thread
+                        </div>
+
+                        <!-- Mapping Schematic -->
+                        <div class="space-y-1.5 text-[10px]">
+                            <div class="p-2 rounded bg-slate-900 border border-rose-900/60 flex items-center justify-between">
+                                <span class="font-bold text-slate-200">Java Thread 1</span>
+                                <span class="text-rose-400 font-bold">&lt;==== 1 : 1 ====&gt;</span>
+                                <span class="text-indigo-300">OS Kernel Thread 1</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900 border border-rose-900/60 flex items-center justify-between">
+                                <span class="font-bold text-slate-200">Java Thread 2</span>
+                                <span class="text-rose-400 font-bold">&lt;==== 1 : 1 ====&gt;</span>
+                                <span class="text-indigo-300">OS Kernel Thread 2</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900 border border-rose-900/60 flex items-center justify-between">
+                                <span class="font-bold text-slate-200">Java Thread N</span>
+                                <span class="text-rose-400 font-bold">&lt;==== 1 : 1 ====&gt;</span>
+                                <span class="text-indigo-300">OS Kernel Thread N</span>
+                            </div>
+                        </div>
+
+                        <div class="p-2 bg-rose-950/40 border border-rose-800/80 rounded text-[9px] text-rose-200 leading-tight">
+                            <strong>生命周期绑定：</strong> 每一个平台线程的创建、调度和销毁都必须通过 JNI 调用 OS 内核 API（如 POSIX <code class="font-mono text-amber-300">pthread_create</code>），创建成本与系统代价高昂。
+                        </div>
+                    </div>
+
+                    <!-- Memory Calculation Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-900/80 text-xs font-mono">
+                        <div class="font-bold text-rose-400 text-[11px] mb-1 flex items-center justify-between">
+                            <span>内存暴雷公式 (Thread Stack Memory Footprint)</span>
+                            <span class="text-rose-300 text-[9px]">-Xss1m (Default)</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-[10px] leading-relaxed text-slate-300">
+                            <div class="text-indigo-300 font-bold text-center py-1">$$\text{RAM}_{\text{stacks}} = \text{Thread Count} \times \text{Stack Size (-Xss)}$$</div>
+                            <div class="text-amber-300 mt-1 font-bold text-center">10,000 线程 $\times$ 1 MB/Stack $\approx$ 10 GB 纯物理内存！</div>
+                            <div class="text-slate-400 text-[9px] mt-0.5 font-sans">哪怕线程处于 Blocked 空闲等待，这 1MB 的栈空间也无法释放被白白浪费。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>代价：高并发下内存大部分用于存放线程栈，引发 OOM 崩溃</span>
+                    <i class="fa-solid fa-skull-crossbones text-rose-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Context Switching Overhead Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-rose-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gauge-high"></i>
+                            <span>CPU 上下文切换 (Context Switch) 隐形损耗</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">User Mode vs Kernel Mode</span>
+                    </div>
+
+                    <!-- Context Switch Steps Grid -->
+                    <div class="space-y-2 text-xs font-mono mb-3">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-rose-700 text-[11px] flex items-center justify-between">
+                                <span>1. 状态保存与保存 PCB (Process Control Block)</span>
+                                <span class="text-slate-400 text-[9px]">\~1-2 microseconds</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                CPU 必须暂停当前指令流，将通用寄存器、程序计数器 (PC)、栈指针等状态写入内核态 PCB 结构体。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-rose-700 text-[11px] flex items-center justify-between">
+                                <span>2. 用户态与内核态特权级切换</span>
+                                <span class="text-slate-400 text-[9px]">Ring 3 $\longleftrightarrow$ Ring 0</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                涉及 CPU 保护模式中断响应与特权级转换，导致 CPU 指令流水线 (Pipeline) 彻底清空冲刷。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1">
+                            <div class="font-bold text-rose-800 text-[11px] flex items-center justify-between">
+                                <span>3. CPU L1/L2 缓存与 TLB 页表失效 (Cache Pollution)</span>
+                                <span class="text-rose-600 font-bold text-[9px]">致命隐形开销</span>
+                            </div>
+                            <p class="text-[10px] text-rose-900 font-sans leading-relaxed">
+                                新线程调度执行后，原本硬件 CPU L1/L2 高速缓存与 TLB (快表) 中的数据全部失效，引发大量的 **Cache Miss** 重新读主存！
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- CPU Waste Metric Banner -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 text-xs font-mono">
+                        <div class="font-bold text-amber-400 text-[11px] mb-1 flex items-center gap-1.5">
+                            <i class="fa-solid fa-chart-line"></i>
+                            <span>极限吞吐警示：上下文切换占比超限</span>
+                        </div>
+                        <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                            当活跃平台线程数远超 CPU 逻辑核心数时，系统超过 **20% - 30% 的 CPU 计算资源** 纯粹浪费在上下文切换本身，而非实际业务逻辑！
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>后果：1:1 平台线程架构无法扩展支撑 C10K / C1000K 海量并发</span>
+                    <i class="fa-solid fa-ban text-rose-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-rose-200 bg-rose-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-rose-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-rose-900">传统并发模型反思 (1:1 Model Limitations)</h4>
+                    <p class="text-xs text-slate-700">
+                        1:1 平台线程模型在处理 CPU 密集型任务时表现优异，但在面对**海量并发 I/O 阻塞请求**时，固定物理栈内存消耗与昂贵的内核态上下文切换成为了不可逾越的天花板。这倒逼了高并发后端向 **Java 21 虚拟线程 (M:N 协程)** 演进！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-700 font-bold">Slide 18 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-rose-600 h-full w-[58.06%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">1:1 平台线程物理瓶颈</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导学生反思传统平台线程的物理极限：</span>
+                    “向学生强调：为什么在 Java 21 之前，我们无法仅靠多线程轻松实现 C1000K（百万连接并发）？因为传统平台线程与 OS 内核线程是 1:1 绑定的。默认每个线程预分配 1MB 物理栈空间，1 万个线程就会吃掉 10GB 内存！而且绝大部分线程只是在阻塞等待网卡/数据库响应。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 解读 CPU 上下文切换的隐藏杀手——TLB 与 L1/L2 缓存失效：</span>
+                    “提示学生：上下文切换不单单是保存寄存器那几微秒。真正的性能杀手在于** Cache 污染**——当内核切换到新线程时，原本 CPU 缓存的物理数据和 TLB 页表映射全部变得不适用，引发大量的 Cache Miss 重新穿透读取 DRAM 主存！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

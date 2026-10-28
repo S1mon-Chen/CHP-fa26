@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - CompletableFuture 声明式异步编排与响应式流水线</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-gears"></i>
+                <span>Part 02 · J.U.C 高并发工具包 (J.U.C Deep Dive)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                CompletableFuture 声明式异步编排与响应式流水线
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                深入剖析 Future 阻塞缺陷、CompletableFuture 任务依赖图生成、多任务组合算子与生产级线程池隔离
+            </p>
+        </div>
+
+        <!-- Content Grid: CompletableFuture Operators & DAG (6 cols) vs Code Implementation & Isolation (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: Future Limitations & Operator Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-purple-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project"></i>
+                            <span>从 Future 同步阻塞到 CompletableFuture 声明式编排</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">java.util.concurrent</span>
+                    </div>
+
+                    <!-- Future vs CompletableFuture Comparison -->
+                    <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono mb-3 space-y-1">
+                        <div class="flex items-center justify-between font-bold text-[11px]">
+                            <span class="text-rose-600">传统 Future 局限：</span>
+                            <span class="text-slate-500">get() 阻塞等待 / 轮询 isDone() / 无法组合回调</span>
+                        </div>
+                        <div class="flex items-center justify-between font-bold text-[11px] pt-1 border-t border-slate-200">
+                            <span class="text-emerald-600">CompletableFuture 范式：</span>
+                            <span class="text-slate-700">非阻塞事件驱动 / 依赖链构建 / 异常透明降级</span>
+                        </div>
+                    </div>
+
+                    <!-- Operator Matrix Grid -->
+                    <div class="space-y-2 text-xs font-mono">
+                        <div class="font-bold text-slate-800 text-[11px] mb-1 flex items-center gap-1">
+                            <i class="fa-solid fa-bolt text-indigo-600"></i>
+                            <span>核心异步编排算子分类 (Async DAG Operators)</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-[10px]">
+                            <!-- 1. thenApply / thenAccept -->
+                            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-indigo-700">thenApply / thenAccept</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">
+                                    <strong>串行依赖链：</strong>前者进行值转换，后者纯消费结果，类似于 Stream 的 map / forEach。
+                                </div>
+                            </div>
+
+                            <!-- 2. thenCompose -->
+                            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-purple-700">thenCompose (flatMap)</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">
+                                    <strong>嵌套铺平：</strong>当回调函数本身返回新的 CompletableFuture 时，将其展开解包避免嵌套。
+                                </div>
+                            </div>
+
+                            <!-- 3. thenCombine -->
+                            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-amber-700">thenCombine (Zip)</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">
+                                    <strong>并行结果聚合：</strong>并行执行两个不相干的任务，当两者均完成后合并计算最终结果。
+                                </div>
+                            </div>
+
+                            <!-- 4. allOf / anyOf -->
+                            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                                <div class="font-bold text-emerald-700">allOf / anyOf (Gate)</div>
+                                <div class="text-[9px] text-slate-600 mt-0.5 font-sans">
+                                    <strong>多任务栅栏：</strong>等待所有任务并行完成（全量聚合）或任意一个任务率先返回（竞争响应）。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>生产规约：强烈禁止在 CompletableFuture 中缺省使用 ForkJoinPool.commonPool()</span>
+                    <i class="fa-solid fa-triangle-exclamation text-rose-500"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Snippet & Thread Isolation Best Practices (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code"></i>
+                            <span>生产级多服务并发聚合与超时降级实战</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Product Aggregator Pipeline</span>
+                    </div>
+
+                    <!-- Code Snippet: Aggregator Pipeline -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300 mb-3 overflow-x-auto">
+                        <div class="text-slate-500">// 声明式并行聚合商品基本信息与实时价格，带超时控制与降级</div>
+                        <div><span class="text-purple-400">public</span> CompletableFuture&lt;<span class="text-amber-300">ProductDetail</span>&gt; <span class="text-blue-400">getProductDetailAsync</span>(<span class="text-cyan-300">String</span> id) {</div>
+                        <div class="pl-3 text-slate-500">// 1. 异步并行请求商品基本信息服务 (指定自定义 bizExecutor)</div>
+                        <div class="pl-3"><span class="text-purple-400">var</span> productFuture = CompletableFuture.<span class="text-blue-300">supplyAsync</span>(</div>
+                        <div class="pl-6">() -&gt; productService.<span class="text-blue-300">getById</span>(id), bizExecutor);</div>
+                        
+                        <div class="pl-3 mt-1 text-slate-500">// 2. 异步并行请求价格服务，与基本信息进行并行聚合 (thenCombine)</div>
+                        <div class="pl-3"><span class="text-purple-400">return</span> productFuture.<span class="text-blue-300">thenCombineAsync</span>(</div>
+                        <div class="pl-6">CompletableFuture.<span class="text-blue-300">supplyAsync</span>(() -&gt; priceService.<span class="text-blue-300">getPrice</span>(id), bizExecutor),</div>
+                        <div class="pl-6">(product, price) -&gt; <span class="text-purple-400">new</span> <span class="text-amber-300">ProductDetail</span>(product, price),</div>
+                        <div class="pl-6">bizExecutor</div>
+                        <div class="pl-3">)</div>
+                        <div class="pl-3 text-amber-300">.<span class="text-blue-300">orTimeout</span>(<span class="text-cyan-300">2000L</span>, TimeUnit.MILLISECONDS) <span class="text-slate-500">// Java 9+ 链路超时防护</span></div>
+                        <div class="pl-3 text-emerald-400">.<span class="text-blue-300">exceptionally</span>(ex -&gt; {                      <span class="text-slate-500">// 异常/超时安全降级</span></div>
+                        <div class="pl-6">log.<span class="text-blue-300">error</span>(<span class="text-emerald-300">"Failed to aggregate detail for id: {}"</span>, id, ex);</div>
+                        <div class="pl-6"><span class="text-purple-400">return</span> <span class="text-amber-300">ProductDetail</span>.FALLBACK_EMPTY;</div>
+                        <div class="pl-3">});</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Thread Isolation & Java 9 Extensions -->
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-purple-800">
+                            <span class="text-purple-300 font-bold">💡 核心：线程池物理隔离</span>
+                            <p class="text-[9px] text-slate-400 font-sans mt-0.5">
+                                为 IO 密集型与计算密集型异步任务配置独立的 ThreadPoolExecutor，严禁共用 JVM 默认的 commonPool，防止死锁与互相饥饿。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-950 border border-amber-800">
+                            <span class="text-amber-300 font-bold">⏱️ JDK 9+ orTimeout 防护</span>
+                            <p class="text-[9px] text-slate-400 font-sans mt-0.5">
+                                原生支持 <code class="text-amber-300">orTimeout()</code> 与 <code class="text-amber-300">completeOnTimeout()</code>，无需显式引入 ScheduledExecutorService 即可精准控制熔断窗口。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>生产实践：结合 Micrometer Tracing (B3/W3C Header) 传递全链路 TraceId</span>
+                    <i class="fa-solid fa-route text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-network-wired"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">异步响应式管道设计思考 (Asynchronous Pipeline Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        <code class="font-mono text-purple-800 font-bold">CompletableFuture</code> 为 Java 8+ 带来了声明式非阻塞异步编排能力。通过将回调闭包挂接在 Task DAG 节点上，实现任务的高效解耦与并行吞吐。注意：高并发生产环境必须为不同业务划分**独立的自定义线程池**！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 17 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[54.84%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">CompletableFuture 异步管道编排</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生理解 CompletableFuture 的非阻塞编排威力：</span>
+                    “向学生强调：传统的 `Future.get()` 必须同步阻塞当前线程直到结果返回。而 `CompletableFuture` 允许我们将多个 RPC 或 DB 异步调用构建为无环有向图 (DAG)，当上游任务 completion 事件触发时，自动触发下游算子闭包，极大地提升了网关层与微服务聚合层的吞吐量。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调生产环境自定义线程池与 Java 9 orTimeout：</span>
+                    “提示学生：`supplyAsync` 如果不指定 Executor，默认会使用全局共享的 `ForkJoinPool.commonPool()`。如果在异步链条里有 Blocking I/O，极其容易拖垮整个 JVM 的公用线程池！另外展示 Java 9 引入的 `orTimeout`，说明如何在异步节点上增加 SLA 熔断控制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

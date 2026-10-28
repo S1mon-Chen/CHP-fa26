@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - 虚拟线程底层原理：Continuation 与 Mount/Unmount 机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX Mathematical Formula Engine -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 2 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/3 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-2">
+                <i class="fa-solid fa-bolt text-emerald-600"></i>
+                <span>Part 04 · Java 21 虚拟线程 (Project Loom)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                虚拟线程底层原理：Continuation 与 Mount/Unmount 机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-1">
+                探究 jdk.internal.vm.Continuation 状态机、堆栈帧序列化卸载与 OS epoll/kqueue 事件驱动解耦过程
+            </p>
+        </div>
+
+        <!-- Content Grid: Mount/Unmount Lifecycle Diagram (6 cols) vs Mechanism Breakdown (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-4 my-2">
+            
+            <!-- Left Column: Mount/Unmount Execution Timeline (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate"></i>
+                            <span>虚拟线程 I/O 阻塞 4 步调度生命周期</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Continuation State Lifecycle</span>
+                    </div>
+
+                    <!-- Diagram Pipeline Box -->
+                    <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs mb-3 space-y-2">
+                        <div class="text-[10px] text-amber-300 font-bold text-center uppercase tracking-wider flex items-center justify-center gap-1.5 flex-wrap">
+                            <span>Mount</span>
+                            <i class="fa-solid fa-arrow-right text-emerald-400 text-[9px]"></i>
+                            <span>Freeze / Unmount</span>
+                            <i class="fa-solid fa-arrow-right text-rose-400 text-[9px]"></i>
+                            <span>Epoll Wait</span>
+                            <i class="fa-solid fa-arrow-right text-amber-400 text-[9px]"></i>
+                            <span>Remount</span>
+                        </div>
+
+                        <!-- Step 1: Mount & Run -->
+                        <div class="p-2 rounded bg-slate-900 border border-emerald-800 flex items-center justify-between text-[10px]">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-300 font-bold text-[9px]">STEP 1</span>
+                                <span class="font-bold text-emerald-200">Mount (挂载)</span>
+                            </div>
+                            <span class="text-[9px] text-slate-400">VT 绑至 Carrier Thread 执行 Java 字节码</span>
+                        </div>
+
+                        <!-- Arrow Down 1 -->
+                        <div class="flex items-center justify-center gap-1 text-amber-400 text-[9px] font-bold py-0.5">
+                            <i class="fa-solid fa-down-long text-amber-400"></i>
+                            <span class="text-slate-400 font-sans text-[8.5px]">执行到同步阻塞点 (如 socket.read / Thread.sleep)</span>
+                        </div>
+
+                        <!-- Step 2: Unmount & Freeze -->
+                        <div class="p-2 rounded bg-slate-900 border border-rose-800 flex items-center justify-between text-[10px]">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-bold text-[9px]">STEP 2</span>
+                                <span class="font-bold text-rose-300">Unmount (卸载/Yield)</span>
+                            </div>
+                            <span class="text-[9px] text-slate-300 font-sans">栈帧冻结至 Heap <code class="font-mono text-amber-300">Continuation</code>，释放 Carrier</span>
+                        </div>
+
+                        <!-- Arrow Down 2 -->
+                        <div class="flex items-center justify-center gap-1 text-amber-400 text-[9px] font-bold py-0.5">
+                            <i class="fa-solid fa-down-long text-amber-400"></i>
+                            <span class="text-slate-400 font-sans text-[8.5px]">Carrier Thread 释放处理其他 VT；向 OS 注册 epoll</span>
+                        </div>
+
+                        <!-- Step 3: Polling Wait -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between text-[10px]">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-[9px]">STEP 3</span>
+                                <span class="font-bold text-slate-300">Poller Event (就绪)</span>
+                            </div>
+                            <span class="text-[9px] text-slate-400">OS 触发 epoll/kqueue 数据可读事件</span>
+                        </div>
+
+                        <!-- Arrow Down 3 -->
+                        <div class="flex items-center justify-center gap-1 text-amber-400 text-[9px] font-bold py-0.5">
+                            <i class="fa-solid fa-down-long text-amber-400"></i>
+                            <span class="text-slate-400 font-sans text-[8.5px]">JVM Poller 唤醒，将 VT 重新推入 ForkJoinPool 队列</span>
+                        </div>
+
+                        <!-- Step 4: Remount -->
+                        <div class="p-2 rounded bg-slate-900 border border-teal-800 flex items-center justify-between text-[10px]">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 font-bold text-[9px]">STEP 4</span>
+                                <span class="font-bold text-teal-200">Remount (重新挂载)</span>
+                            </div>
+                            <span class="text-[9px] text-slate-300 font-sans">任意空闲 Carrier 加载 Continuation 恢复栈帧</span>
+                        </div>
+                    </div>
+
+                    <!-- Key Advantage Callout -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-900/80 text-xs font-mono">
+                        <div class="font-bold text-emerald-400 text-[11px] mb-1 flex items-center justify-between">
+                            <span>核心性能红利：零 Carrier 阻塞 (Zero Carrier Stall)</span>
+                            <span class="text-emerald-300 text-[9px]">CPU Max Utilization</span>
+                        </div>
+                        <p class="text-[10px] text-slate-300 font-sans leading-relaxed">
+                            在整个 I/O 阻塞挂起期间，底层 OS 平台线程完全没有被卡住，而是被释放去运行其他虚拟线程。硬件 CPU 核心时刻保持满载运算！
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>本质：将原本由 OS 内核承担的调度阻塞工作，转移到了 JVM 用户态控制</span>
+                    <i class="fa-solid fa-bolt text-emerald-400"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: JVM Internal Mechanics & Continuation Object (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-emerald-600 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes-stacked"></i>
+                            <span>Continuation 机制与 Java 运行时改进</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">jdk.internal.vm.Continuation</span>
+                    </div>
+
+                    <!-- Breakdown Points -->
+                    <div class="space-y-2 text-xs font-mono mb-3">
+                        <!-- Continuation Object -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-emerald-800 text-[11px] flex items-center justify-between">
+                                <span>1. jdk.internal.vm.Continuation 概念</span>
+                                <span class="text-slate-400 text-[9px]">JVM Core Secret</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                Continuation 是 JVM 内部实现“可暂停/可恢复计算”的底层抽象。它保存了计算执行时的局部变量表、操作数栈与程序计数器 (PC)。
+                            </p>
+                        </div>
+
+                        <!-- Heap Frame Chunking -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <div class="font-bold text-indigo-700 text-[11px] flex items-center justify-between">
+                                <span>2. 堆栈帧按需切片 (Stack Chunk on Heap)</span>
+                                <span class="text-slate-400 text-[9px]">Lazy Allocation</span>
+                            </div>
+                            <p class="text-[10px] text-slate-600 font-sans leading-relaxed">
+                                传统平台线程预分配 1MB 固定的连续内存；而虚拟线程的调用栈以 Chunk 形式保存在 Java 堆中，按需动态分配与回收，极大省内存！
+                            </p>
+                        </div>
+
+                        <!-- System Call Rewriting -->
+                        <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1">
+                            <div class="font-bold text-emerald-900 text-[11px] flex items-center justify-between">
+                                <span>3. JDK 基础类库重构 (Rewritten I/O Libraries)</span>
+                                <span class="text-emerald-700 font-bold text-[9px]">Transparent Integration</span>
+                            </div>
+                            <p class="text-[10px] text-slate-700 font-sans leading-relaxed">
+                                JDK 21 重构了底层网络（<code class="font-mono text-emerald-800 font-bold">java.net.Socket</code>）、并发锁（<code class="font-mono text-emerald-800 font-bold">ReentrantLock</code>）与 <code class="font-mono text-emerald-800 font-bold">Thread.sleep</code>。当被虚拟线程调用时，自动转换为 Yield/Unmount 指令，开发者零感知！
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Code Inspection Example -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[10px] leading-relaxed text-slate-300">
+                        <div class="text-slate-500">// 当虚拟线程调用 sleep 时，底层并非发起物理 OS 线程挂起：</div>
+                        <div><span class="text-purple-400">public static void</span> <span class="text-blue-300">sleep</span>(<span class="text-purple-400">long</span> millis) <span class="text-purple-400">throws</span> InterruptedException {</div>
+                        <div class="pl-4 text-slate-400"><span class="text-purple-400">if</span> (Thread.<span class="text-blue-300">currentThread</span>() <span class="text-purple-400">instanceof</span> VirtualThread vthread) {</div>
+                        <div class="pl-8 text-emerald-400">vthread.sleepNanos(TimeUnit.MILLISECONDS.toNanos(millis));</div>
+                        <div class="pl-8 text-slate-500">// 内部调用 VirtualThread.yield() 将 Continuation 冻结卸载！</div>
+                        <div class="pl-4">} <span class="text-purple-400">else</span> {</div>
+                        <div class="pl-8 text-slate-400">sleep0(millis); <span class="text-slate-500">// 传统平台线程发起 OS Syscall</span></div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+                </div>
+
+                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-mono text-slate-500">
+                    <span>架构收益：以最简单的同步代码形式，享受高并发响应式 Netty 级别的极端吞吐</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Architectural Takeaway Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 flex items-center justify-between gap-4 my-1">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0 text-sm">
+                    <i class="fa-solid fa-gears"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">调度机制总结 (Continuation Mechanism Key Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        虚拟线程能够支撑百万并发的魔力在于：**把真正的阻塞挂起操作拦截在 JVM 用户态**。通过将调用栈保存到堆内存的 Continuation 对象中，解放物理平台线程去处理其他任务，从而在底层实现了与 Netty / epoll 异步事件驱动完全等价的无损吞吐！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-700 font-bold">Slide 22 / 31</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">31</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[70.97%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Continuation 与 Mount/Unmount 原理</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学生透视 Continuation 的工作图景：</span>
+                    “向学生强调：为什么 Java 21 的虚拟线程能做到零阻塞？关键在于 JVM 内部的 `jdk.internal.vm.Continuation` 对象。当虚拟线程遇到 Blocking I/O 时，JVM 会将当前函数的调用栈帧（Stack Frame）冻结打包存储在 Java 堆内存中，随后从底层载体线程（Carrier Thread）上卸载（Unmount）下来。此时载体线程被完全释放，可以立刻去调度其他虚拟线程，从而彻底榨干 CPU 的每一分算力！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析 JDK 基础类库重构的深远意义：</span>
+                    “提示学生：为了让虚拟线程真正生效，OpenJDK 团队对 JDK 基础类库（如 `Socket`、`ReentrantLock`、`Thread.sleep`）进行了深度重构。当它们检测到调用者是 `VirtualThread` 时，会放弃引发操作系统 Syscall 的内核挂起，改为触发 `Continuation.yield()`。这也是为什么开发者**不需要改动原有的同步阻塞逻辑代码**，就能直接享受百倍吞吐提升的原因！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
