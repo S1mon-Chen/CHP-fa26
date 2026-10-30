@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - GraphQL 接口测试与在线调试实战 (GraphiQL &amp; Postman Integration)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-pink-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-brands fa-react text-purple-600"></i>
+                <span>Part 02 · GraphQL 声明式查询语言与按需索取数据</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                GraphQL 接口测试与在线调试实战
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                GraphiQL In-Browser IDE, Schema Introspection (`__schema`), Auto-completion &amp; Postman Test Suite
+            </p>
+        </div>
+
+        <!-- Content Grid: GraphiQL IDE (6 cols) vs Postman Suite (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: GraphiQL In-Browser IDE & Introspection (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-laptop-code text-purple-600"></i>
+                            <span>1. GraphiQL 在线 IDE 与 Schema 内省机制</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">GraphiQL &amp; Introspection</span>
+                    </div>
+
+                    <!-- Intro Box -->
+                    <div class="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            Spring for GraphQL 引入了内置的 **GraphiQL 浏览器图形化 IDE**。开发者无需手动编写 Swagger，借助 GraphQL 自带的**内省机制 (Introspection)**，即可在浏览器中获得实时代码提示与类型树搜索。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Auto-enable & Endpoints -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-compass text-purple-600"></i>
+                                    <span>① 自动挂载入口 (`/graphiql`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Dev Mode Enabled</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                在本地开发环境，访问 <code class="text-purple-700 font-mono font-bold">http://localhost:8080/graphiql</code> 即可激活界面。内部将网络请求统一路由至服务端单一入口 <code class="text-purple-700 font-mono">/graphql</code>。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Introspection Schema Self-Description -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-magnifying-glass text-indigo-600"></i>
+                                    <span>② Schema 内省查询 (`__schema` &amp; `__type`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Self-Describing API</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                GraphQL 允许客户端通过元查询（如 <code class="text-indigo-800 font-mono">query { __schema { types { name } } }</code>）自我探索服务能力，因此 IDE 能在按下 <kbd class="px-1 py-0.5 bg-slate-200 text-slate-800 rounded font-mono text-[9px]">Ctrl</kbd>+<kbd class="px-1 py-0.5 bg-slate-200 text-slate-800 rounded font-mono text-[9px]">Space</kbd> 时精准弹出字段与参数补全。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Interactive Documentation Explorer -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-book-bookmark text-teal-600"></i>
+                                    <span>③ 动态文档侧边栏 (Docs Explorer)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Zero Doc Maintenance</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                GraphiQL 侧边栏会自动将底层 `.graphqls` 契约转换为交互式树状文档，点击类型节点即可层层展开查看属性类型与注释，完全避免了代码与文档不一致问题。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>生产提示：生产环境需通过 `spring.graphql.graphiql.enabled=false` 禁用 GraphiQL 探针</span>
+                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Postman GraphQL Suite & Automation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-purple-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-vial-circle-check"></i>
+                            <span>2. Postman 原生 GraphQL 自动化测试套件</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Postman Suite</span>
+                    </div>
+
+                    <!-- Code Box for Postman Request Setup -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-2">
+                        <div class="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>① Postman 原生 GraphQL Body 结构</span>
+                            <span class="text-purple-400 text-[8px]">POST /graphql</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1 leading-relaxed">
+                            <div class="text-slate-400">// 1. Header 必须设置 Content-Type</div>
+                            <div class="text-emerald-300">Content-Type: application/json</div>
+                            
+                            <div class="text-slate-400 mt-1">// 2. Postman 原生将 Query 文本与 Variables JSON 分离打包</div>
+                            <div>{</div>
+                            <div class="pl-2"><span class="text-purple-300">"query"</span>: <span class="text-emerald-300">"query bookDetails($bookid: ID!) { bookById(id: $bookid) { name pageCount author { lastName } } }"</span>,</div>
+                            <div class="pl-2"><span class="text-purple-300">"variables"</span>: { <span class="text-amber-300">"bookid"</span>: <span class="text-emerald-300">"book-2"</span> }</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+
+                    <!-- Postman Test Script Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-purple-800/80 font-mono text-[8.5px] space-y-1">
+                        <div class="flex items-center justify-between text-purple-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>② 编写 JavaScript 脚本进行自动化回归断言</span>
+                            <span class="text-amber-400 text-[8px]">Postman Test Script</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1 leading-relaxed overflow-x-auto">
+                            <div class="text-purple-400">pm.test</div>
+                            <div>(<span class="text-emerald-300">"Status code is 200 and data returned"</span>, <span class="text-purple-400">function</span>() {</div>
+                            <div class="pl-4">pm.response.to.have.status(<span class="text-amber-300">200</span>);</div>
+                            <div class="pl-4"><span class="text-purple-400">var</span> jsonData = pm.response.json();</div>
+                            <div class="pl-4">pm.expect(jsonData.data.bookById.name).to.eql(<span class="text-emerald-300">"Hitchhiker's Guide to the Galaxy"</span>);</div>
+                            <div class="pl-4">pm.expect(jsonData.data.bookById.pageCount).to.eql(<span class="text-amber-300">208</span>);</div>
+                            <div>});</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：GraphQL 嵌套查询 N+1 数据库瓶颈与 DataLoader 批处理优化 (Slide 23)</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (GraphQL Debugging &amp; Tooling Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        GraphQL 的**内省机制 (Introspection)** 颠覆了传统 REST API 手写文档的协作模式。结合 GraphiQL 在线可交互 IDE 与 Postman 强类型变量参数化套件，实现了从“接口探索”到“自动化单元测试”的全链路极速交付。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 22 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[55.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">GraphQL 接口测试与在线调试 (GraphiQL &amp; Postman)</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 Schema 内省机制 (Introspection)：</span>
+                    “向学员解释：为什么 GraphiQL 能在没有手写 Swagger 的情况下自动提示字段？因为 GraphQL 引擎支持元查询（`__schema` 与 `__type`），能让工具自动下载最新的 Schema 类型树结构，实现随写随补全的极速开发。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 演示 Postman 原生测试与变量：</span>
+                    “请学员关注右侧的 Postman 集成：在 Postman 中建立 GraphQL 请求时，可以像处理 REST 接口一样，编写 JavaScript `pm.test()` 断言响应状态码与字段内容，并在独立区域维护 JSON Variables，极大便利了自动化接口测试。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

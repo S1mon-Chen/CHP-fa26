@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - WebSocket 101 协议升轨与握手校验 (WebSocket Handshake &amp; Connection Upgrade)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-handshake text-indigo-600"></i>
+                <span>Part 03 · WebSocket 全双工实时长连接与消息广播</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                WebSocket 101 协议升轨与安全签名握手机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                HTTP/1.1 Upgrade Request, `Sec-WebSocket-Key` SHA-1 Signature &amp; Minimal Framing Overhead (RFC 6455)
+            </p>
+        </div>
+
+        <!-- Content Grid: Handshake & Key Signature (6 cols) vs Framing Architecture & Header Structure (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Upgrade & Security Handshake Mechanism (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-key text-indigo-600"></i>
+                            <span>1. HTTP 101 升轨与 Sec-WebSocket-Key 握手过程</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">101 Upgrade</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            WebSocket 借用 HTTP 的 80/443 端口完成初始建立。客户端通过发送带有 <code class="text-indigo-800 font-mono font-bold">Upgrade: websocket</code> 的 HTTP GET 请求，并在服务端确认应答 **HTTP/1.1 101 Switching Protocols** 后，底层 TCP 连接脱离 HTTP 状态机，正式升轨为全双工双向 WebSocket 管道。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Key Hash Calculation -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-calculator text-indigo-600"></i>
+                                    <span>① Sec-WebSocket-Accept 签名计算公式</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">RFC 6455 GUID</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                为防止中继代理（Proxy）误将 WebSocket 响应作为缓存应答，RFC 6455 规定服务端将客户端发来的 <code class="text-indigo-800 font-mono">Sec-WebSocket-Key</code> 拼接固定 Magic GUID，再经 **SHA-1** 散列和 **Base64** 编码：
+                            </p>
+                            <div class="bg-slate-900 text-indigo-300 font-mono text-[9px] p-1.5 rounded border border-slate-800 leading-snug">
+                                Accept = Base64( SHA1( Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ) )
+                            </div>
+                        </div>
+
+                        <!-- Card 2: Security Validation Purpose -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                                    <span>② 握手校验与反误连防护 (Handshake Validation)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Anti-Proxy Mistake</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                该握手算法**并非用于数据加密**，而是证明两端均显式支持 WebSocket 协议，确保透明代理服务器不会将后续连续的二进制数据帧误识别为异常 HTTP 报文。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Masking Bit Rule -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-mask text-teal-600"></i>
+                                    <span>③ 客户端出站强制掩码 (Client-to-Server Masking)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">4-Byte Mask Key</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                RFC 6455 强制规定：**客户端发往服务端的每一帧数据必须用 4 字节的随机 Mask Key 进行 XOR 掩码遮蔽**，防止代理缓存中毒攻击；而服务端发往客户端的数据帧**决不加掩码**。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>握手本质：通过 101 状态码无缝借道 HTTP 80/443 端口穿透企业防火墙</span>
+                    <i class="fa-solid fa-lock text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Protocol Handshake Headers & Frame Structure (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-indigo-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired"></i>
+                            <span>2. 握手报文与 WebSocket 极简帧结构 (Frame Spec)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Frame Layout</span>
+                    </div>
+
+                    <!-- Handshake HTTP Request/Response Detailed Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1 mb-2">
+                        <div class="flex items-center justify-between text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>① 真实握手 Header 字段映射</span>
+                            <span class="text-emerald-400 text-[8px]">HTTP 101 Handshake</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 bg-slate-900 p-2 rounded border border-slate-800 leading-relaxed text-[8px]">
+                            <!-- Request -->
+                            <div>
+                                <div class="text-purple-400 font-bold mb-0.5">// Client Upgrade Request</div>
+                                <div><span class="text-purple-400">GET</span> /chat <span class="text-slate-400">HTTP/1.1</span></div>
+                                <div><span class="text-indigo-300">Host:</span> server.example.com</div>
+                                <div><span class="text-indigo-300">Upgrade:</span> websocket</div>
+                                <div><span class="text-indigo-300">Connection:</span> Upgrade</div>
+                                <div><span class="text-amber-300">Sec-WebSocket-Key:</span> dGhl...==</div>
+                                <div><span class="text-slate-400">Sec-WebSocket-Version: 13</span></div>
+                            </div>
+                            <!-- Response -->
+                            <div>
+                                <div class="text-emerald-400 font-bold mb-0.5">// Server 101 Response</div>
+                                <div><span class="text-emerald-400">HTTP/1.1 101</span> Switching Protocols</div>
+                                <div><span class="text-indigo-300">Upgrade:</span> websocket</div>
+                                <div><span class="text-indigo-300">Connection:</span> Upgrade</div>
+                                <div><span class="text-amber-300">Sec-WebSocket-Accept:</span> s3pP...=</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Frame Spec Diagram Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-purple-800/80 font-mono text-[8.5px] space-y-1.5">
+                        <div class="flex items-center justify-between text-purple-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>② WebSocket 帧结构比特位分布 (Frame Binary Spec)</span>
+                            <span class="text-amber-400 text-[8px]">Minimal 2-Byte Overhead</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1 leading-relaxed text-[8px]">
+                            <!-- Bit distribution diagram -->
+                            <div class="grid grid-cols-8 gap-0.5 text-center text-[7.5px] font-mono">
+                                <div class="bg-indigo-900 text-indigo-200 p-1 rounded border border-indigo-700">FIN</div>
+                                <div class="bg-slate-800 text-slate-400 p-1 rounded">RSV1-3</div>
+                                <div class="bg-purple-900 text-purple-200 p-1 rounded border border-purple-700 col-span-2">Opcode (4bit)</div>
+                                <div class="bg-amber-900 text-amber-200 p-1 rounded border border-amber-700">MASK</div>
+                                <div class="bg-emerald-900 text-emerald-200 p-1 rounded border border-emerald-700 col-span-3">Payload Length (7bit)</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 pt-1 font-sans text-[8.5px] text-slate-300">
+                                <div>
+                                    <strong class="text-indigo-300">FIN (1bit)</strong>: 1 表示消息最后一帧。<br/>
+                                    <strong class="text-purple-300">Opcode (4bit)</strong>: <br/>
+                                    <code class="text-amber-300">0x1</code>: 文本, <code class="text-amber-300">0x2</code>: 二进制, <code class="text-amber-300">0x8</code>: Close, <code class="text-amber-300">0x9</code>: Ping, <code class="text-amber-300">0xA</code>: Pong
+                                </div>
+                                <div>
+                                    <strong class="text-amber-300">MASK (1bit)</strong>: 客户端发送时必为 1。<br/>
+                                    <strong class="text-emerald-300">Payload Length</strong>: 7 位表示基础长度（支持扩展 16-bit / 64-bit 超长载荷）。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Java API (`@ServerEndpoint`) 原生 WebSocket 开发 (Slide 26)</span>
+                    <i class="fa-solid fa-arrow-right text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (WebSocket Handshake &amp; Framing Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        WebSocket 的精妙之处在于**借道 HTTP 80/443 端口进行 101 升轨握手，握手成功后立刻切入极简二进制帧模式**。控制帧（Ping/Pong 心跳）与 2 字节的基础帧头保证了在高频实时通信下的极低延迟与 CPU 零开销。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 25 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">25</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[62.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (24.html <- 25.html -> 26.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">WebSocket 101 握手与帧结构 (Handshake &amp; Framing)</span>
+            <a href="26.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="24.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="26.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 剖析 Sec-WebSocket-Key 的计算公式：</span>
+                    “向学员做算法演示：`Sec-WebSocket-Key` 是客户端生成的 16 字节随机数 Base64 字符串。服务端拿到后，将其与 RFC 6455 规定的固定魔数 GUID (`258EAFA5-E914-47DA-95CA-C5AB0DC85B11`) 拼接，做 SHA-1 散列后再打成 Base64，写入 `Sec-WebSocket-Accept` 响应头。这一设计确保了该响应绝不会被普通 HTTP 缓存代理误缓存。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 WebSocket 帧格式与掩码掩盖：</span>
+                    “请学员关注右侧的帧比特分布：WebSocket 消息帧头部最小仅 2 字节（对比 HTTP 的 800 字节）。还要注意 MASK 位：客户端发往服务端的数据必须用 4 字节掩码 key 进行异或掩盖，这是为了防范透明中间代理上的缓存中毒攻击（Proxy Cache Poisoning）。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

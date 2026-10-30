@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - Spring Boot gRPC 服务端工程化集成 (Spring Boot gRPC Server Integration)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-cubes text-teal-600"></i>
+                <span>Part 01 · gRPC &amp; Protocol Buffers 极致 IPC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Boot gRPC 服务端工程化集成
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Spring gRPC Auto-Configuration, Project Layout (`src/main/proto`), Dependencies &amp; Server Port
+            </p>
+        </div>
+
+        <!-- Content Grid: Project Architecture (6 cols) vs Maven & Yaml Setup (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Project Directory Layout & Auto-config Concept (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-folder-tree text-teal-600"></i>
+                            <span>1. Spring Boot gRPC 标准工程目录规范</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Project Layout</span>
+                    </div>
+
+                    <!-- Description Card -->
+                    <div class="p-2.5 rounded-xl bg-teal-50/50 border border-teal-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            通过官方 <code class="text-teal-800 font-mono font-bold">spring-grpc-spring-boot-starter</code>，Spring 实现了 gRPC 服务的自动生命周期绑定。开发者只需将契约存放在 <code class="text-teal-800 font-mono">src/main/proto/</code> 目录下，构建时即可自动派生 Java 基类并在 Spring 容器中发布 Netty 服务。
+                        </p>
+                    </div>
+
+                    <!-- Visual Directory Structure Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9px] leading-relaxed text-slate-300 space-y-1 overflow-x-auto">
+                        <div class="text-amber-400 font-bold border-b border-slate-800 pb-1 mb-1">
+                            <i class="fa-solid fa-folder-open text-amber-500 mr-1.5"></i>
+                            <span>se3353_22_grpc (Spring Boot gRPC Server)</span>
+                        </div>
+                        <div class="pl-2">├── <i class="fa-solid fa-folder text-teal-400"></i> src/main/</div>
+                        <div class="pl-6">├── <i class="fa-solid fa-folder text-indigo-400"></i> java/org/sjtu/se/se3353_22_grpc/</div>
+                        <div class="pl-10 text-emerald-300">├── <i class="fa-solid fa-file-code"></i> GrpcServerService.java <span class="text-slate-500">// 服务端业务继承 BaseImpl</span></div>
+                        <div class="pl-10 text-indigo-300">└── <i class="fa-solid fa-file-code"></i> Se335322GrpcApplication.java <span class="text-slate-500">// 启动入口</span></div>
+                        <div class="pl-6">├── <i class="fa-solid fa-folder text-amber-400"></i> proto/ <span class="text-teal-400 font-bold">&larr; .proto 契约文件专有存放目录</span></div>
+                        <div class="pl-10 text-amber-300">└── <i class="fa-solid fa-file"></i> helloworld.proto <span class="text-slate-500">// Protobuf 接口定义</span></div>
+                        <div class="pl-6">└── <i class="fa-solid fa-folder text-purple-400"></i> resources/</div>
+                        <div class="pl-10 text-purple-300">└── <i class="fa-solid fa-gear"></i> application.yml <span class="text-slate-500">// 监听端口配置 (例如 9090)</span></div>
+                        <div class="pl-2 mt-1 border-t border-slate-800 pt-1 text-slate-400">
+                            └── <i class="fa-solid fa-folder text-slate-500"></i> target/generated-sources/ <span class="text-slate-500">// Maven 插件自动编译产物</span>
+                        </div>
+                    </div>
+
+                    <!-- Key Features List -->
+                    <div class="space-y-1 font-sans text-[10.5px] text-slate-600 mt-2">
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**零手动外挂 Server**：自动启动嵌入式 Netty gRPC Server，监听专属端口。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**注解直接绑定**：基于 `@Service` 即可自动注册到全局 gRPC 路由映射表。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>自动化理念：用标准化的 Maven 插件屏蔽复杂的跨语言变码步骤</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Maven Dependency & Application.yml Configuration (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code"></i>
+                            <span>2. Maven 依赖依赖配置与服务端参数 (`pom.xml` &amp; `application.yml`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Server Configuration</span>
+                    </div>
+
+                    <!-- Dependency Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] leading-relaxed text-slate-300 space-y-0.5 overflow-x-auto">
+                        <div class="text-slate-500">// pom.xml: 核心 starter 依赖与服务管理</div>
+                        <div>&lt;<span class="text-purple-400">dependencies</span>&gt;</div>
+                        <div class="pl-4">&lt;<span class="text-purple-400">dependency</span>&gt;</div>
+                        <div class="pl-8">&lt;<span class="text-indigo-400">groupId</span>&gt;org.springframework.grpc&lt;/<span class="text-indigo-400">groupId</span>&gt;</div>
+                        <div class="pl-8">&lt;<span class="text-indigo-400">artifactId</span>&gt;<span class="text-amber-300">spring-grpc-spring-boot-starter</span>&lt;/<span class="text-indigo-400">artifactId</span>&gt;</div>
+                        <div class="pl-4">&lt;/<span class="text-purple-400">dependency</span>&gt;</div>
+                        <div class="pl-4">&lt;<span class="text-purple-400">dependency</span>&gt;</div>
+                        <div class="pl-8">&lt;<span class="text-indigo-400">groupId</span>&gt;io.grpc&lt;/<span class="text-indigo-400">groupId</span>&gt;</div>
+                        <div class="pl-8">&lt;<span class="text-indigo-400">artifactId</span>&gt;grpc-services&lt;/<span class="text-indigo-400">artifactId</span>&gt;</div>
+                        <div class="pl-4">&lt;/<span class="text-purple-400">dependency</span>&gt;</div>
+                        <div>&lt;/<span class="text-purple-400">dependencies</span>&gt;</div>
+                    </div>
+
+                    <!-- Application Yaml Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] leading-relaxed text-slate-300 mt-2 space-y-0.5 overflow-x-auto">
+                        <div class="text-slate-500">// application.yml: 声明 gRPC 服务端监听端口</div>
+                        <div class="text-purple-400">grpc:</div>
+                        <div class="pl-4 text-purple-400">server:</div>
+                        <div class="pl-8 text-amber-300">port: <span class="text-emerald-300">9090</span> <span class="text-slate-500"># 默认 gRPC 服务监听端口</span></div>
+                        <div class="pl-4 text-purple-400">client:</div>
+                        <div class="pl-8 text-purple-400">local-grpc-server:</div>
+                        <div class="pl-12 text-slate-300">address: <span class="text-emerald-300">"static://localhost:9090"</span></div>
+                        <div class="pl-12 text-slate-300">negotiationType: <span class="text-emerald-300">plaintext</span></div>
+                    </div>
+
+                    <!-- Technical Callout Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-teal-800/80 font-mono text-[8.5px] text-slate-300 mt-2 space-y-0.5">
+                        <span class="text-teal-300 font-bold block">编译时生成流程 (Protobuf Compilation Flow)</span>
+                        <p class="text-slate-400 font-sans text-[8.5px] leading-tight">
+                            当运行 <code class="text-amber-300">mvn package</code> 或 <code class="text-amber-300">mvn compile</code> 时，内置插件自动扫描 <code class="text-emerald-300">/proto</code> 下的定义，并在 <code class="text-emerald-300">target/generated-sources</code> 自动生成强类型的派生基类（如 `SimpleGrpc.SimpleImplBase`）。
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：服务端 `GrpcServerService.java` 具体代码实现 (Slide 11)</span>
+                    <i class="fa-solid fa-arrow-right text-teal-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Spring gRPC Integration)</h4>
+                    <p class="text-xs text-slate-700">
+                        Spring Boot 对 gRPC 的工程化封装彻底简化了自建 Netty Server 的繁琐逻辑。**通过约定优于配置 (`src/main/proto`)，开发者可以像编写普通 Spring Service 一样轻松发布高性能的二进制 RPC 服务**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Boot gRPC 服务端工程化集成 (Server Integration)</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 Spring Boot gRPC 工程化架构：</span>
+                    “向学员做实战指引：在 Spring Boot 项目中集成 gRPC 服务端，最关键的是遵循约定优于配置（Convention over Configuration）。将 `.proto` 契约文件统一放在 `src/main/proto/` 目录下，并引入 `spring-grpc-spring-boot-starter`。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调端口配置与代码生成：</span>
+                    “请学员关注右侧的 `application.yml` 与 Maven 编译流程：gRPC 服务的监听端口（如 9090）是独立于 Spring Boot Web 端口（如 8080）的。运行 `mvn compile` 后会在 `target/generated-sources` 自动生成继承用基类。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

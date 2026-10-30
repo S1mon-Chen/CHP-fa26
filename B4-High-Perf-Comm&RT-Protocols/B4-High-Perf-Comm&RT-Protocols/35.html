@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - Server-Sent Events (SSE) 架构原理与单向 HTTP 流式推送 (SSE Architecture)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-satellite-dish text-amber-600"></i>
+                <span>Part 04 · Server-Sent Events (SSE) 与大模型 AI 打字机流式推送</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Server-Sent Events (SSE) 架构原理与单向 HTTP 流式推送
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                W3C EventSource Standard, `text/event-stream` MIME Type, `Last-Event-ID` Reconnection &amp; Spring Boot `SseEmitter`
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (SSE Protocol & Mechanics, 6 cols) vs Right (Spring Boot & JS Client Code, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Architecture & Protocol Mechanics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-amber-600"></i>
+                            <span>1. W3C SSE 标准规范与 HTTP `text/event-stream` 格式</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">W3C EventSource</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-amber-50/50 border border-amber-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            **Server-Sent Events (SSE)** 是 W3C 预定义的轻量级单向流式通信标准。与 WebSocket 需升级为 TCP 长连接不同，**SSE 完全基于标准 HTTP 协议**，由服务端维持一个持久的 HTTP 连接并以 <code class="text-amber-800 font-mono font-bold">text/event-stream</code> MIME 类型持续分块推流。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Response Headers & Frame Protocol -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-amber-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-file-lines text-amber-600"></i>
+                                    <span>① HTTP 响应头与 UTF-8 事件流文本格式</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">Header &amp; Framing</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                客户端发送普通 `GET` 请求，服务端响应头设为 <code class="text-amber-800 font-mono">Content-Type: text/event-stream</code> 与 <code class="text-amber-800 font-mono">Cache-Control: no-cache</code>。推送数据使用换行符分隔（`\n\n`）：
+                            </p>
+                            <div class="bg-slate-900 text-amber-300 font-mono text-[8.5px] p-1.5 rounded border border-slate-800 leading-snug">
+                                id: 1001\nevent: message\ndata: Hello World\n\n
+                            </div>
+                        </div>
+
+                        <!-- Card 2: Auto Reconnection & Last-Event-ID -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-rotate-right text-indigo-600"></i>
+                                    <span>② 原生断线自动重连与 `Last-Event-ID` 状态追溯</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Auto Reconnect</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                浏览器内置 `EventSource` API 会在连接意外断开时**自动尝试重新连接**，并自动在 HTTP 请求头中携带 <code class="text-indigo-800 font-mono">Last-Event-ID</code>，帮助服务端补发断连期间错过的事件流。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Enterprise Proxy Friendly -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-network-wired text-teal-600"></i>
+                                    <span>③ 企业网络友好性 (HTTP/1.1 &amp; HTTP/2 Multiplexing)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Proxy Friendly</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                纯 HTTP 语义使其能天然穿透防火墙与反向代理（如 Nginx），在 **HTTP/2** 模式下可复用同一 TCP 连接发起多个 SSE 管道，且相比 WebSocket 占用极低的系统资源。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>架构定性：SSE 是服务端单向高频/长流推送的最优选，无需引入复杂的双向 Socket 握手</span>
+                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Implementation - Spring Boot & JS EventSource (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. Spring Boot `SseEmitter` 与前端 `EventSource` 代码实现</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Java &amp; JS Implementation</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-1 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Spring Boot Controller Code -->
+                        <div class="text-amber-300 font-bold border-b border-slate-800 pb-1 text-[9px] flex items-center justify-between">
+                            <span>① Spring Boot 控制器端点 (`SseController.java`)</span>
+                            <span class="text-emerald-400 text-[8px]">SseEmitter API</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div class="text-indigo-400">@RestController</div>
+                            <div class="text-indigo-400">@RequestMapping(<span class="text-emerald-300">"/api/sse"</span>)</div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">SseController</span> {</div>
+
+                            <div class="pl-4 mt-1 text-indigo-400">@GetMapping(path = <span class="text-emerald-300">"/stream"</span>, produces = MediaType.<span class="text-amber-300">TEXT_EVENT_STREAM_VALUE</span>)</div>
+                            <div class="pl-4"><span class="text-purple-400">public</span> SseEmitter <span class="text-blue-300">streamEvents</span>() {</div>
+                            <div class="pl-8">SseEmitter emitter = <span class="text-purple-400">new</span> SseEmitter(<span class="text-amber-300">180000L</span>); <span class="text-slate-500">// 3分钟超时</span></div>
+                            
+                            <div class="pl-8 mt-1 text-slate-500">// 在异步后台线程中推流数据</div>
+                            <div class="pl-8">Executors.<span class="text-blue-300">newSingleThreadExecutor</span>().<span class="text-blue-300">execute</span>(() -&gt; {</div>
+                            <div class="pl-12"><span class="text-purple-400">try</span> {</div>
+                            <div class="pl-16"><span class="text-purple-400">for</span> (<span class="text-purple-400">int</span> i = <span class="text-amber-300">1</span>; i &lt;= <span class="text-amber-300">5</span>; i++) {</div>
+                            <div class="pl-20">SseEmitter.SseEventBuilder event = SseEmitter.<span class="text-blue-300">event</span>()</div>
+                            <div class="pl-24">.<span class="text-blue-300">id</span>(String.<span class="text-blue-300">valueOf</span>(i))</div>
+                            <div class="pl-24">.<span class="text-blue-300">name</span>(<span class="text-emerald-300">"message"</span>)</div>
+                            <div class="pl-24">.<span class="text-blue-300">data</span>(<span class="text-emerald-300">"Chunk #"</span> + i + <span class="text-emerald-300">": Event stream active."</span>);</div>
+                            <div class="pl-20">emitter.<span class="text-blue-300">send</span>(event);</div>
+                            <div class="pl-20">Thread.<span class="text-blue-300">sleep</span>(<span class="text-amber-300">1000</span>);</div>
+                            <div class="pl-16">}</div>
+                            <div class="pl-16">emitter.<span class="text-blue-300">complete</span>(); <span class="text-slate-500">// 正常完成关闭流</span></div>
+                            <div class="pl-12">} <span class="text-purple-400">catch</span> (Exception e) { emitter.<span class="text-blue-300">completeWithError</span>(e); }</div>
+                            <div class="pl-8">});</div>
+                            <div class="pl-8"><span class="text-purple-400">return</span> emitter;</div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- JavaScript EventSource Code -->
+                        <div class="text-purple-300 font-bold border-b border-slate-800 pb-1 text-[9px] pt-1 flex items-center justify-between">
+                            <span>② 前端原生 `EventSource` 订阅处理脚本 (`client.js`)</span>
+                            <span class="text-amber-400 text-[8px]">EventSource API</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div><span class="text-purple-400">const</span> eventSource = <span class="text-purple-400">new</span> <span class="text-amber-300">EventSource</span>(<span class="text-emerald-300">'/api/sse/stream'</span>);</div>
+
+                            <div class="mt-1 text-slate-500">// 1. 监听普通消息</div>
+                            <div>eventSource.onmessage = <span class="text-purple-400">function</span>(event) {</div>
+                            <div class="pl-4">console.<span class="text-blue-300">log</span>(<span class="text-emerald-300">'Received chunk:'</span>, event.data, <span class="text-emerald-300">'ID:'</span>, event.lastEventId);</div>
+                            <div>};</div>
+
+                            <div class="mt-1 text-slate-500">// 2. 捕获错误与连接断开</div>
+                            <div>eventSource.onerror = <span class="text-purple-400">function</span>(err) {</div>
+                            <div class="pl-4">console.<span class="text-blue-300">error</span>(<span class="text-emerald-300">'SSE connection closed/errored.'</span>, err);</div>
+                            <div class="pl-4">eventSource.<span class="text-blue-300">close</span>();</div>
+                            <div>};</div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：两大实时通信协议选型矩阵 (WebSocket vs SSE vs Long Polling) (Slide 36)</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (Server-Sent Events Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        并非所有实时推送都需要复杂的全双工 WebSocket。在**服务端单向推送数据**（如大模型 AI 流式输出、实时系统监控告警、状态进度条）场景下，<code class="font-mono text-amber-800 font-bold">SSE</code> 以其极简的 HTTP 机制、内置自动重连与低资源开销，展现出无与伦比的优雅性。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 35 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Server-Sent Events (SSE) 架构原理与单向 HTTP 流</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 开启 Part 04 SSE 与 AI 流式推送学习：</span>
+                    “向学员做阶段过渡：本页开启第四部分（Part 04）。先向学员阐明为何在很多场景下我们不需要 WebSocket——因为 WebSocket 建立的是全双工连接，而大量业务（如进度条、告警通知、AI 打字机输出）仅需要服务端向客户端推流数据，这就是 SSE (Server-Sent Events) 的用武之地。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 `text/event-stream` 与 Spring `SseEmitter`：</span>
+                    “请学员关注右侧的代码实现：Spring MVC 提供了 `SseEmitter`，它底层依赖异步请求处理，以 `text/event-stream` 格式持续把事件包（包含 id、event、data）推向前端，前端使用原生 `new EventSource()` 即可自动接收并具备自动断线重连功能。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

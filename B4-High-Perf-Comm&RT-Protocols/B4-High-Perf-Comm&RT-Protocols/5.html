@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 05 - Protocol Buffers 二进制序列化机制 (Protobuf Serialization)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-file-binary text-teal-600"></i>
+                <span>Part 01 · gRPC &amp; Protocol Buffers 极致 IPC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Protocol Buffers 二进制高效序列化原理
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Tag-Length-Value (TLV) Binary Encoding, Varint Compression &amp; `protoc` Code Generation
+            </p>
+        </div>
+
+        <!-- Content Grid: TLV & Varint Mechanism (6 cols) vs Proto Definition & Protoc Code Generation (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: TLV Principles & Binary Compression (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes text-teal-600"></i>
+                            <span>1. 压缩核心：Tag-Length-Value (TLV) 编码</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">No Key Strings</span>
+                    </div>
+
+                    <!-- Protobuf Definition Banner -->
+                    <div class="p-2.5 rounded-xl bg-teal-50/50 border border-teal-100 text-xs font-sans text-slate-700 leading-relaxed mb-2.5">
+                        <p>
+                            传统 JSON/XML 必须在报文中传输完整的 key 字符串（如 <code class="text-rose-700 font-mono">"has_ponycopter": true</code>）。而 Protocol Buffers 抛弃了字符串 Key，改用整数 **Field Tag（数字标签）** 结合 **TLV (Tag-Length-Value)** 编码，大幅压缩字节流。
+                        </p>
+                    </div>
+
+                    <!-- Core Compression Mechanisms List -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Mechanism 1: Tag Encoding -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tag text-teal-600"></i>
+                                    <span>① Field Tag + Wire Type 组合编码</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Key Compression</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                每一个字段被压缩为一个字节的 Header：$\text{Tag Header} = (\text{Field Number} \ll 3) \mid \text{Wire Type}$。原 JSON 中冗长的字段名直接被 1 个 Byte 代替。
+                            </p>
+                        </div>
+
+                        <!-- Mechanism 2: Varint Compression -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-compress text-indigo-600"></i>
+                                    <span>② Varint &amp; ZigZag 变长整数压缩</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Varint Encoding</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                针对普通整数，使用 MSB (Most Significant Bit) 动态控制 Byte 数量。较小的整数（如 `1` 或 `100`）仅需 1 个字节存储，取代固定 4 字节的 `int32`。
+                            </p>
+                        </div>
+
+                        <!-- Mechanism 3: Performance Metrics -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-high text-purple-600"></i>
+                                    <span>③ 极速序列化与 CPU 零反射损耗</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">6-10x Faster</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                报文体积比 JSON 减少 **60%~80%**；依靠 `protoc` 派生的 C++/Java/Go 原生访问类直接内存位移读写，无需 CPU 反射（Reflection）与字符串解析。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>体积优势：同样的数据体，JSON 约 80 Bytes $\to$ Protobuf 仅需约 18 Bytes</span>
+                    <i class="fa-solid fa-bolt text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Proto Schema & Protoc Code Generation Pipeline (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. `.proto` 契约定义与 `protoc` 编译流水线</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">protoc Pipeline</span>
+                    </div>
+
+                    <!-- Proto Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div class="text-slate-500 mb-0.5">// person.proto: 定义强类型消息结构与数字 Tag</div>
+                        <div><span class="text-purple-400">syntax</span> = <span class="text-emerald-300">"proto3"</span>;</div>
+                        <div class="mt-1"><span class="text-purple-400">message</span> <span class="text-amber-300">Person</span> {</div>
+                        <div class="pl-4"><span class="text-indigo-400">string</span> name = <span class="text-amber-300">1</span>;           <span class="text-slate-500">// Tag 1: Wire Type 2 (Length-delimited)</span></div>
+                        <div class="pl-4"><span class="text-indigo-400">int32</span> id = <span class="text-amber-300">2</span>;             <span class="text-slate-500">// Tag 2: Wire Type 0 (Varint)</span></div>
+                        <div class="pl-4"><span class="text-indigo-400">bool</span> has_ponycopter = <span class="text-amber-300">3</span>; <span class="text-slate-500">// Tag 3: Wire Type 0 (Varint)</span></div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Visual Binary Encoding Structure Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-teal-800/80 font-mono text-[9px] space-y-1.5">
+                        <div class="flex items-center justify-between text-teal-300 font-bold border-b border-slate-800 pb-1">
+                            <span>二进制数据流结构 (Serialized Stream Layout)</span>
+                            <span class="text-slate-400 text-[8px]">Raw Bytes Stream</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1.5 text-center">
+                            <div class="p-1 rounded bg-teal-950/80 border border-teal-700 text-teal-300">
+                                <span class="block text-[8px] text-slate-400">Tag=1 Header</span>
+                                <span class="font-bold">0x0A</span>
+                            </div>
+                            <div class="p-1 rounded bg-indigo-950/80 border border-indigo-700 text-indigo-300">
+                                <span class="block text-[8px] text-slate-400">Length + String</span>
+                                <span class="font-bold">0x04 'A' 'l' 'i' 'e'</span>
+                            </div>
+                            <div class="p-1 rounded bg-amber-950/80 border border-amber-700 text-amber-300">
+                                <span class="block text-[8px] text-slate-400">Tag=2 Varint</span>
+                                <span class="font-bold">0x10 0x02</span>
+                            </div>
+                        </div>
+                        <p class="text-[8px] text-slate-400 font-sans text-center">
+                            极简二进制连续紧凑排列，完全无需像 JSON 那样传输 `,`, `{`, `}`, `"` 等语法字符！
+                        </p>
+                    </div>
+
+                    <!-- Generated Class Usage Code Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[9px] mt-2 space-y-1">
+                        <span class="text-amber-300 font-bold block">protoc 派生类的原生读写方法 (Java Example)</span>
+                        <div class="text-slate-300 text-[8.5px] leading-tight space-y-0.5">
+                            <div>Person p = Person.newBuilder().setName(<span class="text-emerald-300">"Alien"</span>).setId(<span class="text-amber-300">2</span>).build();</div>
+                            <div><span class="text-purple-400">byte</span>[] bytes = p.toByteArray(); <span class="text-slate-500">// 序列化为字节数组</span></div>
+                            <div>Person parsed = Person.parseFrom(bytes); <span class="text-slate-500">// 反序列化还原对象</span></div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：利用 `.proto` 文件定义 gRPC 服务的 4 种模式 (Slide 6)</span>
+                    <i class="fa-solid fa-arrow-right text-teal-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Protobuf Encoding Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Protocol Buffers 的高效率建立在**牺牲可读性换取极致性能**的权衡上。通过将字段名替换为数字 Tag，并结合 Varint 变长压缩，彻底消除了文本解析损耗，成为数据中心高频 IPC 的基石。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 5 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">05</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[12.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (4.html <- 5.html -> 6.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Protocol Buffers 二进制高效序列化原理 (Protobuf Mechanism)</span>
+            <a href="6.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="4.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="6.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生理解 Protobuf 的 TLV 编码本质：</span>
+                    “向学员深入解释 Protobuf 体积极小且速度极快的原因：JSON 需要把类似 'has_ponycopter' 这样的字符串 Key 完整传输；而 Protobuf 将字段简化为一个数字 Tag，配合二进制流传输。比如 `Tag 1` 对应 `name`，`Tag 2` 对应 `id`。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 `protoc` 编译器的角色：</span>
+                    “请学员关注右侧的 `protoc` 代码生成逻辑：通过 `.proto` 契约，编译器会自动生成包含 `newBuilder()`、`toByteArray()` 与 `parseFrom()` 方法的强类型实体类，彻底避免了运行时 JSON 反射消耗算力的问题。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

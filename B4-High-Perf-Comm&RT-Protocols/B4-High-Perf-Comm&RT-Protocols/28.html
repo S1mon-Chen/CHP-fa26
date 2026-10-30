@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 28 - Java 原生 WebSocket 完整端点实现与 Encoder/Decoder (EchoEndpoint.java &amp; Encoders)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-brands fa-java text-indigo-600"></i>
+                <span>Part 03 · WebSocket 全双工实时长连接与消息广播</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Java 原生 WebSocket 端点实战与 Encoder/Decoder 消息编解码
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                `EchoEndpoint.java`, Custom `Encoder.Text<T>` / `Decoder.Text<T>`, `ServerEndpointConfig.Configurator` &amp; Spring `ServerEndpointExporter`
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (Encoders, Configurator & Spring Boot Exporter, 6 cols) vs Right (EchoEndpoint Code, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Encoder/Decoder, Handshake Configurator & Spring Exporter (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gears text-indigo-600"></i>
+                            <span>1. 消息编解码器 (Encoders/Decoders) 与上下文配置</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">JSR 356 Advanced</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            原生 Java WebSocket 不仅支持发送原生 String / byte[]，还允许通过注册 **Encoder (编码器)** 与 **Decoder (解码器)** 实现 Java 对象与 WebSocket 数据包的透明转换，并借助 `Configurator` 拦截 HTTP 握手请求头。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Encoder & Decoder -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-code-compare text-indigo-600"></i>
+                                    <span>① 声明式编解码器 (`Encoder.Text<T>` &amp; `Decoder.Text<T>`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Auto JSON Parsing</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                在 <code class="text-indigo-800 font-mono">@ServerEndpoint</code> 中通过 <code class="text-indigo-800 font-mono">encoders</code> 和 <code class="text-indigo-800 font-mono">decoders</code> 属性指定转换类。`@OnMessage` 可直接接收强类型 POJO 对象，避免在方法体内手写 Jackson 序列化。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: ServerEndpointConfig.Configurator -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-handshake-angle text-purple-600"></i>
+                                    <span>② HTTP 握手拦截器 (`ServerEndpointConfig.Configurator`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Handshake Context</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                重写 <code class="text-purple-800 font-mono">modifyHandshake(...)</code> 方法，可将 HTTP `HttpSession` 或 Request Headers (如 JWT Token) 注入到 `ServerEndpointConfig` 的 UserProperties 中，传递给 WebSocket `Session`。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Spring Boot Exporter -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-plug text-teal-600"></i>
+                                    <span>③ Spring Boot `ServerEndpointExporter` 注册 Bean</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Spring Container</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                在嵌入式 Tomcat / Jetty 环境下，必须显式注册一个 <code class="text-teal-800 font-mono">ServerEndpointExporter</code> 的 `@Bean`，由 Spring 容器自动扫描并挂载所有带有 `@ServerEndpoint` 的组件。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>提示：Spring 托管的 @ServerEndpoint 实例默认受 Java JSR 356 规范控制（非标准 Spring Singletons）</span>
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: EchoEndpoint Implementation Code (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-indigo-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. 消息响应端点与 Spring 挂载实现 (`EchoEndpoint.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Echo &amp; Config</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-1 leading-relaxed overflow-x-auto">
+                        <div class="text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px] flex items-center justify-between">
+                            <span>① Echo 端点实现与对象编解码</span>
+                            <span class="text-emerald-400 text-[8px]">EchoEndpoint.java</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div class="text-indigo-400">@ServerEndpoint(value = <span class="text-emerald-300">"/echo"</span>, encoders = {MessageEncoder.<span class="text-purple-400">class</span>}, decoders = {MessageDecoder.<span class="text-purple-400">class</span>})</div>
+                            <div class="text-indigo-400">@Component</div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">EchoEndpoint</span> {</div>
+                            
+                            <div class="pl-4 text-indigo-400">@OnOpen <span class="text-slate-500">// 连接触发</span></div>
+                            <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">onOpen</span>(Session session) {</div>
+                            <div class="pl-8">System.out.<span class="text-blue-300">println</span>(<span class="text-emerald-300">"Connected: "</span> + session.<span class="text-blue-300">getId</span>());</div>
+                            <div class="pl-4">}</div>
+
+                            <div class="pl-4 mt-1 text-indigo-400">@OnMessage <span class="text-slate-500">// 接收自动解出的 ChatMessage POJO 对象</span></div>
+                            <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">onMessage</span>(ChatMessage msg, Session session) <span class="text-purple-400">throws</span> Exception {</div>
+                            <div class="pl-8">ChatMessage reply = <span class="text-purple-400">new</span> ChatMessage(<span class="text-emerald-300">"Server Echo: "</span> + msg.getContent());</div>
+                            <div class="pl-8"><span class="text-slate-500">// 自动触发 MessageEncoder 编码写回</span></div>
+                            <div class="pl-8">session.<span class="text-blue-300">getBasicRemote</span>().<span class="text-blue-300">sendObject</span>(reply);</div>
+                            <div class="pl-4">}</div>
+
+                            <div class="pl-4 mt-1 text-indigo-400">@OnError <span class="text-slate-500">// 异常捕获</span></div>
+                            <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">onError</span>(Session session, Throwable error) {</div>
+                            <div class="pl-8">error.<span class="text-blue-300">printStackTrace</span>();</div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <div class="text-amber-300 font-bold border-b border-slate-800 pb-1 text-[9px] pt-1 flex items-center justify-between">
+                            <span>② Spring Boot 工厂导出配置 (`WebSocketConfig.java`)</span>
+                            <span class="text-purple-400 text-[8px]">ServerEndpointExporter</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div class="text-indigo-400">@Configuration</div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">WebSocketConfig</span> {</div>
+                            <div class="pl-4 text-indigo-400">@Bean <span class="text-slate-500">// 导出内嵌 Servlet 容器中的 WebSocket 端点</span></div>
+                            <div class="pl-4"><span class="text-purple-400">public</span> ServerEndpointExporter <span class="text-blue-300">serverEndpointExporter</span>() {</div>
+                            <div class="pl-8"><span class="text-purple-400">return new</span> <span class="text-amber-300">ServerEndpointExporter</span>();</div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：基于 Spring STOMP 消息子协议与 Message Broker 广播实战 (Slide 29)</span>
+                    <i class="fa-solid fa-arrow-right text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Encoder &amp; Spring Integration Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        原生 JSR 356 的 **Encoder/Decoder** 机制将报文与强类型 Java 对象的转换下沉至容器层，保持了 `@OnMessage` 处理函数的极简语义；结合 **`ServerEndpointExporter`** 实现了原生 Java API 与 Spring Boot 依赖注入容器的无缝工程化融合。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 28 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">28</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[70.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (27.html <- 28.html -> 29.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="27.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Java 原生 WebSocket 完整端点与 Encoders (EchoEndpoint.java)</span>
+            <a href="29.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="27.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="29.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 Encoders / Decoders 解耦优势：</span>
+                    “向学员做原理解析：在 JSR 356 规范中，如果你不希望在 `@OnMessage` 中手动反序列化 JSON 文本，可以通过 `encoders` 与 `decoders` 声明转换器。底层 WebSocket 容器会在收到消息时自动触发 `Decoder.Text<T>` 将文本转为强类型 Java 对象（如 `ChatMessage`），并在发送时自动通过 `Encoder.Text<T>` 打成 JSON。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 Spring Boot 中的 `ServerEndpointExporter`：</span>
+                    “请学员特别注意右侧底部的 `WebSocketConfig`：在内嵌 Tomcat 的 Spring Boot 工程中，如果不声明 `ServerEndpointExporter` Bean，`@ServerEndpoint` 注解将无法被扫描注册！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '27.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

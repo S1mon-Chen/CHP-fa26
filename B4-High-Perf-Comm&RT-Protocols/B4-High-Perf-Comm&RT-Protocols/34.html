@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 34 - 企业级案例 2：WebSocket 集群扩容与 Kafka 消息总线异步推送 (Kafka + WebSocket Integration)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                <span>Part 03 · WebSocket 全双工实时长连接与消息广播</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                企业级案例 2：WebSocket 集群扩容与 Kafka 消息总线异步推送
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Multi-Node Cluster Scaling, Session Memory Isolation, Kafka / Redis Event Bus &amp; `convertAndSendToUser`
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (Cluster Session Problem & Kafka Bus Mechanics, 6 cols) vs Right (Kafka Listener Code, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Architecture & Cluster Session Isolation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-indigo-600"></i>
+                            <span>1. WebSocket 多节点集群扩容与分布式 Session 隔离痛点</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">Cluster Scaling</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            在微服务分布式集群（Node 1、Node 2、Node 3）中，WebSocket 句柄 <code class="text-indigo-800 font-mono font-bold">Session</code> 必须保存在特定节点的内存中。**若用户 A 连接到 Node 1，而后台转账成功事件被 Node 2 的消费线程处理，Node 2 无法直接向 User A 推送数据！**
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Session Memory Isolation -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-memory text-indigo-600"></i>
+                                    <span>① 内存 Session 节点盲区 (Node Session Isolation)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[9px]">Session Trap</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                负载均衡器（Nginx / ALB）按 Hash 将 TCP 长连接分发至特定服务器。其他服务器节点无法跨 JVM 访问别人的 WebSocket `Session` 实例。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Kafka / Redis Bus Fanout -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tower-broadcast text-purple-600"></i>
+                                    <span>② Kafka / Redis 消息总线全网扇出 (Broadcast Fanout)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Redis / Kafka Bus</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                业务计算完成后向 Kafka 发送转账完成事件。所有 WebSocket 网关节点同时订阅此 Topic，**只有持有 User A 长连接的 Node 1 命中内存 Key，并执行最终的 Socket 写入**。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Decoupled Async Pipeline -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-teal-600"></i>
+                                    <span>③ 耗时业务与长连接推送彻底解耦 (Async Event Drive)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Event-Driven EDA</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                银行转账、风控审核等耗时异步管道（数秒至数分钟）无需挂起 HTTP 请求。任务完成后由 Kafka Listener 触发轻量级 WebSocket 通知，极致提升吞吐。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>集群法则：Kafka / Redis Pub/Sub 是粘合多节点 WebSocket 长连接的通信血脉</span>
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Implementation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-indigo-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. Kafka 消费者驱动 WebSocket 私聊推送代码</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Kafka + STOMP Listener</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-1 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Kafka Listener Code -->
+                        <div class="text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px] flex items-center justify-between">
+                            <span>① Kafka 转账异步回调监听器 (`TransferResultKafkaListener.java`)</span>
+                            <span class="text-emerald-400 text-[8px]">@KafkaListener &amp; Push</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div class="text-indigo-400">@Component</div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">TransferResultKafkaListener</span> {</div>
+                            <div class="pl-4"><span class="text-purple-400">@Autowired private</span> SimpMessagingTemplate messagingTemplate;</div>
+
+                            <div class="pl-4 mt-1 text-indigo-400">@KafkaListener(topics = <span class="text-emerald-300">"transfer-result-topic"</span>, groupId = <span class="text-emerald-300">"ws-cluster-group"</span>)</div>
+                            <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">onTransferCompleted</span>(TransferEvent event) {</div>
+                            <div class="pl-8 text-slate-500">// 集群所有节点均会收到 Kafka 广播消息</div>
+                            <div class="pl-8">String targetUserId = event.<span class="text-blue-300">getUserId</span>();</div>
+                            <div class="pl-8">NotificationDTO notification = <span class="text-purple-400">new</span> NotificationDTO(</div>
+                            <div class="pl-12"><span class="text-emerald-300">"TRANSFER_SUCCESS"</span>,</div>
+                            <div class="pl-12"><span class="text-emerald-300">"Your transfer of $"</span> + event.<span class="text-blue-300">getAmount</span>() + <span class="text-emerald-300">" was successful!"</span></div>
+                            <div class="pl-8">);</div>
+
+                            <div class="pl-8 mt-1 text-slate-500">// 寻址本节点的内部 Session；若用户不在此节点，Spring 底层安全忽略</div>
+                            <div class="pl-8">messagingTemplate.<span class="text-blue-300">convertAndSendToUser</span>(</div>
+                            <div class="pl-12">targetUserId, <span class="text-emerald-300 font-bold">"/queue/notifications"</span>, notification</div>
+                            <div class="pl-8">);</div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Topology Callout Box -->
+                        <div class="text-purple-300 font-bold border-b border-slate-800 pb-1 text-[9px] pt-1 flex items-center justify-between">
+                            <span>② 集群全节点广播寻址数据流 (Cluster Routing Topology)</span>
+                            <span class="text-amber-400 text-[8px]">Kafka Fanout Routing</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1 font-sans text-[8.5px]">
+                            <div class="flex items-center justify-between font-mono text-[8px]">
+                                <span class="text-amber-300 font-bold">Kafka Topic</span>
+                                <span class="text-slate-400">=== Event Fanout ===&gt;</span>
+                                <span class="text-slate-300">Node 1 (User A Socket), Node 2, Node 3</span>
+                            </div>
+                            <p class="text-slate-400 text-[8px] pt-0.5">
+                                Node 1 在本地持有 User A 的 Session 句柄，成功将通知推入 User A 的网页窗口；Node 2 和 Node 3 找不到目标 Session 自动忽略。
+                            </p>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Part 04 · Server-Sent Events (SSE) 与大模型 AI 打字机推送 (Slide 35)</span>
+                    <i class="fa-solid fa-arrow-right text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Kafka + WebSocket Cluster Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        单机内存 Session 无法跨服务器访问。借助 <code class="font-mono text-indigo-800 font-bold">Kafka / Redis Pub/Sub 广播总线 + SimpMessagingTemplate.convertAndSendToUser()</code>，系统优雅解耦了后端异步计算与前端长连接推送，为微服务集群扩容奠定了无缝接入基础。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 34 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">34</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[85.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (33.html <- 34.html -> 35.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="33.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">企业级案例 2：WebSocket 集群扩容与 Kafka 消息总线</span>
+            <a href="35.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="33.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="35.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员思考集群环境下的分布式 Session 隐患：</span>
+                    “向学员提出经典面试题：如果我们的 Spring Boot 服务水平扩容到 10 个节点，用户 A 连接在 1 号节点，而后台转账成功事件由 2 号节点的 Kafka Listener 消费，2 号节点直接调用 `convertAndSendToUser` 会发生什么？答案是消息丢失，因为 2 号节点内存里没有用户 A 的 WebSocket Session！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 Kafka / Redis Pub/Sub 扇出总线解法：</span>
+                    “请学员关注右侧的代码：通过让所有 WebSocket 节点的 Kafka 监听器订阅转账完成广播 Topic，消息会被广播到所有节点。每个节点尝试调用 `convertAndSendToUser`，只有真正保有该用户 Session 的节点才会完成 Socket 帧写入。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '35.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '33.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

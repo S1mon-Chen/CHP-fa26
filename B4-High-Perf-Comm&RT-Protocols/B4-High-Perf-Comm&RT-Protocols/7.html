@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - gRPC 核心服务调用模式 (1)：Unary &amp; Server Streaming RPC</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-teal-600"></i>
+                <span>Part 01 · gRPC &amp; Protocol Buffers 极致 IPC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                gRPC 4 种核心服务调用模式 (1)：Unary 与 Server Streaming RPC
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Service Call Patterns: Unary RPC (Request-Response) &amp; Server Streaming RPC (Stream Response)
+            </p>
+        </div>
+
+        <!-- Content Grid: Pattern 1 Unary RPC (6 cols) vs Pattern 2 Server Streaming RPC (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Pattern 1 - Unary RPC (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrow-right-arrow-left text-teal-600"></i>
+                            <span>1. 一问一答 RPC (Unary RPC)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Request-Response</span>
+                    </div>
+
+                    <!-- Description Card -->
+                    <div class="p-2.5 rounded-xl bg-teal-50/50 border border-teal-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            最经典的 RPC 调用模式。客户端发送**单个请求**至服务端，并获取**单个响应**，使用体验与传统本地同步方法调用极其相似。
+                        </p>
+                    </div>
+
+                    <!-- Proto Declaration Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div class="text-slate-500 mb-0.5">// 契约定义: 单个 Request 映射单个 Response</div>
+                        <div><span class="text-purple-400">service</span> <span class="text-amber-300">SimpleService</span> {</div>
+                        <div class="pl-4"><span class="text-purple-400">rpc</span> <span class="text-blue-400">SayHello</span> (HelloRequest) <span class="text-purple-400">returns</span> (HelloReply);</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Flow Diagram Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-teal-800/80 font-mono text-[9px] space-y-1.5">
+                        <div class="flex items-center justify-between text-teal-300 font-bold border-b border-slate-800 pb-1">
+                            <span>HTTP/2 帧传输交互流 (Unary Frame Flow)</span>
+                            <span class="text-slate-400 text-[8px]">Single Stream ID</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-1 text-slate-300">
+                            <div class="flex items-center justify-between">
+                                <span class="text-indigo-400 font-bold">Client</span>
+                                <span class="text-slate-500">HEADERS Frame + DATA Frame (End of Stream)</span>
+                                <span class="text-teal-400 font-bold">&rarr; Server</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-indigo-400 font-bold">Client</span>
+                                <span class="text-slate-500">&larr; HEADERS Frame + DATA Frame + HEADERS (EOS + Status)</span>
+                                <span class="text-teal-400 font-bold">Server</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Features List -->
+                    <div class="space-y-1 font-sans text-[10.5px] text-slate-600 mt-2">
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**同步/异步双持**：支持 BlockingStub 同步挂起，亦支持 StreamObserver 异步回调。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**典型场景**：数据中心内网微服务常规 CRUD、鉴权校验与账户查询。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>特点：单一 Request 带来最简单清晰的死锁与超时控制</span>
+                    <i class="fa-solid fa-cube text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Pattern 2 - Server Streaming RPC (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-angles-right"></i>
+                            <span>2. 服务端流式 RPC (Server Streaming RPC)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 font-mono text-[9.5px] font-bold">Stream Response</span>
+                    </div>
+
+                    <!-- Description Card -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-sans text-slate-300 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            客户端发送**单个请求**，服务端返回一个**持续递送的消息流 (Stream)**。客户端从中按顺序持续读取，直到服务端关闭 Stream（发送 `onCompleted`）。
+                        </p>
+                    </div>
+
+                    <!-- Proto Declaration Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 mb-2 overflow-x-auto">
+                        <div class="text-slate-500 mb-0.5">// 契约定义: 使用 stream 关键字标记 Response 类型</div>
+                        <div><span class="text-purple-400">service</span> <span class="text-amber-300">SimpleService</span> {</div>
+                        <div class="pl-4"><span class="text-purple-400">rpc</span> <span class="text-blue-400">StreamHello</span> (HelloRequest) <span class="text-purple-400">returns</span> (<span class="text-amber-300">stream</span> HelloReply);</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Flow Diagram Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-amber-800/80 font-mono text-[9px] space-y-1.5">
+                        <div class="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-1">
+                            <span>HTTP/2 帧传输交互流 (Server Stream Flow)</span>
+                            <span class="text-slate-400 text-[8px]">Continuous Chunk Delivery</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-1 text-slate-300">
+                            <div class="flex items-center justify-between">
+                                <span class="text-indigo-400 font-bold">Client</span>
+                                <span class="text-slate-500">REQ (Single DATA Frame) &rarr;</span>
+                                <span class="text-teal-400 font-bold">Server</span>
+                            </div>
+                            <div class="flex items-center justify-between text-amber-300">
+                                <span class="text-indigo-400 font-bold">Client</span>
+                                <span class="text-slate-500">&larr; RESP Chunk 1 | RESP Chunk 2 | ... | Chunk N</span>
+                                <span class="text-teal-400 font-bold">Server</span>
+                            </div>
+                            <div class="flex items-center justify-between text-emerald-400">
+                                <span class="text-indigo-400 font-bold">Client</span>
+                                <span class="text-slate-500">&larr; HEADERS Frame (Status: OK / End-of-Stream)</span>
+                                <span class="text-teal-400 font-bold">Server</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Features List -->
+                    <div class="space-y-1 font-sans text-[10.5px] text-slate-300 mt-2">
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-amber-400 mt-0.5 text-[9px]"></i>
+                            <span>**内存友好**：支持大数据量分块增量传输，无需在服务端一次性拼装巨型数组防爆内存。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-amber-400 mt-0.5 text-[9px]"></i>
+                            <span>**典型场景**：实时日志流推送、股票/金融行情变动订阅、大数据导出报表。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：客户端流式 (Client Streaming) 与双向流式 (Bidi Streaming) RPC (Slide 8)</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Stream Semantics Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        在 Protobuf 接口契约中增加一个 <code class="font-mono text-purple-800 font-bold">stream</code> 关键字，底层机制将完全改变：**底层 HTTP/2 链接不会在一次传输后关闭，而是持续保留 Stream 管道进行连续二进制块分发**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 7 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">gRPC 核心服务调用模式 (Unary &amp; Server Streaming)</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 gRPC 模式 1 与模式 2：</span>
+                    “向学员做逻辑拆解：gRPC 完美支持 4 种模式。首先对比 Unary（一问一答）与 Server Streaming（服务端流）。Unary 类似于标准的 RESTful GET，而 Server Streaming 仅需在 Response 前加上 `stream` 关键字，就可以让服务端通过同一个 HTTP/2 Stream 多次发送 `onNext()`，非常适合实时日志与大数据导出。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 承上启下预告 Slide 8：</span>
+                    “提醒学员关注：下一页 Slide 8 我们将继续拆解剩余两种高阶模式——Client Streaming（客户端流）与 Bidirectional Streaming（双向全双工流）。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

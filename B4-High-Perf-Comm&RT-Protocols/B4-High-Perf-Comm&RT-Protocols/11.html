@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - Spring Boot gRPC 服务端代码实现 (GrpcServerService.java)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-code text-teal-600"></i>
+                <span>Part 01 · gRPC &amp; Protocol Buffers 极致 IPC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Boot gRPC 服务端业务实现与响应观测器
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Service Implementation (`GrpcServerService.java`), `SimpleImplBase`, `StreamObserver<T>` Callback &amp; Error Handling
+            </p>
+        </div>
+
+        <!-- Content Grid: Server Service Principles (6 cols) vs Implementation Code Box (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Core Implementation Principles & StreamObserver Semantics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes-stacked text-teal-600"></i>
+                            <span>1. gRPC 服务端继承基类与响应回调逻辑</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">ImplBase &amp; Observer</span>
+                    </div>
+
+                    <!-- Description Banner -->
+                    <div class="p-2.5 rounded-xl bg-teal-50/50 border border-teal-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            在 Spring Boot 中实现 gRPC 服务端非常直观：只需编写一个标注 <code class="text-teal-800 font-mono font-bold">@Service</code> 的 Java 类，继承由 `protoc` 插件自动派生的抽象基类 <code class="text-teal-800 font-mono">SimpleGrpc.SimpleImplBase</code>，并重写对应的 RPC 方法。
+                        </p>
+                    </div>
+
+                    <!-- Key Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Spring Auto-Registration -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-wand-magic-sparkles text-teal-600"></i>
+                                    <span>① 容器自动感知与 Netty 路由注册</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">@Service Auto-Bind</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                `spring-grpc-spring-boot-starter` 会在启动时自动扫描所有继承自 `*ImplBase` 且被 Spring 容器托管的 Bean，无缝注册到嵌入式 Netty gRPC 监听 Server。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: StreamObserver Semantics -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-to-eye text-indigo-600"></i>
+                                    <span>② `StreamObserver<T>` 响应观察者三方法</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Stream Callback</span>
+                            </div>
+                            <div class="text-slate-600 text-[10px] font-mono space-y-0.5 mt-0.5">
+                                <div><strong class="text-indigo-800">onNext(response):</strong> 将一个响应 Payload 推送给网络 Stream 管道。</div>
+                                <div><strong class="text-indigo-800">onCompleted():</strong> 告知客户端本次 RPC 调用流响应已圆满结束。</div>
+                                <div><strong class="text-indigo-800">onError(throwable):</strong> 发生异常时将错误状态沿 HTTP/2 Stream 抛给客户端。</div>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Non-blocking Execution -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-purple-600"></i>
+                                    <span>③ 无返回值 (`void`) 与异步管道架构</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Void Return</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                重写的方法返回类型均为 <code class="text-purple-700 font-mono">void</code>。服务端不必同步阻塞等待结果返回，而是通过 `responseObserver` 句柄在任意工作线程或异步完成时推送数据。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心解耦：业务逻辑不必操心底层 HTTP/2 Frame 的封包与发送细节</span>
+                    <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: GrpcServerService.java Code Implementation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. 简单一问一答业务实现 (`GrpcServerService.java`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">GrpcServerService.java</span>
+                    </div>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9.5px] leading-relaxed text-slate-300 overflow-x-auto">
+                        <div><span class="text-purple-400">package</span> org.sjtu.se.se3353_22_grpc;</div>
+
+                        <div class="mt-1"><span class="text-purple-400">import</span> io.grpc.stub.StreamObserver;</div>
+                        <div><span class="text-purple-400">import</span> org.springframework.stereotype.Service;</div>
+
+                        <div class="mt-2 text-indigo-400">@Service</div>
+                        <div><span class="text-purple-400">public class</span> <span class="text-amber-300">GrpcServerService</span> <span class="text-purple-400">extends</span> SimpleGrpc.<span class="text-amber-300">SimpleImplBase</span> {</div>
+                        <div class="pl-4"><span class="text-purple-400">private static final</span> Log log = LogFactory.<span class="text-blue-300">getLog</span>(GrpcServerService.<span class="text-purple-400">class</span>);</div>
+
+                        <div class="pl-4 mt-2 text-indigo-400">@Override</div>
+                        <div class="pl-4"><span class="text-purple-400">public void</span> <span class="text-blue-300">sayHello</span>(HelloRequest req, StreamObserver&lt;HelloReply&gt; responseObserver) {</div>
+                        <div class="pl-8 text-slate-500">// 1. 读取 Protobuf 强类型请求字段</div>
+                        <div class="pl-8">log.<span class="text-blue-300">info</span>(<span class="text-emerald-300">"Hello "</span> + req.<span class="text-blue-300">getName</span>());</div>
+
+                        <div class="pl-8 mt-1 text-slate-500">// 2. 参数校验与业务异常拦截</div>
+                        <div class="pl-8"><span class="text-purple-400">if</span> (req.<span class="text-blue-300">getName</span>().<span class="text-blue-300">startsWith</span>(<span class="text-emerald-300">"error"</span>)) {</div>
+                        <div class="pl-12"><span class="text-purple-400">throw new</span> <span class="text-amber-300">IllegalArgumentException</span>(<span class="text-emerald-300">"Bad name: "</span> + req.<span class="text-blue-300">getName</span>());</div>
+                        <div class="pl-8">}</div>
+
+                        <div class="pl-8 mt-1 text-slate-500">// 3. 利用 Builder 模式构建 Protobuf 响应对象</div>
+                        <div class="pl-8">HelloReply reply = HelloReply.<span class="text-blue-300">newBuilder</span>()</div>
+                        <div class="pl-16">.<span class="text-blue-300">setMessage</span>(<span class="text-emerald-300">"Hello ==&gt; "</span> + req.<span class="text-blue-300">getName</span>())</div>
+                        <div class="pl-16">.<span class="text-blue-300">build</span>();</div>
+
+                        <div class="pl-8 mt-1 text-slate-500">// 4. 将响应推送至观察者，并标记通道完成</div>
+                        <div class="pl-8">responseObserver.<span class="text-blue-300">onNext</span>(reply);</div>
+                        <div class="pl-8">responseObserver.<span class="text-blue-300">onCompleted</span>();</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- ResponseObserver Method Explanation Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-teal-800/80 font-mono text-[8.5px] text-slate-300 mt-2 space-y-1">
+                        <span class="text-teal-300 font-bold block">StreamObserver 关键流控制要领</span>
+                        <div class="grid grid-cols-2 gap-2 text-slate-400 font-sans">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-slate-200 block mb-0.5">1. onNext(reply)</strong>
+                                发送数据包。在一问一答 Unary 模式中仅调用 1 次；在流式模式中可重复调用多次。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-slate-200 block mb-0.5">2. onCompleted()</strong>
+                                发送 EOS (End of Stream) 状态包，通知网络管道关闭该 Stream 流。
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：服务端流式 RPC (`streamHello`) 持续推送实现 (Slide 12)</span>
+                    <i class="fa-solid fa-arrow-right text-teal-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (StreamObserver Pattern Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        gRPC 采用 **`StreamObserver` 观察者模式** 代替传统 Java 的 `return` 关键字。**这种异步流式句柄设计使得同一个接口不仅能处理简单的 Unary 调用，还能无缝拓展为全双工流式推送**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 11 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">11</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[27.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (10.html <- 11.html -> 12.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Boot gRPC 服务端代码实现 (Server Implementation)</span>
+            <a href="12.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="10.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="12.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 `StreamObserver` 的工作原理：</span>
+                    “向学员强调：编写 gRPC 服务端的关键是理解继承基类 `SimpleGrpc.SimpleImplBase` 与 `StreamObserver<HelloReply>` 句柄。方法返回类型为 `void`，通过 `responseObserver.onNext(reply)` 推送结果，最后必须显式调用 `responseObserver.onCompleted()` 告知客户端 Stream 传输结束。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 承上启下引出 Slide 12 流式实现：</span>
+                    “提示学员关注：在 Unary 一问一答模式下，`onNext` 只调用一次。下一页 Slide 12 我们将展示如何利用循环与 `Thread.sleep` 持续调用 `onNext` 实现服务端流式推送 (`streamHello`)。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

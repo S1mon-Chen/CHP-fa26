@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - GraphQL 诞生背景与 REST 痛点 (Introduction to GraphQL &amp; Over/Under-fetching)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-pink-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                <span>Part 02 · GraphQL 声明式查询语言与按需索取数据</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                GraphQL 诞生背景：克服 REST 的 Over/Under-fetching 痛点
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                GraphQL Origin, Over-fetching, Under-fetching &amp; N+1 Network Roundtrips vs. Single Endpoint Graph Query
+            </p>
+        </div>
+
+        <!-- Content Grid: REST Pain Points (6 cols) vs GraphQL Paradigm & Architecture (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: REST Bottlenecks (Over-fetching / Under-fetching) (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                            <span>1. 传统 REST 架构在移动端与多端场景下的两大痛点</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9.5px] font-bold">REST Pain Points</span>
+                    </div>
+
+                    <!-- Introduction Banner -->
+                    <div class="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            <strong class="text-purple-900">GraphQL</strong> 由 Facebook 于 2012 年在内部移动端重构时开发，并于 2015 年开源。Facebook 发现：由于 REST 端点返回固定数据结构，传统 REST API 在移动弱网环境与复杂多端视图中暴露出致命缺陷。
+                        </p>
+                    </div>
+
+                    <!-- Cards: Over-fetching and Under-fetching -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Over-fetching -->
+                        <div class="p-2.5 rounded-xl bg-rose-50/50 border border-rose-200 hover:border-rose-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-rose-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-weight-hanging text-rose-600"></i>
+                                    <span>① 冗余获取 (Over-fetching) 浪费用户流量</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[9px]">Data Bloat</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                移动端卡片页面只需要展示用户的 <code class="text-rose-800 font-mono">name</code>，但 REST 端点 <code class="text-slate-800 font-mono">GET /users/1</code> 却被迫返回包含地址、历史订单、几十个关联字段的巨型 JSON，造成宝贵的移动网络流量与 CPU 解析浪费。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Under-fetching & N+1 Roundtrips -->
+                        <div class="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200 hover:border-amber-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-amber-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-network-wired text-amber-600"></i>
+                                    <span>② 获取不足 (Under-fetching) 与多轮网络往返 (RTT)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">Multiple RTTs</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                渲染一个包含“用户、其所有文章及最新评论”的复杂页面，前端不得不发起多轮 HTTP 请求：<code class="text-slate-800 font-mono">GET /user</code> $\to$ <code class="text-slate-800 font-mono">GET /user/posts</code> $\to$ <code class="text-slate-800 font-mono">GET /posts/1/comments</code>，高延迟累加严重影响首屏体验。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>本质矛盾：REST 的“以资源为中心”与前端视图“以 UI 需求为中心”存在天然错位</span>
+                    <i class="fa-solid fa-scale-unbalanced text-purple-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: GraphQL Paradigm Shift & Visual Comparison (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-purple-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap"></i>
+                            <span>2. GraphQL 范式革新：多端点 vs 统一单一端点 (`/graphql`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Single Graph Endpoint</span>
+                    </div>
+
+                    <!-- Visual Comparison Architecture Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9px] space-y-2.5">
+                        
+                        <!-- REST Multi-endpoint Box -->
+                        <div class="p-2 rounded bg-slate-900 border border-rose-900/60 space-y-1">
+                            <div class="flex items-center justify-between text-rose-400 font-bold">
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-xmark"></i>
+                                    <span>传统 REST：分散多端点 (Multiple Fixed Endpoints)</span>
+                                </span>
+                                <span class="text-slate-500 text-[8px]">Fixed Shape</span>
+                            </div>
+                            <div class="flex items-center justify-around text-[8.5px] text-slate-300 font-sans pt-1">
+                                <div class="px-1.5 py-0.5 bg-slate-950 rounded border border-slate-800 text-center">
+                                    <code class="text-rose-300">GET /users/1</code>
+                                </div>
+                                <div class="px-1.5 py-0.5 bg-slate-950 rounded border border-slate-800 text-center">
+                                    <code class="text-rose-300">GET /users/1/posts</code>
+                                </div>
+                                <div class="px-1.5 py-0.5 bg-slate-950 rounded border border-slate-800 text-center">
+                                    <code class="text-rose-300">GET /posts/1/friends</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GraphQL Single Endpoint Box -->
+                        <div class="p-2 rounded bg-slate-900 border border-purple-800/80 space-y-1">
+                            <div class="flex items-center justify-between text-purple-300 font-bold">
+                                <span class="flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                    <span>GraphQL：单一统一端点 (Single Post `/graphql` Endpoint)</span>
+                                </span>
+                                <span class="text-purple-400 text-[8px]">Client-driven Shape</span>
+                            </div>
+                            <div class="p-1.5 bg-slate-950 rounded border border-purple-900/60 font-mono text-[8.5px] flex items-center justify-between">
+                                <div class="text-slate-300">
+                                    <span class="text-purple-400 font-bold">POST /graphql</span>
+                                    <div class="text-slate-400 text-[8px] mt-0.5">Payload: 客户端精确声明的字符串 Schema</div>
+                                </div>
+                                <span class="px-2 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] font-bold border border-purple-700">1 RTT 图遍历</span>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Code shape comparison box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] leading-relaxed text-slate-300 space-y-1 overflow-x-auto">
+                        <div class="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-1 text-[9.5px]">
+                            <span>GraphQL“所问即所得”对应语法示范 (Declarative Query)</span>
+                            <span class="text-slate-400 text-[8px]">Ask what you need</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-0.5">
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800">
+                                <div class="text-purple-300 font-bold text-[8.5px]">// 客户端发送 Query</div>
+                                <div>{</div>
+                                <div class="pl-2 text-indigo-300">hero {</div>
+                                <div class="pl-4 text-emerald-300">name</div>
+                                <div class="pl-2 text-indigo-300">}</div>
+                                <div>}</div>
+                            </div>
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800">
+                                <div class="text-emerald-300 font-bold text-[8.5px]">// 服务端返回精准 JSON</div>
+                                <div>{</div>
+                                <div class="pl-2 text-indigo-300">"data": {</div>
+                                <div class="pl-4"><span class="text-purple-300">"hero"</span>: { <span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"R2-D2"</span> }</div>
+                                <div class="pl-2 text-indigo-300">}</div>
+                                <div>}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：GraphQL Schema 类型系统与 Resolvers 字段解析 (Slide 15)</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (GraphQL Paradigm Shift Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        GraphQL 将控制权从**“服务端硬编码端点”反转到了“客户端声明式描述”**。前端可以根据具体的界面视图灵活动态定制数据形状，后端只需聚焦于图状类型系统 (Type System) 的构建，彻底解耦了多端演进。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 14 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">14</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[35.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (13.html <- 14.html -> 15.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">GraphQL 诞生背景与 REST 痛点 (GraphQL Intro)</span>
+            <a href="15.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="13.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="15.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 Facebook 引入 GraphQL 的时代背景：</span>
+                    “向学员做历史引入：Facebook 在 2012 年重构其移动端 iOS/Android App 时遇到了严峻考验。使用传统 RESTful 时，移动端在弱网环境下的体验极差：要么过度获取 (Over-fetching) 造成宝贵移动流量浪费，要么获取不足 (Under-fetching) 导致发起 $N+1$ 轮 HTTP 请求引发页面卡顿。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 强调“所问即所得”的声明式反转：</span>
+                    “提示学员注意：GraphQL 颠覆了 REST 的‘服务端预先写死结构’逻辑，转而由客户端发送类似 JSON 形状的 Query 文本，服务端精确按需解送，真正实现了一次网络往返 (1 RTT) 完成复杂图状关系数据的索取。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

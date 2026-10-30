@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - 传统 HTTP 轮询 vs. WebSocket 全双工实时通信 (Traditional Polling vs. WebSocket Full-Duplex)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-wifi text-indigo-600"></i>
+                <span>Part 03 · WebSocket 全双工实时长连接与消息广播</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                传统 HTTP 轮询 vs. WebSocket 全双工实时通信
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                HTTP Short/Long Polling Bottlenecks, 101 Switching Protocols &amp; Minimal Framing Overhead
+            </p>
+        </div>
+
+        <!-- Content Grid: Polling Limitations (6 cols) vs WebSocket Protocol & Interaction Flow (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: HTTP Polling Limitations & Evolution (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-indigo-600"></i>
+                            <span>1. 传统 HTTP 轮询机制及其架构瓶颈</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9.5px] font-bold">Polling Limitations</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            传统 HTTP 协议是**单向请求-响应范式**，服务器无法主动向客户端推送数据。为了获得实时状态更新，早期 Web 架构衍生出“短轮询”与“长轮询”，但带来极其高昂的网络与计算开销。
+                        </p>
+                    </div>
+
+                    <!-- Evolution Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Short Polling -->
+                        <div class="p-2.5 rounded-xl bg-rose-50/40 border border-rose-200 hover:border-rose-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-rose-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-rotate text-rose-600"></i>
+                                    <span>① 短轮询 (Short Polling)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[9px]">High Overhead</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                客户端每隔固定的 $T$ 秒（如 1 秒）强行发送一次 HTTP `GET` 请求。即使服务端没有任何新消息，也必须应答 `200 OK` 空数据包，造成大量空刷请求，造成严重带宽与 CPU 浪费。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Long Polling -->
+                        <div class="p-2.5 rounded-xl bg-amber-50/40 border border-amber-200 hover:border-amber-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-amber-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-spinner text-amber-600"></i>
+                                    <span>② 长轮询 (Long Polling / Comet)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">Server Hold</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                服务端接收请求后**挂起**（Hold）连接，直到有新数据产生或发生超时（Timeout）才返回响应。虽然降低了无用请求次数，但**每次数据传输仍需携带完整 HTTP Header（约 500B ~ 2KB）**，且频繁重新握手。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Header Overhead Comparison -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-weight-hanging text-indigo-600"></i>
+                                    <span>③ 报头开销与全双工缺失 (Header Bloat)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">800B vs 2B</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                在每秒高频推拉 1 字节状态时，HTTP 报文高达 800 字节的 Cookie、User-Agent 等 Header 使得有效数据负载率不足 **0.2%**，严重制约高并发拓展。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>本质矛盾：HTTP 单向无状态与实时双向交互需求之间的天然错位</span>
+                    <i class="fa-solid fa-scale-unbalanced text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: WebSocket Full-Duplex & Interactive Flow (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-indigo-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt"></i>
+                            <span>2. WebSocket 全双工长连接与 101 协议升轨</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">WebSocket 101 Handshake</span>
+                    </div>
+
+                    <!-- Handshake Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1 mb-2">
+                        <div class="flex items-center justify-between text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>① HTTP 101 Switching Protocols 协议升轨握手</span>
+                            <span class="text-emerald-400 text-[8px]">RFC 6455</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 bg-slate-900 p-2 rounded border border-slate-800 leading-relaxed">
+                            <!-- Left: Client Upgrade Request -->
+                            <div>
+                                <div class="text-purple-400 font-bold text-[8px]">// 客户端请求 Upgrade</div>
+                                <div><span class="text-purple-400">GET</span> /chat <span class="text-slate-400">HTTP/1.1</span></div>
+                                <div><span class="text-indigo-300">Host:</span> server.example.com</div>
+                                <div><span class="text-indigo-300">Upgrade:</span> websocket</div>
+                                <div><span class="text-indigo-300">Connection:</span> Upgrade</div>
+                                <div><span class="text-amber-300">Sec-WebSocket-Key:</span> dGhl...==</div>
+                            </div>
+                            <!-- Right: Server 101 Response -->
+                            <div>
+                                <div class="text-emerald-400 font-bold text-[8px]">// 服务端响应 101 升轨</div>
+                                <div><span class="text-emerald-400">HTTP/1.1 101</span> Switching Protocols</div>
+                                <div><span class="text-indigo-300">Upgrade:</span> websocket</div>
+                                <div><span class="text-indigo-300">Connection:</span> Upgrade</div>
+                                <div><span class="text-amber-300">Sec-WebSocket-Accept:</span> s3pP...=</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visual Flow Comparison Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-indigo-800/80 font-mono text-[8.5px] space-y-1.5">
+                        <div class="flex items-center justify-between text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px]">
+                            <span>② 通信范式时序对比 (Sequence Comparison)</span>
+                            <span class="text-amber-400 text-[8px]">Full-Duplex TCP</span>
+                        </div>
+                        <div class="p-1.5 bg-slate-900 rounded border border-slate-800 space-y-1 text-slate-300">
+                            <!-- Short Polling -->
+                            <div class="flex items-center justify-between text-[8px]">
+                                <span class="text-rose-400 font-bold">短轮询</span>
+                                <span class="text-slate-400">Client --GET (Header 800B)--> Server --Empty 200--> Client (重复触发)</span>
+                            </div>
+                            <!-- Long Polling -->
+                            <div class="flex items-center justify-between text-[8px]">
+                                <span class="text-amber-400 font-bold">长轮询</span>
+                                <span class="text-slate-400">Client --GET--> Server (Hold 挂起) --Data--> Client (重新连接)</span>
+                            </div>
+                            <!-- WebSocket -->
+                            <div class="flex items-center justify-between text-[8px] border-t border-slate-800 pt-1">
+                                <span class="text-emerald-400 font-bold">WebSocket</span>
+                                <span class="text-emerald-300 font-bold">持久 TCP 管道: Client &lt;=== 2 字节极简帧 (Full-Duplex) ===&gt; Server</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Java API 原生 WebSocket 注解 (`@ServerEndpoint`) 实现 (Slide 25)</span>
+                    <i class="fa-solid fa-arrow-right text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (WebSocket Full-Duplex Paradigm)</h4>
+                    <p class="text-xs text-slate-700">
+                        WebSocket 通过标准的 **HTTP 101 Switching Protocols** 将单向短连接协议无缝“升级”为**持久化全双工 TCP 管道**。连接建立后仅需 2–10 字节的极简帧头，彻底摆脱了 HTTP 头部冗余与轮询开销。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 24 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[60.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">传统 HTTP 轮询 vs. WebSocket 全双工 (Polling vs. WebSocket)</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 开启 Part 03 全双工长连接学习：</span>
+                    “向学员做阶段过渡：本页开启第三部分（Part 03）。先引导学员回顾传统的短轮询（Short Polling）与长轮询（Long Polling）在实现聊天室、股票行情等实时功能时的痛点——高额的 HTTP Header 报头（800B）和频繁重连损耗。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 WebSocket 101 握手与帧头优势：</span>
+                    “请学员关注右侧的 HTTP 101 Switching Protocols 握手过程：客户端与服务端借助 HTTP 发起 Upgrade 请求，获准后在同一个 TCP 连接上建立持久的双向通道。在此之后，传输的数据帧仅需 2 字节（对比 HTTP 的 800 字节），且两端可随时互推消息。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

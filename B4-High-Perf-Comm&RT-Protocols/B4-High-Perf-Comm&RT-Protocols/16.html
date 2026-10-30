@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - GraphQL 声明式查询：字段拣选与对象图关联遍历 (GraphQL Queries: Fields &amp; Nested Objects)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-pink-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                <span>Part 02 · GraphQL 声明式查询语言与按需索取数据</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                GraphQL 声明式查询：字段拣选与对象图关联遍历
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Declarative Field Selection, Nested Graph Traversal &amp; Single-RTT Data Aggregation
+            </p>
+        </div>
+
+        <!-- Content Grid: Field Selection Principles (6 cols) vs Query Code & JSON Mapping (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Field Selection & Graph Traversal Principles (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-filter text-purple-600"></i>
+                            <span>1. 字段选择 (Field Selection) 与对象图遍历机制</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Query Mechanics</span>
+                    </div>
+
+                    <!-- Introduction Banner -->
+                    <div class="p-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            **GraphQL 查询的核心是“提问即结构”**。客户端在 Query 中精确写明所需的标量字段 (Scalar Fields) 和嵌套对象 (Nested Objects)。GraphQL 运行时会严格按照 Query 声明的树状形状返回精准 JSON，不多也不少。
+                        </p>
+                    </div>
+
+                    <!-- Key Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Precision Field Selection -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-[#000] fa-list-check text-purple-600"></i>
+                                    <span>① 标量字段精确裁剪 (Scalar Field Selection)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Zero Bloat</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                即使底层 `User` 对象包含 50 个数据库列（密码哈希、详细地址、历史记录等），若客户端只声明 <code class="text-purple-700 font-mono">name</code>，响应 JSON 便只包含 <code class="text-purple-700 font-mono">name</code>，彻底消除移动端网络流量浪费。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Nested Object Traversal -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sitemap text-indigo-600"></i>
+                                    <span>② 对象图关联递归遍历 (Nested Graph Traversal)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Single Roundtrip</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                客户端可以在单个 Query 中从根对象（如 `hero`）沿着关系边深入索取关联集合（如 `friends { name }`）。传统 REST 需要发起多轮 HTTP 往返，而 GraphQL 一次请求即可聚合整树数据。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: 1:1 Shape Matching -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-0.5">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shapes text-teal-600"></i>
+                                    <span>③ 1:1 契约结构映射 (Predictable Shape)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">Predictable JSON</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                响应 JSON 的 <code class="text-teal-800 font-mono">data</code> 对象的树状层级与 key 命名，与请求 Query 文本保持绝对 1:1 结构镜像，前端无需繁琐的清洗转码逻辑。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心解耦：UI 视图字段变动完全由前端自主修改 Query 控制，无需后端修改代码</span>
+                    <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Query & Response Code Snippets (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-purple-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code"></i>
+                            <span>2. 字段查询语法与精准 JSON 响应对比 (Query vs Response)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Declarative Mapping</span>
+                    </div>
+
+                    <!-- Code Snippet Box 1: Basic Field Query -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] space-y-1 mb-2">
+                        <div class="flex items-center justify-between text-purple-300 font-bold border-b border-slate-800 pb-0.5 text-[9.5px]">
+                            <span>示例 1：简单标量字段查询 (Basic Field Query)</span>
+                            <span class="text-slate-400 text-[8px]">Scalar Selection</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-0.5">
+                            <!-- Left: GraphQL Query -->
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800 text-slate-300 leading-relaxed">
+                                <div class="text-purple-400 font-bold text-[8px]">// GraphQL Query</div>
+                                <div>{</div>
+                                <div class="pl-2 text-indigo-300">hero {</div>
+                                <div class="pl-4 text-emerald-300">name</div>
+                                <div class="pl-2 text-indigo-300">}</div>
+                                <div>}</div>
+                            </div>
+                            <!-- Right: JSON Response -->
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800 text-slate-300 leading-relaxed">
+                                <div class="text-emerald-400 font-bold text-[8px]">// JSON Response</div>
+                                <div>{</div>
+                                <div class="pl-2 text-indigo-300">"data": {</div>
+                                <div class="pl-4"><span class="text-purple-300">"hero"</span>: { <span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"R2-D2"</span> }</div>
+                                <div class="pl-2 text-indigo-300">}</div>
+                                <div>}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Snippet Box 2: Nested Relation Graph Traversal -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-purple-800/80 font-mono text-[9px] space-y-1">
+                        <div class="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-0.5 text-[9.5px]">
+                            <span>示例 2：对象图关联遍历查询 (Nested Relation Graph Traversal)</span>
+                            <span class="text-purple-400 text-[8px]">Graph Traversal</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-0.5">
+                            <!-- Left: GraphQL Query -->
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800 text-slate-300 leading-relaxed overflow-x-auto">
+                                <div class="text-purple-400 font-bold text-[8px]">// 客户端发送嵌套 Query</div>
+                                <div>{</div>
+                                <div class="pl-2 text-indigo-300">hero {</div>
+                                <div class="pl-4 text-emerald-300">name</div>
+                                <div class="pl-4 text-slate-500"># 支持内联注释！</div>
+                                <div class="pl-4 text-indigo-300">friends {</div>
+                                <div class="pl-6 text-emerald-300">name</div>
+                                <div class="pl-4 text-indigo-300">}</div>
+                                <div class="pl-2 text-indigo-300">}</div>
+                                <div>}</div>
+                            </div>
+                            <!-- Right: JSON Response -->
+                            <div class="p-1.5 bg-slate-900 rounded border border-slate-800 text-slate-300 leading-relaxed overflow-x-auto text-[8.5px]">
+                                <div class="text-emerald-400 font-bold text-[8px]">// 服务端 1 RTT 返回聚合 JSON</div>
+                                <div>{ <span class="text-purple-300">"data"</span>: { <span class="text-purple-300">"hero"</span>: {</div>
+                                <div class="pl-2"><span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"R2-D2"</span>,</div>
+                                <div class="pl-2"><span class="text-purple-300">"friends"</span>: [</div>
+                                <div class="pl-4">{ <span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"Luke Skywalker"</span> },</div>
+                                <div class="pl-4">{ <span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"Han Solo"</span> },</div>
+                                <div class="pl-4">{ <span class="text-purple-300">"name"</span>: <span class="text-emerald-300">"Leia Organa"</span> }</div>
+                                <div class="pl-2">]</div>
+                                <div>} } }</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：GraphQL 字段参数 (Arguments) 与别名 (Aliases) 冲突解决 (Slide 17)</span>
+                    <i class="fa-solid fa-arrow-right text-purple-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Declarative Field Selection Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        GraphQL 通过声明式语法赋予了前端 UI 组件**自由拣选字段与展开关联树的能力**。服务端无需关心具体的页面展示层视图结构，仅需维护好图节点的 Resolver 解析函数，真正实现了“所问即所得”。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 16 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">16</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[40.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (15.html <- 16.html -> 17.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">GraphQL 声明式查询：字段拣选与对象图关联 (Fields &amp; Objects)</span>
+            <a href="17.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="15.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="17.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 GraphQL 的“所问即所得”：</span>
+                    “向学员做语法演示：最简单的 GraphQL 查询就是指定对象上的具体字段。对比示例 1 与示例 2：客户端只在 Query 中写入 `hero { name friends { name } }`，服务端返回的 JSON 便精确地包含英雄名字以及朋友列表，结构与 Query 保持 1:1 映射。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调与 REST 传统多轮请求的对比：</span>
+                    “提示学员注意：如果在 REST 架构中，要获取一个英雄以及其所有好友的名字，前端必须先发起 `GET /hero` 获取好友 ID 数组，再针对每个 ID 发起 `GET /friends/{id}`，产生多次 RTT 往返；而 GraphQL 在单次 Query 中即可展开图节点遍历。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

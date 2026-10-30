@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - SockJS 跨浏览器降级与 STOMP.js 客户端实战 (SockJS &amp; STOMP Client Integration)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-laptop-code text-indigo-600"></i>
+                <span>Part 03 · WebSocket 全双工实时长连接与消息广播</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                SockJS 跨浏览器降级与 STOMP.js 客户端实战
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                SockJS Transport Fallbacks, `Stomp.over()`, Heartbeat Management, Topic Subscription &amp; User Queue Handlers
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (SockJS Degradation & STOMP Protocol, 6 cols) vs Right (Client Code app.js, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: SockJS Fallback Chain & STOMP Protocol Mechanics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                            <span>1. SockJS 传输协议平滑降级与客户端生命周期</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">SockJS &amp; STOMP.js</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-indigo-50/50 border border-indigo-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            在复杂真实网络（旧版浏览器、受限公司防火墙、拦截 101 Upgrade 响应的代理）中，原生 WebSocket 可能握手失败。**SockJS** 提供了透明的传输协议**平滑降级链 (Fallback Chain)**，确保长连接的高可用性。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: SockJS Fallback Chain -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                                    <span>① SockJS 传输降级三阶梯 (Transport Priority)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Graceful Degradation</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1 font-mono text-[9px] text-slate-700 text-center pt-0.5">
+                                <div class="bg-emerald-50 p-1 rounded border border-emerald-200 text-emerald-900 font-bold">
+                                    1. WebSocket<br/><span class="text-[8px] font-normal text-slate-500">原生全双工</span>
+                                </div>
+                                <div class="bg-purple-50 p-1 rounded border border-purple-200 text-purple-900 font-bold">
+                                    2. HTTP Stream<br/><span class="text-[8px] font-normal text-slate-500">XHR / EventSource</span>
+                                </div>
+                                <div class="bg-amber-50 p-1 rounded border border-amber-200 text-amber-900 font-bold">
+                                    3. Long Polling<br/><span class="text-[8px] font-normal text-slate-500">XHR Polling 兜底</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: STOMP Subscription Lifecycle -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-satellite-dish text-purple-600"></i>
+                                    <span>② STOMP.js 客户端订阅与心跳侦测 (Heartbeats)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">Subscriptions</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                客户端握手成功后调用 <code class="text-purple-800 font-mono">stompClient.subscribe('/topic/...')</code> 向 Broker 注册订阅标记。STOMP 客户端会定期发送空 Ping/Pong 字符帧检测 TCP 死链，发生网络拥堵时可自动触发重连机制。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: User Queue Subscription -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-teal-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-teal-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-user-lock text-teal-600"></i>
+                                    <span>③ 用户私聊队列订阅规范 (`/user/queue/...`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px]">P2P Routing</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                接收点对点私信时，前端只需订阅固定前缀 <code class="text-teal-800 font-mono font-bold">/user/queue/messages</code>。Spring 底层会自动将其与握手身份关联，转换为用户独享的 Session 隔离通道（如 `/user/session123/queue/messages`）。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>前端最佳实践：SockJS 封装抹平了网络环境差异，前端 API 保持绝对统一</span>
+                    <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: SockJS & STOMP Client Implementation (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-indigo-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. STOMP 客户端 JavaScript 代码实现 (`app.js`)</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">SockJS + STOMP.js</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-1 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Client Connection Code -->
+                        <div class="text-indigo-300 font-bold border-b border-slate-800 pb-1 text-[9px] flex items-center justify-between">
+                            <span>① 连接挂载、全局订阅与断线重连 (`app.js`)</span>
+                            <span class="text-emerald-400 text-[8px]">Stomp.over(socket)</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div><span class="text-purple-400">let</span> stompClient = <span class="text-purple-400">null</span>;</div>
+
+                            <div class="mt-1"><span class="text-purple-400">function</span> <span class="text-blue-300">connect</span>() {</div>
+                            <div class="pl-4 text-slate-500">// 1. 使用 SockJS 初始化降级端点（匹配后端 addEndpoint("/ws-stomp")）</div>
+                            <div class="pl-4"><span class="text-purple-400">const</span> socket = <span class="text-purple-400">new</span> <span class="text-amber-300">SockJS</span>(<span class="text-emerald-300">'/ws-stomp'</span>);</div>
+                            <div class="pl-4">stompClient = Stomp.<span class="text-blue-300">over</span>(socket);</div>
+                            
+                            <div class="pl-4 mt-1 text-slate-500">// 2. 配置心跳间隔与连接回调</div>
+                            <div class="pl-4">stompClient.heartbeat.outgoing = <span class="text-amber-300">10000</span>; <span class="text-slate-500">// 10s 发出心跳</span></div>
+                            <div class="pl-4">stompClient.<span class="text-blue-300">connect</span>({}, <span class="text-purple-400">function</span> (frame) {</div>
+                            <div class="pl-8">console.<span class="text-blue-300">log</span>(<span class="text-emerald-300">'Connected: '</span> + frame);</div>
+                            
+                            <div class="pl-8 mt-1 text-slate-500">// A. 订阅广播 Topic (/topic/public)</div>
+                            <div class="pl-8">stompClient.<span class="text-blue-300">subscribe</span>(<span class="text-emerald-300">'/topic/public'</span>, <span class="text-purple-400">function</span> (msg) {</div>
+                            <div class="pl-12"><span class="text-purple-400">const</span> body = JSON.<span class="text-blue-300">parse</span>(msg.body);</div>
+                            <div class="pl-12"><span class="text-blue-300">showBroadcastMessage</span>(body);</div>
+                            <div class="pl-8">});</div>
+
+                            <div class="pl-8 mt-1 text-slate-500">// B. 订阅个人专属私聊 Queue (/user/queue/messages)</div>
+                            <div class="pl-8">stompClient.<span class="text-blue-300">subscribe</span>(<span class="text-emerald-300">'/user/queue/messages'</span>, <span class="text-purple-400">function</span> (msg) {</div>
+                            <div class="pl-12"><span class="text-purple-400">const</span> privateMsg = JSON.<span class="text-blue-300">parse</span>(msg.body);</div>
+                            <div class="pl-12"><span class="text-blue-300">showPrivateMessage</span>(privateMsg);</div>
+                            <div class="pl-8">});</div>
+
+                            <div class="pl-4">}, <span class="text-purple-400">function</span> (error) {</div>
+                            <div class="pl-8">console.<span class="text-blue-300">error</span>(<span class="text-emerald-300">'STOMP error, reconnecting in 5s...'</span>, error);</div>
+                            <div class="pl-8"><span class="text-blue-300">setTimeout</span>(connect, <span class="text-amber-300">5000</span>); <span class="text-slate-500">// 自动指数退避重连</span></div>
+                            <div class="pl-4">});</div>
+                            <div>}</div>
+
+                            <div class="mt-1 text-slate-500">// 3. 发送消息到服务端入口 /app/chat.sendMessage</div>
+                            <div><span class="text-purple-400">function</span> <span class="text-blue-300">sendMessage</span>(text) {</div>
+                            <div class="pl-4">stompClient.<span class="text-blue-300">send</span>(<span class="text-emerald-300">"/app/chat.sendMessage"</span>, {}, JSON.<span class="text-blue-300">stringify</span>({content: text}));</div>
+                            <div>}</div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：WebSocket 集群扩容与 Kafka/Redis 发布订阅消息总线 (Slide 33)</span>
+                    <i class="fa-solid fa-arrow-right text-indigo-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (SockJS &amp; STOMP Client Protocol Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        <code class="font-mono text-indigo-800 font-bold">SockJS</code> 抹平了复杂异构网络的通信壁垒，而 <code class="font-mono text-indigo-800 font-bold">STOMP.js</code> 为前端提供了结构化的发布/订阅 (Pub/Sub) 语义。两者结合使得网页端能够像使用专业 MQ 客户端一样，无缝接收广播与私信通知。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 32 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[80.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">SockJS 跨浏览器降级与 STOMP.js 客户端实战</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 SockJS 降级层次：</span>
+                    “向学员做网络拓扑解释：在公司防火墙或企业网关封锁 101 Upgrade 时，SockJS 库会自动回退到 XHR-Streaming 或 XHR-Polling 长轮询。前端开发者无需关心底层的降级细节，SockJS 抹平了这一切。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 `/user/queue/messages` 订阅：</span>
+                    “请学员关注右侧的代码：前端订阅个人私信时，直接指定字符串 `/user/queue/messages`。Spring 收到订阅帧后，利用客户端建立连接时的 Principal 账号自动转换目标映射，将用户隔离在独立的私有队列中。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

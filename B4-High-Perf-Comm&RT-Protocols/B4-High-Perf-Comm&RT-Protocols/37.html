@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 37 - 大模型时代 AI 打字机流式输出：SSE 在 Generative AI 中的工程落地 (LLM Streaming Output)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            pink: '#db2777',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-robot text-amber-600"></i>
+                <span>Part 04 · Server-Sent Events (SSE) 与大模型 AI 打字机流式推送</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                大模型时代 AI 打字机流式输出：SSE 在 Generative AI 中的工程落地
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Token-by-Token LLM Streaming, TTFT Optimization, Spring AI `Flux<ServerSentEvent<String>>` &amp; Fetch `ReadableStream`
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (LLM Mechanics & TTFT, 6 cols) vs Right (Spring AI & JS Reader Code, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: LLM Streaming Mechanics & TTFT Optimization (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-microchip text-amber-600"></i>
+                            <span>1. 生成式 AI (Generative AI) 打字机流式输出原理</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">LLM Token Streaming</span>
+                    </div>
+
+                    <!-- Intro Banner -->
+                    <div class="p-2.5 rounded-xl bg-amber-50/50 border border-amber-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            大语言模型（如 ChatGPT, Claude, DeepSeek）生成长篇回答需耗时数秒甚至数分钟。**若采用传统同步阻塞响应，首字延迟 (Time To First Token, TTFT) 极高，用户体验极差。** 通过将 LLM 内部吐出的 Token 借助 SSE 实时化推流，可将感知延迟从 10s+ 降至 **150ms 以内**。
+                        </p>
+                    </div>
+
+                    <!-- Mechanics Cards -->
+                    <div class="space-y-2 font-sans text-[11px]">
+                        
+                        <!-- Card 1: Time To First Token (TTFT) -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-amber-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-amber-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-high text-amber-600"></i>
+                                    <span>① 首字延迟 (TTFT) 极致优化与打字机视效</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">TTFT &lt; 200ms</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                LLM 内部自回归计算每生成一个 Token，后端立即以 SSE `data: {"content": "..."}\n\n` 帧推向前端，前端配合打字机（Typewriter）动画即时渲染，呈现出拟人化实时思考与回答过程。
+                            </p>
+                        </div>
+
+                        <!-- Card 2: Why SSE for LLMs -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
+                                    <span>② 为何 LLM 场景完美适配 SSE 而非 WebSocket？</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[9px]">Protocol Choice</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                AI 对话交互具有天然的**单向不对称性**：客户端发起单个带复杂 Prompt 的 HTTP POST 请求；随后仅需服务端单向将生成结果连续吐回。无需复杂全双工 WebSocket 握手，纯 HTTP 语法的 SSE 是性能与轻量化的最佳解。
+                            </p>
+                        </div>
+
+                        <!-- Card 3: Chunk Protocol & Stream Completion -->
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-purple-300 transition space-y-1">
+                            <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-flag-checkered text-purple-600"></i>
+                                    <span>③ 业界标准终止符规范 (`data: [DONE]\n\n`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">OpenAI Spec</span>
+                            </div>
+                            <p class="text-slate-600 text-[10.5px] leading-tight">
+                                参照 OpenAI 标准 API 规范，当大模型生成完全部内容时，服务端发送特殊的终结标记帧 <code class="text-purple-800 font-mono font-bold">data: [DONE]</code>，告知前端解析器正常关闭 HTTP Stream 句柄并停止光标闪烁。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>AI 架构法宝：SSE 打字机推送已成为当下所有 LLM 产品的工业级标准解法</span>
+                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Implementation - Spring AI & JS Stream Reader (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code"></i>
+                            <span>2. Spring AI Reactive 端点与前端 Fetch Stream 代码</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Spring AI &amp; JS ReadableStream</span>
+                    </div>
+
+                    <!-- Code Snippet Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[8.5px] space-y-1.5 mb-1 leading-relaxed overflow-x-auto">
+                        
+                        <!-- Spring Boot Controller Code -->
+                        <div class="text-amber-300 font-bold border-b border-slate-800 pb-1 text-[9px] flex items-center justify-between">
+                            <span>① Spring Boot / Spring AI 响应式流端点 (`AiChatController.java`)</span>
+                            <span class="text-emerald-400 text-[8px]">Flux&lt;ServerSentEvent&gt;</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div class="text-indigo-400">@RestController</div>
+                            <div class="text-indigo-400">@RequestMapping(<span class="text-emerald-300">"/api/ai"</span>)</div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">AiChatController</span> {</div>
+                            <div class="pl-4"><span class="text-purple-400">@Autowired private</span> OpenAiChatModel chatModel; <span class="text-slate-500">// Spring AI</span></div>
+
+                            <div class="pl-4 mt-1 text-indigo-400">@PostMapping(value = <span class="text-emerald-300">"/stream"</span>, produces = MediaType.<span class="text-amber-300">TEXT_EVENT_STREAM_VALUE</span>)</div>
+                            <div class="pl-4"><span class="text-purple-400">public</span> Flux&lt;ServerSentEvent&lt;String&gt;&gt; <span class="text-blue-300">streamLlmChat</span>(<span class="text-indigo-400">@RequestBody</span> PromptReq req) {</div>
+                            <div class="pl-8 text-slate-500">// 1. 订阅大模型生成的 Token 异步流</div>
+                            <div class="pl-8">Flux&lt;String&gt; tokenStream = chatModel.<span class="text-blue-300">stream</span>(req.<span class="text-blue-300">getPrompt</span>());</div>
+                            
+                            <div class="pl-8 mt-1 text-slate-500">// 2. 将每个 Token 封装为 SSE 格式数据帧</div>
+                            <div class="pl-8"><span class="text-purple-400">return</span> tokenStream</div>
+                            <div class="pl-12">.<span class="text-blue-300">map</span>(token -&gt; ServerSentEvent.&lt;String&gt;<span class="text-blue-300">builder</span>().<span class="text-blue-300">data</span>(token).<span class="text-blue-300">build</span>())</div>
+                            <div class="pl-12">.<span class="text-blue-300">concatWith</span>(Mono.<span class="text-blue-300">just</span>(ServerSentEvent.&lt;String&gt;<span class="text-blue-300">builder</span>().<span class="text-blue-300">data</span>(<span class="text-emerald-300 font-bold">"[DONE]"</span>).<span class="text-blue-300">build</span>()));</div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- JavaScript Stream Reader Code -->
+                        <div class="text-purple-300 font-bold border-b border-slate-800 pb-1 text-[9px] pt-1 flex items-center justify-between">
+                            <span>② 前端 Fetch API + `ReadableStream` 流式读取器 (`chat_ui.js`)</span>
+                            <span class="text-amber-400 text-[8px]">ReadableStream Reader</span>
+                        </div>
+                        <div class="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300 space-y-1">
+                            <div><span class="text-purple-400">async function</span> <span class="text-blue-300">fetchLlmAnswer</span>(prompt) {</div>
+                            <div class="pl-4"><span class="text-purple-400">const</span> response = <span class="text-purple-400">await</span> <span class="text-blue-300">fetch</span>(<span class="text-emerald-300">'/api/ai/stream'</span>, {</div>
+                            <div class="pl-8">method: <span class="text-emerald-300">'POST'</span>, headers: { <span class="text-emerald-300">'Content-Type'</span>: <span class="text-emerald-300">'application/json'</span> },</div>
+                            <div class="pl-8">body: JSON.<span class="text-blue-300">stringify</span>({ prompt })</div>
+                            <div class="pl-4">});</div>
+                            
+                            <div class="pl-4 mt-1 text-slate-500">// 获取底层 ReadableStream 读句柄</div>
+                            <div class="pl-4"><span class="text-purple-400">const</span> reader = response.body.<span class="text-blue-300">getReader</span>();</div>
+                            <div class="pl-4"><span class="text-purple-400">const</span> decoder = <span class="text-purple-400">new</span> <span class="text-amber-300">TextDecoder</span>();</div>
+                            
+                            <div class="pl-4 mt-1"><span class="text-purple-400">while</span> (<span class="text-purple-400">true</span>) {</div>
+                            <div class="pl-8"><span class="text-purple-400">const</span> { done, value } = <span class="text-purple-400">await</span> reader.<span class="text-blue-300">read</span>();</div>
+                            <div class="pl-8"><span class="text-purple-400">if</span> (done) <span class="text-purple-400">break</span>;</div>
+                            <div class="pl-8"><span class="text-purple-400">const</span> chunk = decoder.<span class="text-blue-300">decode</span>(value, { stream: <span class="text-purple-400">true</span> });</div>
+                            <div class="pl-8"><span class="text-blue-300">appendTokenToTypewriterUI</span>(chunk); <span class="text-slate-500">// 实时增量更新打字机 UI</span></div>
+                            <div class="pl-4">}</div>
+                            <div>}</div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Part 05 · 现代服务端通信协议选型决策树与第 4 讲总结 (Slide 38)</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (AI LLM Streaming Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        生成式 AI 时代，用户体验的胜负取决于 **Time To First Token (TTFT)**。利用 <code class="font-mono text-amber-800 font-bold">Spring AI Flux + Server-Sent Events (SSE) + Fetch ReadableStream</code> 构建的按 Token 实时推流管道，成功将秒级甚至分钟级的模型推理过程转化为极速响应的打字机交互。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 37 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">37</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[92.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (36.html <- 37.html -> 38.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="36.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">大模型时代 AI 打字机流式输出：SSE 在 Generative AI 中的工程落地</span>
+            <a href="38.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="36.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="38.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学员理解 AI 打字机流式输出的工程必要性：</span>
+                    “向学员强调：大模型时代，如果不使用流式输出，用户提出一个复杂 Prompt 后可能需要等待 10~20 秒才能看到第一个字。而在使用了基于 SSE 的 Token-by-Token 流式输出后，首字延迟 (TTFT) 瞬间降低到 150ms 以内，极大地提升了用户心理预期和产品留存率。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 `Flux<ServerSentEvent<String>>` 与 `data: [DONE]` 终止符：</span>
+                    “请学员关注右侧代码：Spring AI / Spring Reactive 提供了 `Flux<ServerSentEvent<String>>`，它会自动将 Reactive 流转换成 `text/event-stream`。注意末尾必须拼接 `data: [DONE]` 标记，让前端的 `ReadableStream` 读句柄能明确感知模型生成结束并收尾关闭光标。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '38.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

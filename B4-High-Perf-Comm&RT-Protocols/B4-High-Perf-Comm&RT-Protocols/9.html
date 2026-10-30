@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 09 - gRPC Stub 存根机制与同步/异步调用模式 (gRPC Stubs &amp; Sync vs. Async)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 4 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-gears text-teal-600"></i>
+                <span>Part 01 · gRPC &amp; Protocol Buffers 极致 IPC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                gRPC Stub 存根机制与同步/异步 API 调用模式
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Client-Side Stubs Architecture, BlockingStub vs. AsyncStub vs. FutureStub &amp; StreamObserver
+            </p>
+        </div>
+
+        <!-- Content Grid: Stub Mechanism Architecture (6 cols) vs 3 Stub Variants & Code (6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Stub Mechanism Architecture (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap text-teal-600"></i>
+                            <span>1. gRPC Stub (存根) 架构原理与封包解包机制</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Stub Architecture</span>
+                    </div>
+
+                    <!-- Description Card -->
+                    <div class="p-2.5 rounded-xl bg-teal-50/50 border border-teal-100 text-xs font-sans text-slate-700 leading-relaxed mb-2 space-y-1">
+                        <p>
+                            **Stub（存根）** 是客户端通过 `.proto` 动态派生的**本地代理对象**。客户端调用 Stub 方法时，Stub 负责将 Java 对象序列化为 Protobuf 字节流（Marshal），并通过 HTTP/2 通道发送给服务端；收到响应后再自动反序列化（Unmarshal）为本地对象。
+                        </p>
+                    </div>
+
+                    <!-- Visual Flow Architecture Diagram Box -->
+                    <div class="bg-slate-950 rounded-xl p-3 border border-slate-800 font-mono text-[9px] space-y-2">
+                        <div class="flex items-center justify-between text-teal-300 font-bold border-b border-slate-800 pb-1">
+                            <span>gRPC 存根层网络透明调用流程 (RPC Dispatch Pipeline)</span>
+                            <span class="text-slate-400 text-[8px]">Client-Server Stub Topology</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-center">
+                            <!-- Client Side Box -->
+                            <div class="p-2 rounded bg-slate-900 border border-indigo-800/80 space-y-1">
+                                <span class="text-indigo-400 font-bold block text-[9.5px]">Client App (Java)</span>
+                                <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[8.5px]">
+                                    <code>stub.sayHello(req)</code>
+                                </div>
+                                <i class="fa-solid fa-arrow-down text-indigo-400 my-0.5 block"></i>
+                                <div class="p-1 rounded bg-indigo-950 border border-indigo-700 text-indigo-200 text-[8px]">
+                                    <strong>Client Stub</strong><br/>
+                                    Marshal &rarr; Protobuf Bytes
+                                </div>
+                            </div>
+
+                            <!-- Server Side Box -->
+                            <div class="p-2 rounded bg-slate-900 border border-teal-800/80 space-y-1">
+                                <span class="text-teal-400 font-bold block text-[9.5px]">Server Impl (Java)</span>
+                                <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300 text-[8.5px]">
+                                    <code>@Service GrpcServerService</code>
+                                </div>
+                                <i class="fa-solid fa-arrow-up text-teal-400 my-0.5 block"></i>
+                                <div class="p-1 rounded bg-teal-950 border border-teal-700 text-teal-200 text-[8px]">
+                                    <strong>Server BaseImpl</strong><br/>
+                                    Unmarshal &larr; HTTP/2 Frame
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-1 rounded bg-slate-900 border border-slate-800 text-center text-slate-400 text-[8.5px]">
+                            <i class="fa-solid fa-network-wired text-teal-400 mr-1"></i>
+                            HTTP/2 Binary Streaming Channel (Netty / Channel Pool)
+                        </div>
+                    </div>
+
+                    <!-- Key Features List -->
+                    <div class="space-y-1 font-sans text-[10.5px] text-slate-600 mt-2">
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**透明寻址**：屏蔽底层的网络连接、序列化与 HTTP/2 Frame 切片细节。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-teal-600 mt-0.5 text-[9px]"></i>
+                            <span>**强类型绑定**：方法签名、入参与返回值受 Protobuf 强校验，避免运行时类型不匹配。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>核心抽象：用本地方法调用的感官屏蔽复杂的分布式 IPC 细节</span>
+                    <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: 3 Stub Variants & Java Code Comparison (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>2. Java gRPC 派生的 3 种 Stub 变体对比</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">Stub Flavors</span>
+                    </div>
+
+                    <!-- 3 Stub Flavors Matrix Cards -->
+                    <div class="grid grid-cols-3 gap-1.5 font-mono text-[8.5px] mb-2">
+                        <div class="p-1.5 rounded bg-slate-950 border border-teal-800/80 space-y-0.5">
+                            <strong class="text-teal-300 block">1. BlockingStub</strong>
+                            <span class="text-slate-400 font-sans block text-[8px]">同步阻塞式，适合 Unary 和 Server Streaming；简便直观。</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-purple-800/80 space-y-0.5">
+                            <strong class="text-purple-300 block">2. AsyncStub</strong>
+                            <span class="text-slate-400 font-sans block text-[8px]">异步非阻塞，全类型可用；基于 `StreamObserver` 回调。</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-indigo-800/80 space-y-0.5">
+                            <strong class="text-indigo-300 block">3. FutureStub</strong>
+                            <span class="text-slate-400 font-sans block text-[8px]">Future 异步式，返回 `ListenableFuture`；仅适用于 Unary。</span>
+                        </div>
+                    </div>
+
+                    <!-- Code Box: Blocking vs Async StreamObserver -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] leading-relaxed text-slate-300 space-y-1 overflow-x-auto">
+                        <div class="text-slate-500">// 1. BlockingStub 同步调用范例 (阻塞直到获取结果)</div>
+                        <div>SimpleGrpc.<span class="text-amber-300">SimpleBlockingStub</span> blockingStub = SimpleGrpc.<span class="text-blue-400">newBlockingStub</span>(channel);</div>
+                        <div>HelloReply reply = blockingStub.<span class="text-blue-400">sayHello</span>(HelloRequest.<span class="text-blue-400">newBuilder</span>().setName(<span class="text-emerald-300">"Alien"</span>).build());</div>
+
+                        <div class="text-slate-500 mt-2">// 2. AsyncStub 异步流式回调范例 (StreamObserver 非阻塞)</div>
+                        <div>SimpleGrpc.<span class="text-purple-300">SimpleAsyncStub</span> asyncStub = SimpleGrpc.<span class="text-blue-400">newStub</span>(channel);</div>
+                        <div>asyncStub.<span class="text-blue-400">sayHello</span>(request, <span class="text-purple-400">new</span> StreamObserver&lt;HelloReply&gt;() {</div>
+                        <div class="pl-4"><span class="text-purple-400">@Override</span> <span class="text-purple-400">public void</span> <span class="text-blue-400">onNext</span>(HelloReply value) { System.out.println(value.getMessage()); }</div>
+                        <div class="pl-4"><span class="text-purple-400">@Override</span> <span class="text-purple-400">public void</span> <span class="text-blue-400">onError</span>(Throwable t) { t.printStackTrace(); }</div>
+                        <div class="pl-4"><span class="text-purple-400">@Override</span> <span class="text-purple-400">public void</span> <span class="text-blue-400">onCompleted</span>() { System.out.println(<span class="text-emerald-300">"Stream Finished"</span>); }</div>
+                        <div>});</div>
+                    </div>
+
+                    <!-- Sync vs Async Evaluation -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[8.5px] text-slate-300 mt-2 space-y-0.5">
+                        <span class="text-amber-300 font-bold block">选型决策提示 (Sync vs. Async Trade-off)</span>
+                        <p class="text-slate-400 font-sans text-[8.5px] leading-tight">
+                            传统微服务或简单 CRUD 优先推荐 **`BlockingStub`**（代码线性直观）；而对于海量高并发推拉流、长连接网络通信或虚拟线程 (Java 21 Loom) 环境，建议结合 **`AsyncStub`** 发挥最大吞吐优势。
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>下一个核心：Spring Boot 中的 gRPC 服务端与客户端工程化落地 (Slide 10)</span>
+                    <i class="fa-solid fa-arrow-right text-teal-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Stub Design Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Stub 是 RPC “透明远端过程调用”抽象的灵魂。通过将网络编解码下沉至 Stub 层，**开发者可以以最契合当前业务的形式（同步阻塞 vs 异步 StreamObserver 流式）自由掌控并发通信**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 9 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">09</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[22.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (8.html <- 9.html -> 10.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="8.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">gRPC Stub 存根机制与同步/异步 API (Stubs &amp; Call Patterns)</span>
+            <a href="10.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="8.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="10.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生理解 Stub 存根的透明包装作用：</span>
+                    “向学员强调：Stub（存根）是客户端与服务端通信的纽带。`protoc` 会自动派生三类存根：最常用的 `BlockingStub`（同步阻塞）、基于回调的 `AsyncStub`（异步 `StreamObserver`）以及 `FutureStub`（异步 Future）。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Slide 10 Spring Boot gRPC 实战：</span>
+                    “提示学员：理清了 4 种通信模式与 3 种 Stub 存根后，下一页 Slide 10 我们将正式进入 Spring Boot 环境下 `spring-grpc-spring-boot-starter` 服务端与客户端工程化实战部分！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
