@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 核心物理抽象：追加日志与单调递增 Offset (Append-Only Log &amp; Offset)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                核心物理抽象：追加日志 (Append-Only Log) 与单调递增 Offset
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Append-Only Log Mechanics, Monotonic Offsets, Consumer Position Tracking &amp; Replayability
+            </p>
+        </div>
+
+        <!-- Append-Only Log Visual Topology Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-ol"></i>
+                        <span>Kafka Partition 追加日志结构 (Append-Only Log &amp; Consumer Offsets)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Partition Log File (Physical Disk Append)</span>
+                </div>
+
+                <!-- Log Stream Visual Nodes -->
+                <div class="space-y-3 font-mono text-xs">
+                    <div class="flex flex-wrap items-center justify-between gap-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800 overflow-x-auto">
+                        <!-- Offsets Cells -->
+                        <div class="flex items-center gap-1 shrink-0">
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 0</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt0</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 1</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt1</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 2</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt2</div>
+                            </div>
+                            <div class="flex flex-col items-center relative">
+                                <span class="text-[9px] text-purple-400 font-bold mb-0.5">Off 3</span>
+                                <div class="w-9 h-9 rounded-lg bg-purple-950 border-2 border-purple-500 flex items-center justify-center text-purple-200 text-[10px] font-bold shadow-md">Evt3</div>
+                                <!-- Pointer B -->
+                                <div class="absolute -bottom-6 text-[8.5px] font-sans text-purple-300 font-bold whitespace-nowrap flex items-center gap-0.5">
+                                    <i class="fa-solid fa-arrow-up text-[9px]"></i>
+                                    <span>Group B (Analytics)</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 4</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt4</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 5</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt5</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 6</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt6</div>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-slate-500 mb-0.5">Off 7</span>
+                                <div class="w-9 h-9 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[10px] font-bold">Evt7</div>
+                            </div>
+                            <div class="flex flex-col items-center relative">
+                                <span class="text-[9px] text-amber-400 font-bold mb-0.5">Off 8</span>
+                                <div class="w-9 h-9 rounded-lg bg-amber-950 border-2 border-amber-500 flex items-center justify-center text-amber-200 text-[10px] font-bold shadow-md">Evt8</div>
+                                <!-- Pointer A -->
+                                <div class="absolute -bottom-6 text-[8.5px] font-sans text-amber-300 font-bold whitespace-nowrap flex items-center gap-0.5">
+                                    <i class="fa-solid fa-arrow-up text-[9px]"></i>
+                                    <span>Group A (Order App)</span>
+                                </div>
+                            </div>
+                            <!-- Next Append Slot -->
+                            <div class="flex flex-col items-center">
+                                <span class="text-[9px] text-teal-400 font-bold mb-0.5">Off 9</span>
+                                <div class="w-9 h-9 rounded-lg bg-teal-950/80 border-2 border-dashed border-teal-500 flex items-center justify-center text-teal-300 text-[9px] font-bold animate-pulse">
+                                    +Write
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Producer Active Push Label -->
+                        <div class="flex items-center justify-between text-[10px] font-sans text-slate-400 pt-3 border-t border-slate-800">
+                            <span class="flex items-center gap-1.5 text-teal-300">
+                                <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                                <span>Producer 仅向 Log 尾部顺序追加 (Sequential Write)</span>
+                            </span>
+                            <span class="text-slate-400">日志永久落盘，消费**不修改、不删除**消息内容</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Append-Only Log Mechanics) vs Right (Offset & Cursor-based Replay) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Append-Only Log Principles (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-signature text-teal-600"></i>
+                            <span>1. 不可变追加日志 (Append-Only Commit Log) 原理</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Sequential Write</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Feature 1: Sequential I/O -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-hard-drive text-teal-600"></i>
+                                    <span>消除磁盘随机寻道 (Eliminate Random I/O)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Sequential I/O</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Kafka 放弃了 B-Tree 等复杂的随机读写数据结构，采用最纯粹的顺序追加日志（Append-Only）。物理磁盘顺序写入的吞吐量可与内存随机读写相媲美。
+                            </p>
+                        </div>
+
+                        <!-- Feature 2: Immutability -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-lock text-teal-600"></i>
+                                    <span>事件不可变性 (Event Immutability)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Immutable Data</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                写入 Log 的事件是客观发生的事实，**不可修改也不可原地删除**。即使发生数据更新，也是以发布新的“更新事件”的形式追加到 Log 尾部。
+                            </p>
+                        </div>
+
+                        <!-- Feature 3: Retention Policy -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-clock-rotate-left text-teal-600"></i>
+                                    <span>与消费状态解耦的保留策略 (Retention Policy)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Time/Size Retention</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                日志保留时间（如 7 天或 1 个月）由配置项 <code class="font-mono text-teal-800 font-bold">log.retention.hours</code> 决定，**与消息是否被消费完全无关**。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>存储基石：顺序追加写赋能了千万级 QPS 吞吐与物理落盘安全</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Monotonic Offset & Replayability (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrow-pointer text-amber-600"></i>
+                            <span>2. 单调递增 Offset 与游标式无损重放 (Replayability)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Offset Cursor</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Feature 1: Monotonic Offset -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-hashtag text-amber-600"></i>
+                                    <span>分区内单调递增 Offset 序号</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">64-bit Int ID</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                每个写入 Partition 的事件均获取一个全局唯一的 64 位单调递增整数 **Offset**。消息在分区内的物理位置可以通过 Offset 进行精确的随机定位。
+                            </p>
+                        </div>
+
+                        <!-- Feature 2: Independent Cursor -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-users text-amber-600"></i>
+                                    <span>多 Consumer Group 独立游标指针</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Group Independence</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Consumer 仅需提交自己已消费到的 Offset。不同业务的 Consumer Group（如订单处理组与实时推荐计算组）拥有各自独立的消费游标，互不影响。
+                            </p>
+                        </div>
+
+                        <!-- Feature 3: Replayability -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-rotate-left text-amber-600"></i>
+                                    <span>任意历史数据重放 (Log Replayability)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Offset Rewind</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                当上线新算法、修复代码 Bug 或进行数据审计时，Consumer 可以调用 <code class="font-mono text-amber-800 font-bold">seek(offset)</code> **将游标任意回退到历史时间点**，实现数据的无损重新消费。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 13 · Topic 分区 (Partition) 切分与水平并行扩展</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Log &amp; Offset Paradigm Shift)</h4>
+                    <p class="text-xs text-slate-700">
+                        打破 JMS “消费即摧毁” 的宿命，转向 <code class="font-mono text-teal-800 font-bold">不可变追加日志 + 独立 Offset 游标</code> 的存算分离思维，是 Apache Kafka 获得**无限数据重放 (Replayability)** 与 **百倍吞吐扩展** 的最决定性创新。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 12 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">12</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[30.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (11.html <- 12.html -> 13.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">核心物理抽象：追加日志与单调递增 Offset</span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="11.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="13.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 Append-Only Log 存储物理抽象：</span>
+                    “向学员深入剖析：Kafka 最具颠覆性的创新在于它放弃了传统数据库复杂的 B-Tree 索引和 JMS 消费擦除机制，改用极简的磁盘顺序追加日志 (Append-Only Commit Log)。因为是顺序写，磁盘性能堪比内存读写。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调 Offset 游标与数据重放 (Replayability) 的优势：</span>
+                    “请学员重点关注图中的 Offset 指针：每个 Consumer Group 只需要维护自己在 Log 中的当前读位置（如 Group A 在 Offset 8，Group B 在 Offset 3）。即便消费过，数据依然保留在磁盘上。新上线系统或做 bug 修复时，可以随时调用 `seek()` 方法回退 Offset，重放过去任意一天的历史消息。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

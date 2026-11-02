@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 37 - 消息中间件与 EDA 架构选型决策树 (Message Middleware &amp; EDA Decision Tree)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring header navigation and controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering main container and section titles... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                <span>Part 05 · 消息中间件选型决策树与第 5 讲总结</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                消息中间件与 EDA 架构选型决策树
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Middleware Selection Decision Tree, 4D Trade-off Matrix &amp; Distributed Consistency Pattern Guidance
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building interactive visual decision tree flowchart... -->
+        <!-- Interactive Visual Decision Tree Flowchart Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sitemap"></i>
+                        <span>消息中间件选型决策树 (Scenario-Driven Middleware Decision Flowchart)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Throughput vs Latency vs Routing vs Elasticity</span>
+                </div>
+
+                <!-- Flowchart Tree Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs font-mono">
+                    
+                    <!-- Branch 1: RabbitMQ -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-orange-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-orange-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-code-branch text-orange-400"></i>
+                                场景 A: 复杂 AMQP 路由
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 text-[8px] border border-orange-700">Sub-ms</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>• 需求: 微秒延迟、死信延时、AMQP 绑定</div>
+                            <div>• 选型: <code class="text-orange-300 font-bold">RabbitMQ</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Branch 2: Kafka -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-code-branch text-indigo-400"></i>
+                                场景 B: 海量事件流 / ETL
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">1M+ TPS</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>• 需求: 百万吞吐、日志追加、Flink 实时数仓</div>
+                            <div>• 选型: <code class="text-indigo-300 font-bold">Apache Kafka</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Branch 3: Pulsar -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-code-branch text-purple-400"></i>
+                                场景 C: 云原生多租户
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Zero-Rebalance</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>• 需求: 存算分离、S3 冷备、秒级无感扩容</div>
+                            <div>• 选型: <code class="text-purple-300 font-bold">Apache Pulsar</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Branch 4: RocketMQ -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-code-branch text-teal-400"></i>
+                                场景 D: 电商金融事务
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Delay &amp; Transaction</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>• 需求: 顺序消息、秒级定时/延时、半消息事务</div>
+                            <div>• 选型: <code class="text-teal-300 font-bold">Apache RocketMQ</code></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Styling trade-off matrix and EDA pattern guidance... -->
+        <!-- Content Grid: Left (4D Trade-off Matrix) vs Right (EDA Pattern Guidance) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: 4D Trade-off Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-purple-600"></i>
+                            <span>1. 消息中间件四维权衡矩阵 (4D Trade-off Matrix)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Trade-offs</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Trade-off 1 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-high text-purple-600"></i>
+                                    <span>吞吐量 (Throughput) vs. 响应延迟 (Latency)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">TPS vs. Delay</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Kafka 通过微批打包（Batching）与 Zero-Copy 获得极致吞吐，但牺牲了微秒级延迟；RabbitMQ 单条即时推送获得 &lt;1ms 极低延迟，但在千万级吞吐下性能受限。
+                            </p>
+                        </div>
+
+                        <!-- Trade-off 2 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrow-down-1-9 text-violet-600"></i>
+                                    <span>分区内严格顺序 vs. 多分区并发扩展</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-mono text-[8.5px]">Ordering vs. Scale</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                要保证 100% 严格全局 FIFO 顺序，必须将分区数限制为 1（卡死并发）；要在多分区下保证局部有序，必须依赖 Message Key 哈希绑定实体。
+                            </p>
+                        </div>
+
+                        <!-- Trade-off 3 -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-scale-unbalanced text-teal-600"></i>
+                                    <span>强一致性 (2PC/XA) vs. 最终一致性 (BASE/Saga)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Consistency Choice</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                放弃跨服务 2PC 强锁，采用事件驱动的柔性事务（Outbox + CDC 或 Saga 模式），用毫秒级的最终一致性换取高吞吐与高可用。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>架构准则：没有完美的中间件，只有最匹配当前业务规模与团队栈的权衡决策</span>
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: EDA Pattern Selection Guidance (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-violet-200 bg-violet-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-violet-200">
+                        <span class="text-xs font-mono font-bold text-violet-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-nested text-violet-600"></i>
+                            <span>2. 4 大分布式 EDA 架构模式匹配指南</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-mono text-[9.5px] font-bold">EDA Patterns</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Pattern 1: CQRS -->
+                        <div class="p-2 rounded-xl bg-white border border-violet-100 space-y-0.5">
+                            <h4 class="font-bold text-violet-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-code-branch text-purple-600"></i>
+                                    <span>CQRS 模式 (读写责任分离)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">Read/Write Split</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                适用于读写吞吐极度非对称（如 100:1 读写比）、或写模型极其复杂（3NF 范式）而读模型需要 ES/Redis 平铺检索的业务。
+                            </p>
+                        </div>
+
+                        <!-- Pattern 2: Event Sourcing -->
+                        <div class="p-2 rounded-xl bg-white border border-violet-100 space-y-0.5">
+                            <h4 class="font-bold text-violet-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-clock-rotate-left text-violet-600"></i>
+                                    <span>Event Sourcing 模式 (事件溯源)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-mono text-[8.5px]">Audit Trail</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                适用于金融风控、保险理赔、区块链等需要 100% 完整审计追踪（Audit Trail）及历史任意时间点重放 (Time Travel) 的场景。
+                            </p>
+                        </div>
+
+                        <!-- Pattern 3: Outbox + CDC -->
+                        <div class="p-2 rounded-xl bg-white border border-violet-100 space-y-0.5">
+                            <h4 class="font-bold text-violet-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-envelope-open-text text-teal-600"></i>
+                                    <span>Transactional Outbox + CDC (Debezium)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Dual-Write Solve</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                **解决“双写不一致”黄金范式**！本地 ACID 事务写 Outbox 表，配合 Binlog/WAL 日志提取异步投递 Kafka，零业务线程占用。
+                            </p>
+                        </div>
+
+                        <!-- Pattern 4: Saga -->
+                        <div class="p-2 rounded-xl bg-white border border-violet-100 space-y-0.5">
+                            <h4 class="font-bold text-violet-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-split-up-and-left text-amber-600"></i>
+                                    <span>Saga 分布式事务模式 ($T_i \to C_i$)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">Compensation</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                适用于跨多个独立微服务数据库的长事务编排（如电商下单：扣余额 $\to$ 扣库存 $\to$ 发券），正向 $T_i$ 提交，失败反向 $C_i$ 幂等补偿。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-violet-200 text-[10px] font-mono text-violet-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 38 · 第 5 讲核心知识点复盘与全景图</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Rendering bottom callout banner and slide footer... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Decision Tree Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        架构设计的精髓在于**“理解每种模式解决的核心痛苦”**。用 <code class="font-mono text-purple-800 font-bold">Transactional Outbox</code> 破解双写冲突，用 <code class="font-mono text-purple-800 font-bold">CQRS</code> 破解读写性能对抗，用 <code class="font-mono text-purple-800 font-bold">Saga</code> 破解分布式强锁枷锁，用正确的 MQ 中间件打通系统的事件血脉。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 37 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">37</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[92.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (36.html <- 37.html -> 38.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="36.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">消息中间件与 EDA 架构选型决策树</span>
+            <a href="38.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="36.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="38.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer and event listeners... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生开启 Part 05 选型决策：</span>
+                    “向学员做解构说明：本 Slide 开启全讲第 5 部分（Part 05）。重点帮助学员将前面学到的中间件技术与 EDA 架构模式连点成线，建立结构化的选型决策模型。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析 4 大 EDA 模式应用场景：</span>
+                    “请学员关注右侧的 4 大模式：Transactional Outbox + CDC 适合解决普通的双写不一致；CQRS 适合高并发读写模型分离；Event Sourcing 适合需要完整历史审计追踪的系统；Saga 适合跨服务的分布式长事务编排。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '38.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

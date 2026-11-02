@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - 基于 Kafka 的 Saga 分布式长事务编排与补偿模式 (Saga Pattern with Kafka)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-split-up-and-left text-purple-600"></i>
+                <span>Part 04 · 次世代 MQ 与事件驱动架构 (EDA) 模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                基于 Kafka 的 Saga 分布式长事务编排与补偿模式
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Saga Pattern for Distributed Microservices, Choreography vs. Orchestration, Forward Actions ($T_i$) &amp; Compensating Actions ($C_i$)
+            </p>
+        </div>
+
+        <!-- Saga Execution Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>Saga 事务链路：正向动作 ($T_i$) 与逆向补偿 ($C_i$) 故障回滚流 ($T_1 \to T_2 \to \text{Fail}(T_3) \to C_2 \to C_1$)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">BASE Eventual Consistency via Kafka Event Topics</span>
+                </div>
+
+                <!-- Saga Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 text-xs font-mono items-center">
+                    
+                    <!-- Step 1: Order Service (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-cart-shopping text-purple-400"></i>
+                                1. Order Service ($T_1$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Success</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>正向: <code class="text-emerald-300">$T_1$: CreatePendingOrder</code></div>
+                            <div>补偿: <code class="text-rose-400">$C_1$: CancelOrder</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Payment Service (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-credit-card text-purple-400"></i>
+                                2. Payment Service ($T_2$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Success</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>正向: <code class="text-emerald-300">$T_2$: DeductUserBalance</code></div>
+                            <div>补偿: <code class="text-rose-400">$C_2$: RefundUserBalance</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Inventory Service (Failed, 3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-boxes-stacked text-rose-400"></i>
+                                3. Inventory Service ($T_3$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700 font-bold">Failed!</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>正向: <code class="text-rose-400">$T_3$: LockStock (Out of Stock!)</code></div>
+                            <div>结果: 抛出 <code class="text-rose-300">InventoryFailedEvent</code></div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Compensation Pipeline (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-rotate-left text-amber-400"></i>
+                                4. 逆向补偿链路
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Rollback</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>依次广播执行 <code class="text-rose-400">$C_2 \to C_1$</code></div>
+                            <div>完成分布式系统最终一致性状态恢复</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Saga Principles & Topologies) vs Right (Orchestrator Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Saga Principles & Topologies Comparison (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-scale-balanced text-purple-600"></i>
+                            <span>1. Saga 模式原理与两大拓扑架构 (Choreography vs. Orchestration)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Saga Core</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Saga Concept -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-link-slash text-purple-600"></i>
+                                    <span>弃用 2PC/XA：将大事务拆解为有序本地子事务序列</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">No Locking 2PC</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                微服务架构中，2PC 跨服务强锁严重损害可用性。Saga 将长事务拆分为多个本地子事务 $T_1, T_2, \dots, T_n$。每个子事务独立提交 ACID 事务并向 Kafka 抛出事件。
+                            </p>
+                        </div>
+
+                        <!-- Choreography vs Orchestration -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-network-wired text-violet-600"></i>
+                                    <span>舞蹈模式 (Choreography) vs. 编排模式 (Orchestration)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-mono text-[8.5px]">Topologies</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                • **Choreography (舞蹈模式)**：无中心点！服务通过监听 Kafka 领域事件自发触发下一步或补偿。<br/>
+                                • **Orchestration (编排模式)**：由中央 Saga Orchestrator 状态机驱动命令 Topic，统一指挥调度。
+                            </p>
+                        </div>
+
+                        <!-- Forward vs Compensating -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-rotate text-teal-600"></i>
+                                    <span>正向动作 $T_i$ 与逆向补偿 $C_i$ 的幂等性要求</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Idempotent $C_i$</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                每一个正向动作 $T_i$ 必须配备对应的撤销/回滚补偿动作 $C_i$（如 $T_i$: 扣款 $\to C_i$: 退款）。**补偿动作 $C_i$ 必须保证 100% 幂等且绝不失败**。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>Saga 黄金法则：放弃 ACID 中的隔离性 (Isolation)，获得极限吞吐与 BASE 最终一致性</span>
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Realization (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-violet-200 bg-violet-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-violet-200">
+                        <span class="text-xs font-mono font-bold text-violet-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-violet-600"></i>
+                            <span>2. 基于 Kafka 的 Saga 编排器逻辑 (`OrderSagaOrchestrator.java`)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-mono text-[9.5px] font-bold">Spring Boot &amp; Kafka</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Orchestrator Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">// Saga 编排器状态机处理 (`OrderSagaOrchestrator.java`)</div>
+                            <div><span class="text-indigo-400">@Component</span></div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">OrderSagaOrchestrator</span> {</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> KafkaTemplate&lt;String, Object&gt; kafkaTemplate;</div>
+
+                            <div class="pl-3 mt-1 text-slate-400">// A. 步骤 2 扣款成功，向 Kafka 发送库存扣减指令</div>
+                            <div class="pl-3"><span class="text-indigo-400">@KafkaListener</span>(topics = <span class="text-emerald-300">"payment-events"</span>, groupId = <span class="text-emerald-300">"saga-group"</span>)</div>
+                            <div class="pl-3"><span class="text-purple-400">public void</span> <span class="text-blue-300">onPaymentEvent</span>(PaymentEvent event) {</div>
+                            <div class="pl-6"><span class="text-purple-400">if</span> (<span class="text-emerald-300">"SUCCESS"</span>.equals(event.getStatus())) {</div>
+                            <div class="pl-9">kafkaTemplate.send(<span class="text-emerald-300">"inventory-commands"</span>, <span class="text-purple-400">new</span> LockStockCommand(event.getSagaId()));</div>
+                            <div class="pl-6">} <span class="text-purple-400">else</span> {</div>
+                            <div class="pl-9 text-rose-400">// 扣款失败，触发 C1 补偿撤销订单</div>
+                            <div class="pl-9">kafkaTemplate.send(<span class="text-emerald-300">"order-commands"</span>, <span class="text-purple-400">new</span> CancelOrderCommand(event.getSagaId()));</div>
+                            <div class="pl-6">}</div>
+                            <div class="pl-3">}</div>
+
+                            <div class="pl-3 mt-1 text-slate-400">// B. 步骤 3 库存扣减失败，触发 C2 逆向退款补偿与 C1 撤单</div>
+                            <div class="pl-3"><span class="text-indigo-400">@KafkaListener</span>(topics = <span class="text-emerald-300">"inventory-events"</span>, groupId = <span class="text-emerald-300">"saga-group"</span>)</div>
+                            <div class="pl-3"><span class="text-purple-400">public void</span> <span class="text-blue-300">onInventoryEvent</span>(InventoryEvent event) {</div>
+                            <div class="pl-6"><span class="text-purple-400">if</span> (<span class="text-emerald-300">"FAILED"</span>.equals(event.getStatus())) {</div>
+                            <div class="pl-9 text-rose-400">// 触发 C2 补偿: 异步发退款指令</div>
+                            <div class="pl-9">kafkaTemplate.send(<span class="text-emerald-300">"payment-commands"</span>, <span class="text-purple-400">new</span> RefundPaymentCommand(event.getSagaId()));</div>
+                            <div class="pl-9 text-rose-400">// 触发 C1 补偿: 异步发撤单指令</div>
+                            <div class="pl-9">kafkaTemplate.send(<span class="text-emerald-300">"order-commands"</span>, <span class="text-purple-400">new</span> CancelOrderCommand(event.getSagaId()));</div>
+                            <div class="pl-6">}</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-violet-200 text-[10px] font-mono text-violet-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 36 · 基于 Kafka Streams 与 Apache Flink 的实时流计算与 ETL</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Saga Distributed Transaction Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Saga 模式代表了微服务长事务的工业解法。通过将**全局大事务降维拆解为单服务本地 ACID 事务链**，并配合 Kafka 事件驱动的**正向驱动 ($T_i$) 与逆向幂等补偿 ($C_i$)**，成功打破了 2PC 的性能枷锁，实现了兼具高吞吐与最终一致性的柔性事务机制。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 35 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">基于 Kafka 的 Saga 分布式长事务编排与补偿模式</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 Saga 模式对 2PC 枷锁的解耦：</span>
+                    “向学员强调：在微服务环境下，跨服务的两阶段提交 (2PC) 或 XA 全局锁会导致服务吞吐暴跌甚至引发死锁。Saga 模式将跨服务长事务拆分为多个本地子事务 $T_1, T_2, T_3$，各自在本地数据库提交。一旦某个子事务失败（如库存不足），则通过 Kafka 事件驱动按逆向顺序依次触发补偿操作 $C_2, C_1$ 来实现最终一致性。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析右侧代码的编排器 (Orchestrator) 逻辑：</span>
+                    “请学员关注右侧的 `OrderSagaOrchestrator`：在 Orchestration（编排模式）下，编排器监听 Kafka 上的服务执行结果事件。当收到 `inventory-events` 的 `FAILED` 事件时，编排器会向 `payment-commands` 和 `order-commands` 派发撤销补偿指令，实现了清晰可控的状态机流转。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

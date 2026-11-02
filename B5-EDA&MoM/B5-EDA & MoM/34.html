@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 34 - 事务性 Outbox 模式与 CDC 变更数据捕获 (Transactional Outbox &amp; CDC)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-envelope-open-text text-purple-600"></i>
+                <span>Part 04 · 次世代 MQ 与事件驱动架构 (EDA) 模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                事务性 Outbox 模式与 CDC (Change Data Capture) 变更数据捕获
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Dual-Write Problem, Local Transaction Outbox Table, CDC Transaction Log Tailing (Debezium/Binlog) &amp; Reliable Event Relay
+            </p>
+        </div>
+
+        <!-- Transactional Outbox + CDC Pipeline Diagram Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>双写一致性解法：本地事务写 Outbox 表 + CDC (Debezium) 极速事件中继管线</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Atomic Local Transaction $\to$ Binlog / WAL Tailing $\to$ Kafka Broker</span>
+                </div>
+
+                <!-- Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 text-xs font-mono items-center">
+                    
+                    <!-- Node 1: Local Transaction (4 cols) -->
+                    <div class="md:col-span-4 p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-database text-purple-400"></i>
+                                1. 本地 ACID 事务 (Database)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Atomic Write</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>A. 业务表写盘:</span>
+                                <code class="text-amber-300">INSERT INTO orders</code>
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>B. Outbox 表写盘:</span>
+                                <code class="text-teal-300">INSERT INTO outbox</code>
+                            </div>
+                        </div>
+                        <div class="text-[8px] text-slate-400 font-sans">
+                            同一个本地 RDBMS 事务保障业务落盘与事件入库的 100% 原子性。
+                        </div>
+                    </div>
+
+                    <!-- Node 2: DB Binlog / WAL Log (2 cols) -->
+                    <div class="md:col-span-2 p-2.5 rounded-xl bg-slate-950 border border-violet-800/80 text-center space-y-1">
+                        <div class="text-violet-300 font-bold text-[10px] flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-file-code text-violet-400"></i>
+                            <span>2. DB Log</span>
+                        </div>
+                        <code class="text-[8px] text-amber-300 block bg-slate-900 p-1 rounded border border-slate-800">
+                            Binlog / WAL
+                        </code>
+                        <span class="text-[8px] text-slate-400 font-sans block">零业务入侵写日志</span>
+                    </div>
+
+                    <!-- Node 3: CDC Connector Engine (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-satellite-dish text-indigo-400"></i>
+                                3. CDC 异步提取引擎
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Debezium / Canal</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-mono text-indigo-200">
+                            非阻塞监听 Binlog 增量变更，解析 Outbox 行记录
+                        </div>
+                        <span class="text-[8px] text-slate-400 font-sans block">不占用主业务线程，零轮询性能损耗</span>
+                    </div>
+
+                    <!-- Node 4: Kafka / Pulsar Broker (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-paper-plane text-teal-400"></i>
+                                4. 消息总线投递
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Kafka Topic</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-mono text-emerald-300">
+                            At-Least-Once 传输保证
+                        </div>
+                        <span class="text-[8px] text-slate-400 font-sans block">下游消费者正常消费事件</span>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Dual-Write Problem & Outbox Principles) vs Right (Code Realization) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Principles & Trade-offs (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                            <span>1. “双写不一致”硬伤与 Transactional Outbox 解法</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Outbox &amp; CDC Core</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Dual Write Problem -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bomb text-rose-600"></i>
+                                    <span>直接“写数据库 + 发 Kafka”的双写不一致死穴</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Dual-Write Vulnerability</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                传统代码先执行 <code class="font-mono text-purple-800 font-bold">db.save()</code> 再执行 <code class="font-mono text-purple-800 font-bold">kafka.send()</code>。若数据库成功但网络抖动导致发送失败，或者 Kafka 发送成功但事务提交时数据库崩溃，都会导致**数据库状态与消息事件永久不一致**。
+                            </p>
+                        </div>
+
+                        <!-- Outbox Table Solution -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-box-archive text-purple-600"></i>
+                                    <span>利用 RDBMS 本地事务打通 Outbox 数据表</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">Local ACID Integration</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                放弃直接在主业务逻辑中调用 Kafka 发送。将准备抛出的事件对象转化为 JSON 记录，与业务实体在**同一个 RDBMS 本地 ACID 事务中**写入独立的 <code class="font-mono text-purple-800 font-bold">outbox</code> 临时数据表中，保证落盘绝对原子化。
+                            </p>
+                        </div>
+
+                        <!-- CDC Engine Advantage -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-teal-600"></i>
+                                    <span>Change Data Capture (CDC / Debezium) 无侵入提速</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Log Tailing Engine</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                替代传统的轮询线程（`SELECT ... FOR UPDATE`，容易造成数据库高 CPU 与行锁竞争），使用 Debezium 监听 MySQL Binlog 或 PostgreSQL WAL，毫秒级将 `outbox` 变更捕获并投递到 Kafka。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>黄金法则：将分布式跨系统双写，降维转化为同数据库的本地 ACID 事务写</span>
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Realization (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-violet-200 bg-violet-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-violet-200">
+                        <span class="text-xs font-mono font-bold text-violet-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-violet-600"></i>
+                            <span>2. 本地事务 Outbox 写入与事件结构 (`OrderService.java`)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-mono text-[9.5px] font-bold">Spring Boot &amp; JPA</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">// 1. 本地事务原子写入 Outbox 表 (`OrderService.java`)</div>
+                            <div><span class="text-indigo-400">@Service</span></div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">OrderService</span> {</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> OrderRepository orderRepo;</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> OutboxRepository outboxRepo;</div>
+
+                            <div class="pl-3 mt-1"><span class="text-indigo-400">@Transactional</span> <span class="text-slate-400">// 开启单数据库本地 ACID 事务</span></div>
+                            <div class="pl-3"><span class="text-purple-400">public String</span> <span class="text-blue-300">createOrderInTransaction</span>(CreateOrderReq req) {</div>
+                            <div class="pl-6 text-slate-400">// A. 保存业务实体记录</div>
+                            <div class="pl-6">Order order = <span class="text-purple-400">new</span> Order(req.getUserId(), req.getAmount());</div>
+                            <div class="pl-6">orderRepo.<span class="text-blue-300">save</span>(order);</div>
+
+                            <div class="pl-6 mt-1 text-slate-400">// B. 在同一个本地事务中插入 Outbox 事件结构</div>
+                            <div class="pl-6">OutboxEvent event = <span class="text-purple-400">new</span> OutboxEvent(</div>
+                            <div class="pl-9"><span class="text-emerald-300">"Order"</span>, order.getId(), <span class="text-emerald-300">"OrderCreated"</span>,</div>
+                            <div class="pl-9">toJsonPayload(order)</div>
+                            <div class="pl-6">);</div>
+                            <div class="pl-6">outboxRepo.<span class="text-blue-300">save</span>(event); <span class="text-teal-300">// 原子落盘！</span></div>
+                            <div class="pl-6"><span class="text-purple-400">return</span> order.getId();</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+
+                            <div class="pt-1.5 border-t border-slate-800 text-teal-300 font-bold">// 2. Debezium Outbox 扩展配置参考 (`application.properties`)</div>
+                            <div class="text-slate-300">debezium.transforms=outbox</div>
+                            <div class="text-slate-300">debezium.transforms.outbox.type=io.debezium.transforms.outbox.EventRouter</div>
+                            <div class="text-slate-300">debezium.transforms.outbox.table.fields.additional.placement=type:header</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-violet-200 text-[10px] font-mono text-violet-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 35 · 基于 Kafka 的 Saga 分布式长事务编排模式</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Transactional Outbox &amp; CDC Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        <code class="font-mono text-purple-800 font-bold">Transactional Outbox + CDC</code> 是分布式微服务解决“双写不一致”最优雅的黄金范式。它巧妙地将跨网络的不确定写操作降低为单数据库本地 ACID 事务落盘，并借助 DB Binlog 异步提取技术，实现了高吞吐、强一致与零业务侵入。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 34 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">34</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[85.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (33.html <- 34.html -> 35.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="33.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">事务性 Outbox 模式与 CDC 变更数据捕获</span>
+            <a href="35.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="33.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="35.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视“双写不一致”的根本原因：</span>
+                    “向学员做解构说明：在很多系统中，开发者喜欢写 `orderRepo.save(order)` 接着写 `kafkaTemplate.send(event)`。一旦中间出现网络超时或数据库回滚，就会导致 DB 成功但 MQ 失败，或者 MQ 成功但 DB 回滚，造成永久不一致。Transactional Outbox 模式将这两个写操作同时放在单数据库本地事务里，写入 `outbox` 临时表，利用 ACID 事务彻底解决不一致。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析 CDC Engine (Debezium) 的无侵入提速优势：</span>
+                    “请学员关注右侧代码与中间图解：早期人们使用定时线程轮询 `outbox` 表，但这会给数据库带来行锁竞争与 CPU 飙升。现代解法是配合 Debezium 或 Canal，直接读取数据库底层的 Binlog / WAL 事务日志，零业务线程占用，毫秒级抛给 Kafka。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '35.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '33.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

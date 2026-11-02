@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 消息可靠性保证、ACKs 配置与 ISR 动态列表 (Message Reliability &amp; ACKs)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                消息可靠性保证、ACKs 配置与 ISR 动态列表
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Producer ACKs (0, 1, all), In-Sync Replicas (ISR) Dynamics, `min.insync.replicas` &amp; Delivery Semantics
+            </p>
+        </div>
+
+        <!-- ACKs=all & ISR Replication Topology Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>`acks=all` + ISR 副本列表多级写入与确认数据流示意图</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Zero Data Loss Protocol (acks=all &amp; min.insync.replicas=2)</span>
+                </div>
+
+                <!-- Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Producer Step (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-teal-800 flex flex-col justify-between space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="font-bold text-teal-300 text-[11px]"><i class="fa-solid fa-paper-plane mr-1"></i>Producer</span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-400 text-[8.5px] border border-teal-700">acks = all</span>
+                        </div>
+                        <div class="text-[9.5px] text-slate-300 font-sans space-y-1">
+                            <div>① 发送写请求至 Leader</div>
+                            <div>④ 等待 ISR 全部写入完成后接收 Ack 响应</div>
+                        </div>
+                        <div class="text-[8.5px] text-teal-400 border-t border-slate-800 pt-1">
+                            若未收到 Ack，自动触发重试 (`retries=INT_MAX`)
+                        </div>
+                    </div>
+
+                    <!-- Flow Arrow 1 (1 col) -->
+                    <div class="md:col-span-1 hidden md:flex flex-col items-center text-teal-400 font-bold">
+                        <span class="text-[10px]">① Send</span>
+                        <i class="fa-solid fa-arrow-right text-base my-0.5"></i>
+                        <span class="text-[10px]">④ Ack</span>
+                    </div>
+
+                    <!-- Leader Replica (4 cols) -->
+                    <div class="md:col-span-4 p-2.5 rounded-xl bg-teal-950/80 border border-teal-500 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-teal-800 pb-1">
+                            <span class="font-bold text-teal-200 text-[11px]"><i class="fa-solid fa-crown mr-1 text-amber-400"></i>Leader Replica (Broker 1)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8.5px] border border-amber-700">Primary R/W</span>
+                        </div>
+                        <div class="text-[9.5px] text-slate-200 font-sans space-y-1">
+                            <div>② 追加事件日志至本地 PageCache</div>
+                            <div>③ 响应 Follower 拉取请求并同步数据</div>
+                        </div>
+                        <div class="p-1 rounded bg-slate-900 text-teal-300 text-[8.5px] flex items-center justify-between border border-teal-800">
+                            <span>当前 ISR 列表:</span>
+                            <span class="font-bold text-emerald-400">[Broker 1 (Leader), Broker 2 (Follower)]</span>
+                        </div>
+                    </div>
+
+                    <!-- Flow Arrow 2 (1 col) -->
+                    <div class="md:col-span-1 hidden md:flex flex-col items-center text-indigo-400 font-bold">
+                        <span class="text-[10px]">② Fetch</span>
+                        <i class="fa-solid fa-arrows-left-right text-base my-0.5"></i>
+                        <span class="text-[10px]">③ Sync</span>
+                    </div>
+
+                    <!-- ISR Follower Replica (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-indigo-800 flex flex-col justify-between space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="font-bold text-indigo-300 text-[11px]"><i class="fa-solid fa-clone mr-1"></i>ISR Follower (Broker 2)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8.5px] border border-indigo-700">In-Sync</span>
+                        </div>
+                        <div class="text-[9.5px] text-slate-300 font-sans space-y-1">
+                            <div>通过 `FetchRequest` 拉取日志并落盘</div>
+                            <div>落后超过 `replica.lag.time.max.ms` 将被剔出 ISR</div>
+                        </div>
+                        <div class="text-[8.5px] text-emerald-400 border-t border-slate-800 pt-1">
+                            符合 `min.insync.replicas=2` 门槛
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Producer ACKs & ISR) vs Right (Delivery Semantics & Zero Data Loss Recipe) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Producer ACKs & ISR Dynamic Tracking (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-teal-600"></i>
+                            <span>1. Producer ACKs 等级配置与 ISR 动态列表</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">ACKs &amp; ISR</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- ACKs = 0 -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt text-rose-500"></i>
+                                    <span>`acks = 0`（即发即弃 / Fire-and-Forget）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Highest Throughput</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                Producer 发送后完全不等待任何 Broker 确认。吞吐量极高，但如果 Broker 挂掉或网络异常，消息将直接丢失。适用于日志收集等容忍丢失场景。
+                            </p>
+                        </div>
+
+                        <!-- ACKs = 1 -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-check text-amber-600"></i>
+                                    <span>`acks = 1`（仅 Leader 副本写盘确认 / 默认）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Balanced Standard</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                Producer 等待 Leader 副本写入本地 Log 后即接收 Ack。兼顾了吞吐与可靠性，但如果 Leader 刚写完即物理宕机且未同步到 Follower，仍可能丢数据。
+                            </p>
+                        </div>
+
+                        <!-- ACKs = all / -1 -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shield-cat text-emerald-600"></i>
+                                    <span>`acks = all` / `-1`（全 ISR 副本强同步确认）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono text-[8.5px]">Zero Data Loss</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                Producer 等待 ISR 列表中的所有健康副本均完成写盘才接收 Ack。配合 <code class="font-mono text-emerald-800 font-bold">min.insync.replicas=2</code>，可提供金融级零数据丢失保证。
+                            </p>
+                        </div>
+
+                        <!-- ISR List Mechanics -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-people-group text-teal-600"></i>
+                                    <span>In-Sync Replicas (ISR) 动态健康列表</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">replica.lag.time.max.ms</span>
+                            </h4>
+                            <p class="text-[10px] text-slate-600 leading-tight">
+                                仅包含与 Leader 落后时间不超过 `replica.lag.time.max.ms` 的健康副本。慢 Follower 会被动态踢出 ISR，防止其卡死 `acks=all` 的响应延迟。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>权衡之道：ACKs 越高安全性越强，但网络 Ack 延时和 CPU 开销相应增加</span>
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Delivery Guarantees & Zero Data Loss Recipe (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-award text-amber-600"></i>
+                            <span>2. 消息传输三大语义与零数据丢失工程配方</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Delivery Guarantees</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Semantics Matrix -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bars-staggered text-amber-600"></i>
+                                    <span>传输保障三大语义 (Delivery Semantics)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Guarantees</span>
+                            </h4>
+                            <div class="space-y-1 text-[10px]">
+                                <div class="flex items-start gap-1">
+                                    <strong class="text-rose-800 font-mono shrink-0 w-24">At-Most-Once:</strong>
+                                    <span class="text-slate-600">至多一次（可能丢失，绝不重复）。`acks=0` 或消费前先 commit offset。</span>
+                                </div>
+                                <div class="flex items-start gap-1">
+                                    <strong class="text-amber-800 font-mono shrink-0 w-24">At-Least-Once:</strong>
+                                    <span class="text-slate-600">至少一次（绝不丢失，可能重复）。`acks=all` + 业务处理完后手动 commit offset，要求 Consumer 具备防重幂等性。</span>
+                                </div>
+                                <div class="flex items-start gap-1">
+                                    <strong class="text-emerald-800 font-mono shrink-0 w-24">Exactly-Once:</strong>
+                                    <span class="text-slate-600">精确一次（端到端不丢不重）。基于幂等 Producer + Kafka 事务消息（EOS）。</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Zero Data Loss Production Recipe -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 space-y-1 border border-slate-800 font-mono text-[9px]">
+                            <div class="text-amber-300 font-bold flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-key text-amber-400"></i>
+                                    <span>生产级零数据丢失 (Zero Data Loss) 配置配方</span>
+                                </span>
+                                <span class="text-emerald-400 text-[8px]">Golden Config</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-950 space-y-1 text-slate-300">
+                                <div><span class="text-teal-400">1. Producer:</span> <code class="text-amber-300">acks = all</code></div>
+                                <div><span class="text-teal-400">2. Producer:</span> <code class="text-amber-300">retries = Integer.MAX_VALUE</code></div>
+                                <div><span class="text-teal-400">3. Topic:</span> <code class="text-amber-300">replication.factor = 3</code></div>
+                                <div><span class="text-teal-400">4. Broker:</span> <code class="text-amber-300">min.insync.replicas = 2</code></div>
+                                <div><span class="text-teal-400">5. Consumer:</span> <code class="text-amber-300">enable.auto.commit = false</code> (手动提交)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 19 · 端到端 Exactly-Once 语义与 Kafka 事务机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Reliability Recipe Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        实现“零数据丢失”绝非单靠某个单一配置，而是 Producer 端 <code class="font-mono text-teal-800 font-bold">acks=all</code>、Broker 端 <code class="font-mono text-teal-800 font-bold">min.insync.replicas=2</code> 与 Consumer 端 **手动提交 Offset** 的协同联动工程。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 18 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[45.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">消息可靠性保证、ACKs 配置与 ISR 动态列表</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 ACKs 与 ISR 动态列表协同：</span>
+                    “向学员强调：单个 `acks=all` 并不绝对安全。如果 ISR 列表中只剩下一个 Leader 副本（其他 Follower 全落后被踢出），`acks=all` 会退化为 `acks=1`！因此必须配合 Broker 端的 `min.insync.replicas=2` 配置，确保至少有两个 ISR 副本写入成功才返回 Ack。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析三大传输语义与幂等消费：</span>
+                    “请学员关注右侧的三大传输语义：在工业界最普遍的是‘At-Least-Once（至少一次）’。要做到端到端无害，消费端必须配合数据库唯一主键约束或 Redis 去重表实现‘消费幂等性’，我们在 Part 03 会详细展开。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

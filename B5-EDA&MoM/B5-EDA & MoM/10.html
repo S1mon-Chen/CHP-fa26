@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - JMS 局限性与分布式日志流平台 (Apache Kafka) 演进 (JMS Limitations &amp; Event Streaming)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                <span>Part 01 · JMS &amp; 消息通信基础</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                JMS 局限性与分布式日志流平台 (Apache Kafka) 演进
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Destructive Reads, Monolithic Queues, Throughput Ceilings vs. Append-Only Commit Logs &amp; Replayability
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (3 JMS Physical Bottlenecks, 6 cols) vs Right (JMS vs Kafka Comparison Matrix, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: 3 Physical Bottlenecks of Traditional JMS (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-rose-200">
+                        <span class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ban text-rose-600"></i>
+                            <span>1. 传统 JMS 消息中间件的物理架构瓶颈</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9.5px] font-bold">JMS Bottlenecks</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Bottleneck 1: Destructive Reads -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                            <h4 class="font-bold text-rose-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-trash-can text-rose-600"></i>
+                                    <span>破坏性读取 (Destructive Read)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">No Replay</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                消息一旦被 Consumer 获取并发送 Ack 确认，就会**立即被 Broker 物理擦除**。后续接入的新系统（如实时推荐、审计监控）无法回放历史数据。
+                            </p>
+                        </div>
+
+                        <!-- Bottleneck 2: Monolithic Queue Scaling -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                            <h4 class="font-bold text-rose-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-server text-rose-600"></i>
+                                    <span>单节点 Queue 水平扩展瓶颈</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Scaling Barrier</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                JMS 的 Queue 在物理上通常与单个 Broker 线程/内存绑定。要保证严格队列顺序，难以做到透明的多节点 Partition 水平切分与多线程并行吞吐。
+                            </p>
+                        </div>
+
+                        <!-- Bottleneck 3: Throughput Ceiling -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                            <h4 class="font-bold text-rose-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-simple-high text-rose-600"></i>
+                                    <span>万级吞吐量天花板 (TPS Ceiling)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Performance Limits</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                为保障复杂的 JMS 状态机与 JTA 事务，Broker 承受了沉重的内存管理开销，吞吐量通常被卡在万级 QPS，无法支撑海量行为日志与流计算。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-rose-200 text-[10px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>架构转折：传统 MQ 侧重复杂的 RPC-like 队列交互，而非海量事件流持久化</span>
+                    <i class="fa-solid fa-xmark"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Paradigm Comparison Matrix (JMS vs Kafka, 6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-split-up-and-left text-teal-600"></i>
+                            <span>2. JMS 传统 MQ vs. 分布式日志流平台 (Kafka)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Paradigm Shift</span>
+                    </div>
+
+                    <!-- Comparison Matrix Table -->
+                    <div class="rounded-xl border border-teal-100 bg-white p-2.5 space-y-2 overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs font-sans">
+                            <thead>
+                                <tr class="border-b border-teal-100 bg-slate-50 font-mono text-[10px] text-slate-700">
+                                    <th class="py-1.5 px-2 font-bold w-1/4">对比维度</th>
+                                    <th class="py-1.5 px-2 font-bold text-rose-900 bg-rose-50/50 w-5/12">传统 JMS (ActiveMQ / Artemis)</th>
+                                    <th class="py-1.5 px-2 font-bold text-teal-900 bg-teal-50/50 w-1/3">分布式流平台 (Apache Kafka)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[10px]">
+                                <tr>
+                                    <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">存储模型</td>
+                                    <td class="py-1.5 px-2 text-rose-800 font-mono">破坏性读取 (Destructive Queue)</td>
+                                    <td class="py-1.5 px-2 text-teal-800 font-mono font-bold">持久化追加日志 (Append-Only Log)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">扩容维度</td>
+                                    <td class="py-1.5 px-2 text-slate-600">单 Broker 队列，扩展复杂</td>
+                                    <td class="py-1.5 px-2 text-teal-800 font-mono font-bold">Topic Partition 分片水平扩展</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">数据回放</td>
+                                    <td class="py-1.5 px-2 text-rose-800">不支持（Ack 后直接丢弃）</td>
+                                    <td class="py-1.5 px-2 text-teal-800 font-bold">完全支持（Offset 任意拉回与重放）</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">吞吐量级</td>
+                                    <td class="py-1.5 px-2 text-slate-600">千 ~ 万级 QPS</td>
+                                    <td class="py-1.5 px-2 text-teal-800 font-bold">百万级 QPS (零拷贝 Zero-Copy)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">生态依赖</td>
+                                    <td class="py-1.5 px-2 text-slate-600">强绑定 Java EE (JNDI/JTA)</td>
+                                    <td class="py-1.5 px-2 text-teal-800 font-bold">语言无关，跨语言原生 Client 支持</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Next Part Transition -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[9.5px] my-2 space-y-1 border border-slate-800">
+                        <div class="text-teal-300 font-bold">// 范式转变：从“消息队列”跨入“分布式持久化 commit log”时代</div>
+                        <div class="text-slate-300 text-[9px] leading-relaxed">
+                            下一部分我们将深入剖析 Apache Kafka 的核心架构：追加日志 (Append-Only Log)、单调递增 Offset、Partition 分片扩展与零拷贝 (Zero-Copy) 极致吞吐原理。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启 Part 02：Slide 11 · Apache Kafka 核心架构与原理深度剖析</span>
+                    <i class="fa-solid fa-arrow-right text-teal-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (Log-Centric Architecture)</h4>
+                    <p class="text-xs text-slate-700">
+                        打破 JMS “消费即摧毁”的宿命，转向以 <code class="font-mono text-amber-800 font-bold">Append-Only Commit Log</code> 为核心的流平台，不仅赋予了数据“无限次历史重放 (Replayability)”的超能力，更为构建高性能事件驱动架构 (EDA) 铺平了道路。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">JMS 局限性与分布式日志流平台 (Kafka) 演进</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 总结 Part 01 并引入 Part 02 Kafka：</span>
+                    “向学员做阶段性复盘：第一部分我们学习了经典的 JMS 规范。然而，在面对海量高并发事件流和大数据分析时，JMS 的‘破坏性读取 (Destructive Read)’机制成为了致命软肋。消息一旦被消费并 Ack 就会被物理擦除，导致后续系统无法回放历史。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 强调范式转变（Paradigm Shift）：</span>
+                    “请学员重点关注右侧的对比表：Apache Kafka 抛弃了复杂的破坏性队列，采用极简的追加日志 (Append-Only Log) 和分区 (Partition) 切分，依靠零拷贝 (Zero-Copy) 实现了百万级 QPS。下一页 Slide 11 我们将正式开启 Part 02，深入剖析 Kafka 的核心架构。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

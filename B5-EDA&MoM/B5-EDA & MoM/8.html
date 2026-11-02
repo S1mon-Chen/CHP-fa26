@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 08 - JMS 高级特性：Message Selectors、Durable Subscription 与 QueueBrowser (Advanced JMS Features)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sliders text-amber-600"></i>
+                <span>Part 01 · JMS &amp; 消息通信基础</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                JMS 高级特性：Message Selectors、Durable Subscription 与 QueueBrowser
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                SQL-92 Message Selectors, Durable/Shared Topic Subscriptions, QueueBrowser Inspection &amp; Exception Model
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (Message Selectors & QueueBrowser, 6 cols) vs Right (Durable Subscriptions & Exceptions, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Message Selectors & QueueBrowser (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <span class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-filter text-indigo-600"></i>
+                            <span>1. 服务端 Message Selectors 消息过滤器</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">SQL-92 Expression</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-network-wired text-indigo-600"></i>
+                                <span>Broker 侧零网络损耗拦截 (Server-Side Filtering)</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Consumer 在创建时传入 SQL-92 选择器字符串，**JMS Provider 直接在 Broker 侧进行匹配与丢弃**，不合要求的消息不会占用 TCP 网络带宽推送给客户端。
+                            </p>
+                        </div>
+
+                        <!-- Code Example Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[9px] space-y-1 border border-slate-800">
+                            <div class="text-indigo-300 font-bold">// 1. Producer 标记属性 (Properties)</div>
+                            <div>TextMessage msg = context.<span class="text-blue-300">createTextMessage</span>(<span class="text-emerald-300">"VIP Order"</span>);</div>
+                            <div>msg.<span class="text-blue-300">setStringProperty</span>(<span class="text-emerald-300">"Region"</span>, <span class="text-emerald-300">"EAST"</span>);</div>
+                            <div>msg.<span class="text-blue-300">setIntProperty</span>(<span class="text-emerald-300">"Priority"</span>, <span class="text-purple-300">5</span>);</div>
+
+                            <div class="text-indigo-300 font-bold pt-1">// 2. Consumer 声明 SQL-92 选择器表达式</div>
+                            <div>String selector = <span class="text-emerald-300">"Region = 'EAST' AND Priority >= 4"</span>;</div>
+                            <div>JMSConsumer consumer = context.<span class="text-blue-300">createConsumer</span>(queue, selector);</div>
+                        </div>
+
+                        <!-- QueueBrowser Section -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-eye text-indigo-600"></i>
+                                    <span>QueueBrowser 只读非破坏性探测</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-mono text-[8.5px]">Non-Destructive Read</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                允许系统监控工具窥探 Queue 中的消息标头与载荷，**不会改变消息状态，也不会导致消息被弹出或 Ack 移除**。
+                            </p>
+                            <div class="p-1.5 rounded bg-slate-900 text-slate-200 font-mono text-[8.5px]">
+                                QueueBrowser browser = context.<span class="text-blue-300">createBrowser</span>(queue);
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-100 text-[10px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>关键优势：精准路由匹配 + 可视化无损运维探测</span>
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Durable Subscriptions & Shared Consumers (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-tower-broadcast text-teal-600"></i>
+                            <span>2. Durable Subscription 主题持久订阅与共享消费</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Topic Persistence</span>
+                    </div>
+
+                    <!-- Diagram for Durable Subscription -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[9.5px] my-1 space-y-1.5 border border-slate-800">
+                        <div class="text-teal-300 text-[8.5px] font-bold">// 持久订阅物理生命周期：离线期间消息存盘，重连后补发</div>
+                        <div class="space-y-1 text-[8px]">
+                            <div class="flex items-center justify-between p-1 rounded bg-slate-800 border border-teal-800">
+                                <span class="text-amber-300 font-bold">1. Active Sub</span>
+                                <span class="text-slate-300">Receives Msg M1, M2 synchronously</span>
+                            </div>
+                            <div class="flex items-center justify-between p-1 rounded bg-slate-800 border border-rose-800">
+                                <span class="text-rose-400 font-bold">2. Disconnected</span>
+                                <span class="text-teal-300">Broker retains M3, M4, M5 in persistent storage</span>
+                            </div>
+                            <div class="flex items-center justify-between p-1 rounded bg-slate-800 border border-emerald-800">
+                                <span class="text-emerald-400 font-bold">3. Reconnected</span>
+                                <span class="text-emerald-300">Delivers retained M3, M4, M5 to subscriber</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Durable Subscription & Shared Consumers Code -->
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1.5">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-users-line text-teal-600"></i>
+                                    <span>JMS 2.0 持久订阅与共享消费 API</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[8.5px]">JMS 2.0 API</span>
+                            </h4>
+
+                            <div class="p-2 rounded bg-slate-900 text-slate-200 font-mono text-[8.5px] space-y-1">
+                                <div class="text-teal-300">// 1. 创建普通持久订阅 Consumer (独占实例)</div>
+                                <div>JMSConsumer consumer = context.<span class="text-blue-300">createDurableConsumer</span>(topic, <span class="text-emerald-300">"SubName"</span>);</div>
+                                <div class="text-teal-300 pt-1">// 2. JMS 2.0 共享持久订阅 (支持集群负载均衡平摊 Topic 离线积压)</div>
+                                <div>JMSConsumer sharedConsumer = context.<span class="text-blue-300">createSharedDurableConsumer</span>(topic, <span class="text-emerald-300">"GroupSub"</span>);</div>
+                            </div>
+                        </div>
+
+                        <!-- JMS Exception Handling -->
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5 text-[10.5px]">
+                            <strong class="text-slate-900 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-bug text-rose-600"></i>
+                                <span>JMS 异常管理体系 (`JMSException`)</span>
+                            </strong>
+                            <p class="text-slate-600 text-[10px] leading-tight">
+                                JMS 规范所有受检异常派生自 `JMSException`（如 `InvalidSelectorException`, `TransactionRolledBackException`），提供链式网络错误定位信息。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 9 · Spring Boot 与 JMS 无缝集成 (`JmsTemplate` &amp; `@JmsListener`)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (JMS Advanced Capabilities)</h4>
+                    <p class="text-xs text-slate-700">
+                        <code class="font-mono text-amber-800 font-bold">Message Selectors</code> 让数据过滤前置在 Broker 侧，节约网络带宽；而 <code class="font-mono text-amber-800 font-bold">Durable Subscription</code> 让广播 Topic 具备了不丢失离线消息的坚固特性。这两大机制是构建高可靠分布式事件驱动系统的基石。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 8 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">08</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[20.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (7.html <- 8.html -> 9.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">JMS 高级特性：Selectors、Durable Subscriptions 与 QueueBrowser</span>
+            <a href="9.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="7.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="9.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生透视 Message Selectors 的优化机制：</span>
+                    “向学员做解构说明：Message Selectors 的强大之处在于它是在 Broker 服务端拦截并过滤消息的。这就好比在数据库层面做 WHERE 过滤，极大地降低了客户端网络 I/O 开销。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 强调 JMS 2.0 共享持久订阅的突破：</span>
+                    “提示学员：在 JMS 1.1 中，持久订阅是单 Consumer 独占的；而在 JMS 2.0 中引入了 `createSharedDurableConsumer`，允许同一个持久订阅名字下挂载多个 Consumer 实例，从而可以在 Topic 上实现‘持久积压 + 负载均衡平摊’的双重优势。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

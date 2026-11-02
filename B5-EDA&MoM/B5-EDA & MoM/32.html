@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - CQRS 读写责任分离架构：原理、模型与事件双写控制 (CQRS Pattern: Command Query Responsibility Segregation)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-code-branch text-purple-600"></i>
+                <span>Part 04 · 次世代 MQ 与事件驱动架构 (EDA) 模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                CQRS 读写责任分离架构：原理、模型与事件双写控制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Command Query Responsibility Segregation, Normalized Write DB vs. Denormalized Read Views &amp; Async Event Projection
+            </p>
+        </div>
+
+        <!-- CQRS Data Flow Architecture Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>CQRS 命令与查询数据流解耦管线 (CQRS Architecture &amp; Event Projection Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Command (ACID) $\to$ Domain Event $\to$ Event Bus $\to$ Projection $\to$ Query Store</span>
+                </div>
+
+                <!-- Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 text-xs font-mono items-center">
+                    
+                    <!-- Command Side (4 cols) -->
+                    <div class="md:col-span-4 p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-pen-to-square text-purple-400"></i>
+                                1. 命令模型 (Command Model)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Write Side</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] text-slate-300 font-sans">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>命令 (Command):</span>
+                                <code class="text-amber-300">CreateOrderCommand</code>
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>写数据库 (Write DB):</span>
+                                <span class="text-purple-400 font-bold">MySQL (规范化范式表)</span>
+                            </div>
+                        </div>
+                        <div class="text-[8px] text-slate-400 font-sans">
+                            校验领域约束与业务规则，保障 ACID 强一致性落盘。
+                        </div>
+                    </div>
+
+                    <!-- Event Bus Connector (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-violet-800/80 flex flex-col justify-between space-y-1 text-center">
+                        <div class="text-violet-300 font-bold text-[10px] flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-satellite-dish text-violet-400"></i>
+                            <span>2. 领域事件总线 (Event Bus)</span>
+                        </div>
+                        <code class="text-[8.5px] text-emerald-300 block bg-slate-900 p-1 rounded border border-slate-800">
+                            OrderCreatedEvent
+                        </code>
+                        <div class="text-[8px] text-slate-400 font-sans">
+                            Kafka / Pulsar 异步广播，触发下游写模型投影 (Projection)。
+                        </div>
+                    </div>
+
+                    <!-- Query Side (5 cols) -->
+                    <div class="md:col-span-5 p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-magnifying-glass text-teal-400"></i>
+                                3. 查询模型 (Query Model)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Read Side</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] text-slate-300 font-sans">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>读存储 (Read Store):</span>
+                                <span class="text-teal-300 font-bold">Elasticsearch / Redis / MongoDB</span>
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 flex items-center justify-between">
+                                <span>视图形态:</span>
+                                <span class="text-amber-300">反规范化 (Denormalized Views, 零 JOIN)</span>
+                            </div>
+                        </div>
+                        <div class="text-[8px] text-slate-400 font-sans">
+                            按 UI 展示需求定制平铺视图，极致提升高并发读吞吐与响应延迟。
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (CQRS Principles & Trade-offs) vs Right (Java Command & Projection Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: CQRS Principles & Trade-offs (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-scale-balanced text-purple-600"></i>
+                            <span>1. CQRS 核心原理与模型分离三大价值</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Command/Query Segregation</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Value 1: Independent Model Optimization -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shapes text-purple-600"></i>
+                                    <span>读写模型完全独立（高内聚领域模型 vs. 平铺 UI 视图）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">Model Independence</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                传统单模型架构下，写模型需满足 3NF 范式约束，而读模型需要复杂多表 `JOIN` 甚至大字段聚合。CQRS 允许写侧使用高一致性关系型 DB，读侧使用 Elasticsearch 或 Redis 存储平铺 JSON 视图，彻底解决读写模式冲突。
+                            </p>
+                        </div>
+
+                        <!-- Value 2: Independent Scaling -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sliders text-violet-600"></i>
+                                    <span>读写性能非对称扩展（Asymmetric Scaling）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-mono text-[8.5px]">Independent Scaling</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                互联网应用中，读流量通常是写流量的 10 倍乃至 100 倍（Read-Heavy）。CQRS 允许独立扩容读存储副本与缓存，而无需扩容高成本的写主库，极大节省硬件资源开销。
+                            </p>
+                        </div>
+
+                        <!-- Trade-off: Eventual Consistency -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-hourglass-half text-amber-600"></i>
+                                    <span>架构权衡：接受最终一致性 (Eventual Consistency)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">Lag Handling</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                读模型通过事件异步投影更新，存在毫秒级的同步延时（Eventual Consistency）。前端可通过客户端 UI 优化（如预渲染本地状态）避免“刚提交写操作却查不到”的体验问题。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>黄金准则：不要盲目全量引入！仅在读写吞吐非对称或领域模型极度复杂时使用 CQRS</span>
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Realization (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-violet-200 bg-violet-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-violet-200">
+                        <span class="text-xs font-mono font-bold text-violet-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-violet-600"></i>
+                            <span>2. CQRS 命令写处理与读视图投影代码实战</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-mono text-[9.5px] font-bold">Spring Boot 3</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Command Side Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">// A. 命令写服务：保存写 DB 并广播领域事件 (`OrderCommandService.java`)</div>
+                            <div><span class="text-indigo-400">@Service</span></div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">OrderCommandService</span> {</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> OrderRepository orderRepo; <span class="text-slate-400">// MySQL 写库</span></div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> KafkaTemplate&lt;String, Object&gt; kafkaTemplate;</div>
+
+                            <div class="pl-3 mt-1"><span class="text-indigo-400">@Transactional</span></div>
+                            <div class="pl-3"><span class="text-purple-400">public String</span> <span class="text-blue-300">handleCreateOrder</span>(CreateOrderCommand cmd) {</div>
+                            <div class="pl-6">Order order = <span class="text-purple-400">new</span> Order(cmd.getUserId(), cmd.getItems());</div>
+                            <div class="pl-6">orderRepo.<span class="text-blue-300">save</span>(order); <span class="text-slate-400">// 1. 规范化数据库落盘</span></div>
+                            
+                            <div class="pl-6 mt-1">OrderCreatedEvent event = <span class="text-purple-400">new</span> OrderCreatedEvent(order.getId(), order.getUserId(), order.getAmount());</div>
+                            <div class="pl-6">kafkaTemplate.<span class="text-blue-300">send</span>(<span class="text-emerald-300">"order-events"</span>, order.getId(), event); <span class="text-slate-400">// 2. 发送广播事件</span></div>
+                            <div class="pl-6"><span class="text-purple-400">return</span> order.getId();</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Projection Listener Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-teal-300 font-bold">// B. 读视图投影监听器：异步消费事件并更新 ES 读视图 (`OrderProjectionListener.java`)</div>
+                            <div><span class="text-indigo-400">@Component</span></div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">OrderProjectionListener</span> {</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-purple-400">private</span> OrderViewElasticRepository orderSearchRepo; <span class="text-slate-400">// ES 读库</span></div>
+
+                            <div class="pl-3 mt-1"><span class="text-indigo-400">@KafkaListener</span>(topics = <span class="text-emerald-300">"order-events"</span>, groupId = <span class="text-emerald-300">"cqrs-projection-group"</span>)</div>
+                            <div class="pl-3"><span class="text-purple-400">public void</span> <span class="text-blue-300">onOrderCreated</span>(OrderCreatedEvent event, Acknowledgment ack) {</div>
+                            <div class="pl-6">OrderReadView view = <span class="text-purple-400">new</span> OrderReadView(event.getOrderId(), event.getUserId(), event.getAmount());</div>
+                            <div class="pl-6">orderSearchRepo.<span class="text-blue-300">save</span>(view); <span class="text-teal-300">// 构造平铺 JSON 并更新 Elasticsearch 读模型</span></div>
+                            <div class="pl-6">ack.<span class="text-blue-300">acknowledge</span>();</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-violet-200 text-[10px] font-mono text-violet-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 33 · 事件溯源模式 (Event Sourcing Pattern) 原理与状态重构</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (CQRS Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        CQRS 的核心精髓在于**“放弃单模型幻想”**。通过将命令（Command）与查询（Query）从数据结构到物理存储层彻底剥离，配合 Kafka 异步事件投影，让写入模型保持业务规则的纯粹一致性，让查询模型享受毫秒级平铺检索的极致性能。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 32 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[80.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">CQRS 读写责任分离架构：原理、模型与事件双写控制</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视 CQRS 读写分离的核心动机：</span>
+                    “向学员强调：在传统单模型架构中，一个 `Order` Entity 既要满足数据库 3NF 范式进行校验写落盘，又要满足 UI 界面复杂且频繁的无 JOIN 聚合查询，这极易引发数据库性能灾难。CQRS 模式彻底拆分了写模型（Command）和读模型（Query）。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析右侧代码的事件投影 (Projection) 过程：</span>
+                    “请学员关注右侧的代码示例：`OrderCommandService` 负责向关系型数据库写入订单记录，并向 Kafka 抛出 `OrderCreatedEvent`；而 `OrderProjectionListener` 监听该事件，将数据增量投影更新到 Elasticsearch 读视图中，实现了完美的读写解耦与极致性能。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

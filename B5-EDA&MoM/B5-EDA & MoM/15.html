@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - Cluster 拓扑与 Broker 架构：Leader vs. Follower 副本机制 (Cluster Topology &amp; Broker Architecture)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Cluster 拓扑与 Broker 架构：Leader vs. Follower 副本机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Cluster Topology, Multi-Broker Nodes, Replication Factor, Leader/Follower Partition Roles &amp; Automatic Failover
+            </p>
+        </div>
+
+        <!-- Cluster Topology Diagram Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-network-wired"></i>
+                        <span>3-Broker Kafka 集群与 3-Partition (Replication Factor = 2) 物理分布拓扑</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Topic "order-events" (Partitions: 3, Replication Factor: 2)</span>
+                </div>
+
+                <!-- Broker Nodes Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                    
+                    <!-- Broker 1 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-700/80 flex flex-col justify-between space-y-2">
+                        <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+                            <span class="font-bold text-teal-300 text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-server text-teal-400"></i>
+                                <span>Broker 1</span>
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-400 text-[8.5px] border border-teal-700">Node ID: 101</span>
+                        </div>
+                        <div class="space-y-1.5 text-[9.5px]">
+                            <!-- Leader Part 3 -->
+                            <div class="p-1.5 rounded bg-teal-900/60 border border-teal-500 text-teal-200 flex items-center justify-between">
+                                <span class="font-bold">Leader-Partition 3</span>
+                                <span class="text-[8px] bg-teal-950 px-1 py-0.5 rounded text-teal-300 border border-teal-600">Read/Write</span>
+                            </div>
+                            <!-- Follower Part 1 -->
+                            <div class="p-1.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center justify-between">
+                                <span>Follower-Partition 1</span>
+                                <span class="text-[8px] bg-slate-900 px-1 py-0.5 rounded text-slate-400">Fetch Only</span>
+                            </div>
+                        </div>
+                        <div class="text-[8.5px] text-slate-400 font-sans border-t border-slate-800/60 pt-1">
+                            处理 Partition 3 的全量读写，后台同步 Partition 1
+                        </div>
+                    </div>
+
+                    <!-- Broker 2 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-700/80 flex flex-col justify-between space-y-2">
+                        <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+                            <span class="font-bold text-indigo-300 text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-server text-indigo-400"></i>
+                                <span>Broker 2</span>
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-400 text-[8.5px] border border-indigo-700">Node ID: 102</span>
+                        </div>
+                        <div class="space-y-1.5 text-[9.5px]">
+                            <!-- Leader Part 1 -->
+                            <div class="p-1.5 rounded bg-indigo-900/60 border border-indigo-500 text-indigo-200 flex items-center justify-between">
+                                <span class="font-bold">Leader-Partition 1</span>
+                                <span class="text-[8px] bg-indigo-950 px-1 py-0.5 rounded text-indigo-300 border border-indigo-600">Read/Write</span>
+                            </div>
+                            <!-- Follower Part 2 -->
+                            <div class="p-1.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center justify-between">
+                                <span>Follower-Partition 2</span>
+                                <span class="text-[8px] bg-slate-900 px-1 py-0.5 rounded text-slate-400">Fetch Only</span>
+                            </div>
+                        </div>
+                        <div class="text-[8.5px] text-slate-400 font-sans border-t border-slate-800/60 pt-1">
+                            处理 Partition 1 的全量读写，后台同步 Partition 2
+                        </div>
+                    </div>
+
+                    <!-- Broker 3 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-700/80 flex flex-col justify-between space-y-2">
+                        <div class="flex items-center justify-between pb-1 border-b border-slate-800">
+                            <span class="font-bold text-amber-300 text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-server text-amber-400"></i>
+                                <span>Broker 3</span>
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 text-[8.5px] border border-amber-700">Node ID: 103</span>
+                        </div>
+                        <div class="space-y-1.5 text-[9.5px]">
+                            <!-- Leader Part 2 -->
+                            <div class="p-1.5 rounded bg-amber-900/60 border border-amber-500 text-amber-200 flex items-center justify-between">
+                                <span class="font-bold">Leader-Partition 2</span>
+                                <span class="text-[8px] bg-amber-950 px-1 py-0.5 rounded text-amber-300 border border-amber-600">Read/Write</span>
+                            </div>
+                            <!-- Follower Part 3 -->
+                            <div class="p-1.5 rounded bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center justify-between">
+                                <span>Follower-Partition 3</span>
+                                <span class="text-[8px] bg-slate-900 px-1 py-0.5 rounded text-slate-400">Fetch Only</span>
+                            </div>
+                        </div>
+                        <div class="text-[8.5px] text-slate-400 font-sans border-t border-slate-800/60 pt-1">
+                            处理 Partition 2 的全量读写，后台同步 Partition 3
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Leader vs Follower Roles) vs Right (Replication Factor, ISR & Failover) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Leader vs Follower Replica Mechanics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-crown text-teal-600"></i>
+                            <span>1. Leader 与 Follower 副本职责划分</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Replica Roles</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Role 1: Leader Replica -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-star text-teal-600"></i>
+                                    <span>Leader 副本：独占客户端读写入口 (Exclusive Read/Write)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">R/W Master</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                每个 Partition 在集群中有且仅有一个 **Leader 副本**。所有 Producer 的写入请求和 Consumer 的读取请求（默认标准模式下）均只由 Leader 副本负责处理。
+                            </p>
+                        </div>
+
+                        <!-- Role 2: Follower Replica -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-clone text-teal-600"></i>
+                                    <span>Follower 副本：被动 Fetch 复制与物理落盘</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Passive Replica</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Follower 副本不直接响应客户端，而是作为一个“内部 Consumer”向 Leader 发起 <code class="font-mono text-teal-800 font-bold">FetchRequest</code>，不断将 Leader 写入的新字节追加到本地磁盘日志中。
+                            </p>
+                        </div>
+
+                        <!-- Role 3: Single Point Bottleneck Prevention -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-split-up-and-left text-teal-600"></i>
+                                    <span>Leader 均匀散布与读写负载均衡</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Load Spread</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                不同 Partition 的 Leader 副本会被均匀交错分配到各个物理 Broker 节点上（如上图所示），从而实现了整体集群存储与 I/O 读写宽带的完美负载均衡。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>职责哲学：主副本处理读写，备副本拉取同步，全集群分摊 Leader 压力</span>
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Replication Factor, ISR & Failover (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat text-amber-600"></i>
+                            <span>2. 副本因子 (Replication Factor) 与自动 Failover</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">HA &amp; Failover</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Rule 1: Replication Factor -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-layer-group text-amber-600"></i>
+                                    <span>Replication Factor（副本因子配置）</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">N-1 Tolerant</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                通过参数 <code class="font-mono text-amber-800 font-bold">replication.factor=N</code> 设定副本数。若设定 $N=3$，表示该分区包含 1 个 Leader 与 2 个 Follower，能容忍最多 $N-1 = 2$ 台物理 Broker 同时宕机而不丢失数据。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: ISR Concept Preview -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-users-viewfinder text-amber-600"></i>
+                                    <span>In-Sync Replicas (ISR) 动态同步列表</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">ISR List</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                集群动态维护保持紧密同步的副本集合 **ISR**。只有落后时间不超过 <code class="font-mono text-amber-800 font-bold">replica.lag.time.max.ms</code> 的健康 Follower 才有资格保留在 ISR 列表中。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3: Failover Election -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt-lightning text-amber-600"></i>
+                                    <span>自动 Leader 选举与毫秒级故障转移 (Failover)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Auto Failover</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                当 Leader 所在的 Broker 宕机，Kafka 控制器（Controller）会检测到节点心跳超时，并从该分区的 **ISR 列表中选出一个最新 Follower 提升为新 Leader**，对客户端几乎无感知。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 16 · Consumer Group 动态重平衡 (Rebalance) 机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Replication Factor Trade-off)</h4>
+                    <p class="text-xs text-slate-700">
+                        将 Partition 副本数设置为 $N$（生产环境标准推荐 <code class="font-mono text-teal-800 font-bold">RF=3</code>），并将其分散存放在不同机架/Broker 上，是 Kafka 在面对硬件故障时实现 **零数据丢失 (Zero Data Loss)** 与 **99.999% 高可用** 的决定性设计。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 15 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[37.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Cluster 拓扑与 Broker 架构：Leader vs. Follower 副本机制</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 Leader 与 Follower 职责：</span>
+                    “向学员做架构原理解释：在 Kafka 标准读写机制中，为了保证强一致性，客户端的所有读写请求都只由该 Partition 的 Leader 副本处理。Follower 副本充当的是被动追赶日志的角色。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调自动 Failover 与 ISR 选主：</span>
+                    “请学员特别关注右侧的 Failover 过程：一旦 Leader 所在的 Broker 发生故障（如物理宕机），Controller 会从 ISR 列表中自动挑选一个同步最及时的 Follower 提升为新 Leader，这个过程仅需毫秒级，保证了集群的高可用。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

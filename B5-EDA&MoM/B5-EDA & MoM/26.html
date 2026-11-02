@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 26 - 企业级案例：银行转账事件管线、DLQ 重试与消费幂等防重 (Bank Transfer &amp; DLQ Idempotency)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-building-columns text-indigo-600"></i>
+                <span>Part 03 · Spring for Apache Kafka &amp; 企业级集成</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                企业级案例：银行转账事件管线、DLQ 重试与消费幂等防重
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Bank Transfer Event Pipeline, Exponential Backoff (`@RetryableTopic`), Dead Letter Topic (`@DltHandler`) &amp; Redis `SETNX` Idempotency
+            </p>
+        </div>
+
+        <!-- Pipeline & DLQ Architecture Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>银行转账金融管线：幂等校验、指数重试与死信告警 (Bank Transfer Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">@RetryableTopic + Redis Idempotency + DLT</span>
+                </div>
+
+                <!-- Pipeline Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                    
+                    <!-- Node 1: Request Ingestion & Idempotency -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="text-indigo-400 font-bold text-[10px] flex items-center gap-1">
+                            <i class="fa-solid fa-fingerprint"></i>
+                            <span>1. Redis 幂等防重校验</span>
+                        </div>
+                        <code class="text-[8.5px] text-slate-300 block">SETNX tx_id "PROCESSING"</code>
+                        <div class="text-[8px] text-slate-400 font-sans">若已消费或正在处理中，自动判定重复并丢弃，防止重复扣款</div>
+                    </div>
+
+                    <!-- Node 2: Business Settlement -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1">
+                        <div class="text-teal-400 font-bold text-[10px] flex items-center gap-1">
+                            <i class="fa-solid fa-money-bill-transfer"></i>
+                            <span>2. 账户结算与转账逻辑</span>
+                        </div>
+                        <code class="text-[8.5px] text-slate-300 block">processTransfer(event)</code>
+                        <div class="text-[8px] text-slate-400 font-sans">原子化更新账户余额并写账单明细，成功后手动提交 Offset</div>
+                    </div>
+
+                    <!-- Node 3: Exponential Retry -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="text-amber-400 font-bold text-[10px] flex items-center gap-1">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                            <span>3. 指数退避重试 (Retry Topic)</span>
+                        </div>
+                        <code class="text-[8.5px] text-slate-300 block">bank-transfers-retry-1000</code>
+                        <div class="text-[8px] text-slate-400 font-sans">遇到网络抖动等瞬时异常，延迟重试（延时 1s, 2s, 4s...）</div>
+                    </div>
+
+                    <!-- Node 4: Dead Letter Queue (DLQ) -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="text-rose-400 font-bold text-[10px] flex items-center gap-1">
+                            <i class="fa-solid fa-skull-crossbones"></i>
+                            <span>4. 死信队列 (DLQ) &amp; 人工审计</span>
+                        </div>
+                        <code class="text-[8.5px] text-slate-300 block">bank-transfers-dlt</code>
+                        <div class="text-[8px] text-slate-400 font-sans">非重试异常或达到重试上限，入库死信表并触发钉钉/邮件告警</div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Bank Transfer Architecture Principles) vs Right (Java Code with @RetryableTopic) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Bank Transfer & DLQ Principles (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <span class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                            <span>1. 金融级消费端防重与死信容错三原则</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9.5px] font-bold">Banking Robustness</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Rule 1: Idempotency -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-key text-indigo-600"></i>
+                                    <span>消费端幂等防重 (Consumer Idempotency)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-mono text-[8.5px]">Redis SETNX</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                由于 Kafka 保证的是“At-Least-Once”传输，网络抖动重试或 Rebalance 会导致重复投递。消费端必须在处理前使用 <code class="font-mono text-indigo-800 font-bold">tx_id</code> 进行 Redis 分布式锁/去重表校验，确保多次消费结果一致。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: Exception Classification -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-filter text-amber-600"></i>
+                                    <span>异常精确分类与非阻断重试 (`@RetryableTopic`)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">Exception Classification</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                区分**可重试异常**（如 DB 网络抖动、三方 HTTP 超时）与**不可重试异常**（如余额不足、账号不存在）。通过开辟独立的重试 Topic，避免坏消息卡死主 Partition 阻塞其他用户。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3: DLT & Audit -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-skull text-rose-600"></i>
+                                    <span>死信队列 (`.DLT`) 与人工补偿兜底</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">@DltHandler</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                达到最大重试次数后，Spring Kafka 会将消息路由至 Dead Letter Topic。通过标注 <code class="font-mono text-rose-800 font-bold">@DltHandler</code>，将问题交易打入人工审计数据库并触发实时告警。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[10px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>金融防线：消息可重试、坏数据不卡死、死信可追溯、消费必幂等</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code & Annotations (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-purple-600"></i>
+                            <span>2. 银行转账消费端代码 (`BankTransferConsumer.java`)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Spring Boot 3</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Java Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">// 转账消费者与 DLQ 处理器 (`BankTransferConsumer.java`)</div>
+                            <div><span class="text-indigo-400">@Component</span></div>
+                            <div><span class="text-indigo-400">@Slf4j</span></div>
+                            <div><span class="text-purple-400">public class</span> <span class="text-amber-300">BankTransferConsumer</span> {</div>
+
+                            <div class="pl-3 mt-1 text-amber-300">// 配置自动重试 3 次，指数退避 (1s, 2s)</div>
+                            <div class="pl-3"><span class="text-indigo-400">@RetryableTopic</span>(attempts = <span class="text-emerald-300">"3"</span>,</div>
+                            <div class="pl-9">backoff = <span class="text-indigo-400">@Backoff</span>(delay = <span class="text-amber-300">1000</span>, multiplier = <span class="text-amber-300">2.0</span>),</div>
+                            <div class="pl-9">exclude = {AccountNotFoundException.<span class="text-purple-400">class</span>}) <span class="text-slate-400">// 排除不可重试异常</span></div>
+                            <div class="pl-3"><span class="text-indigo-400">@KafkaListener</span>(topics = <span class="text-emerald-300">"bank-transfers"</span>, groupId = <span class="text-emerald-300">"transfer-settlement-group"</span>)</div>
+                            <div class="pl-3"><span class="text-purple-400">public void</span> <span class="text-blue-300">processTransfer</span>(TransferEvent event, Acknowledgment ack) {</div>
+                            <div class="pl-6 text-slate-400">// 1. Redis SETNX 幂等校验，若已处理直接 Ack 返回</div>
+                            <div class="pl-6"><span class="text-purple-400">boolean</span> isNew = redisTemplate.<span class="text-blue-300">opsForValue</span>()</div>
+                            <div class="pl-9">.<span class="text-blue-300">setIfAbsent</span>(<span class="text-emerald-300">"tx:"</span> + event.<span class="text-blue-300">getTxId</span>(), <span class="text-emerald-300">"DONE"</span>, <span class="text-amber-300">24</span>, TimeUnit.HOURS);</div>
+                            <div class="pl-6"><span class="text-purple-400">if</span> (!isNew) { ack.<span class="text-blue-300">acknowledge</span>(); <span class="text-purple-400">return</span>; }</div>
+
+                            <div class="pl-6 mt-1 text-slate-400">// 2. 执行核心转账扣款结算逻辑</div>
+                            <div class="pl-6">transferService.<span class="text-blue-300">executeSettlement</span>(event);</div>
+                            <div class="pl-6">ack.<span class="text-blue-300">acknowledge</span>(); <span class="text-teal-300">// 成功后手动提交 Offset</span></div>
+                            <div class="pl-3">}</div>
+
+                            <div class="pl-3 mt-1 text-rose-300">// 达到重试上限或遭遇不可重试异常进入死信句柄</div>
+                            <div class="pl-3"><span class="text-indigo-400">@DltHandler</span></div>
+                            <div class="pl-3"><span class="text-purple-400">public void</span> <span class="text-blue-300">handleDeadLetter</span>(TransferEvent event,</div>
+                            <div class="pl-12"><span class="text-indigo-400">@Header</span>(KafkaHeaders.RECEIVED_TOPIC) String topic) {</div>
+                            <div class="pl-6">log.<span class="text-blue-300">error</span>(<span class="text-emerald-300">"Transfer [{}] sent to DLT [{}]"</span>, event.<span class="text-blue-300">getTxId</span>(), topic);</div>
+                            <div class="pl-6">dltAuditService.<span class="text-blue-300">recordForManualReview</span>(event); <span class="text-slate-400">// 存入死信表人工审查</span></div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 27 · Part 03 Spring Kafka 多集群与高级配置实战</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Enterprise Pipeline Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        金融级转账管线的核心在于**“将不确定性隔离”**。结合 Spring Kafka 的 <code class="font-mono text-indigo-800 font-bold">@RetryableTopic</code> 指数退避重试与 Redis 幂等校验，不仅主流程高吞吐不卡死，而且死信事件可通过 <code class="font-mono text-indigo-800 font-bold">@DltHandler</code> 完整记录，实现 100% 的可追溯与可补偿。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-700 font-bold">Slide 26 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">26</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[65.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (25.html <- 26.html -> 27.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="25.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">企业级案例：银行转账事件管线、DLQ 重试与消费幂等防重</span>
+            <a href="27.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="25.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="27.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学生透视金融管线的防重与容错机制：</span>
+                    “向学员强调：银行转账等金融交易系统对数据一致性要求极高。因为 Kafka 提供的是‘至少一次’保障，所以在消费方法 `processTransfer()` 内部，第一步必须通过 Redis `SETNX` 或数据库唯一主键进行幂等校验。即使网络重复投递，第二次处理也会被直接拦截并安全 Ack。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 Spring Kafka `@RetryableTopic` 与死信句柄：</span>
+                    “请学员重点关注代码中的 `@RetryableTopic`：它可以自动帮我们创建重试 Topic 和死信 Topic。如果是网络超时等可重试异常，框架会自动退避重试；如果是账号不存在等坏数据，或者重试上限达到，则触发 `@DltHandler` 保存到死信表供人工审查，保证主管线不卡死。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '27.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '25.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

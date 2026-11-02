@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - Native Java Kafka Client: KafkaProducer &amp; KafkaConsumer (Java 原生 API)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-brands fa-java text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Native Java Kafka Client: KafkaProducer &amp; KafkaConsumer 实战
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                `KafkaProducer` Thread-Safety, Asynchronous Callback, `KafkaConsumer` Polling Loop &amp; Manual Offset Commit
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (KafkaProducer API) vs Right (KafkaConsumer API) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: KafkaProducer (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-paper-plane text-amber-600"></i>
+                            <span>1. 线程安全 `KafkaProducer<K, V>` 异步发送与回调</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Thread-Safe Producer</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Code Box Producer -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-amber-300 font-bold">// A. 构建配置与实例（全局复用单例）</div>
+                            <div>Properties props = <span class="text-purple-400">new</span> Properties();</div>
+                            <div>props.<span class="text-blue-300">put</span>(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, <span class="text-emerald-300">"localhost:9092"</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.<span class="text-purple-400">class</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.<span class="text-purple-400">class</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ProducerConfig.ACKS_CONFIG, <span class="text-emerald-300">"all"</span>); <span class="text-slate-400">// 零数据丢失</span></div>
+                            
+                            <div class="pt-1 text-amber-300 font-bold">// B. 异步带 Callback 回调发送</div>
+                            <div><span class="text-purple-400">try</span> (Producer&lt;String, String&gt; producer = <span class="text-purple-400">new</span> KafkaProducer&lt;&gt;(props)) {</div>
+                            <div class="pl-3">ProducerRecord&lt;String, String&gt; record = </div>
+                            <div class="pl-6"><span class="text-purple-400">new</span> ProducerRecord&lt;&gt;(<span class="text-emerald-300">"order-events"</span>, <span class="text-emerald-300">"order_1001"</span>, jsonPayload);</div>
+                            
+                            <div class="pl-3 mt-1 text-teal-300">// 非阻塞发送，返回 Future，并设置 Callback 机制</div>
+                            <div class="pl-3">producer.<span class="text-blue-300">send</span>(record, (metadata, exception) -&gt; {</div>
+                            <div class="pl-6"><span class="text-purple-400">if</span> (exception == <span class="text-purple-400">null</span>) {</div>
+                            <div class="pl-9 text-emerald-400">System.out.println(<span class="text-emerald-300">"Acked Offset: "</span> + metadata.<span class="text-blue-300">offset</span>());</div>
+                            <div class="pl-6">} <span class="text-purple-400">else</span> {</div>
+                            <div class="pl-9 text-rose-400">System.err.println(<span class="text-emerald-300">"Send Failed: "</span> + exception.<span class="text-blue-300">getMessage</span>());</div>
+                            <div class="pl-6">}</div>
+                            <div class="pl-3">});</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Producer Feature Points -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 space-y-0.5 text-[10.5px]">
+                            <strong class="text-amber-950 font-bold block">线程安全特性 (Thread Safety)</strong>
+                            <p class="text-slate-600 leading-tight">
+                                `KafkaProducer` 内部维护了并发 BufferPool 与 Sender 线程，是<strong>完全线程安全</strong>的。全应用只需共享一个单例对象。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>生产要点：设置序列化器 (Serializer) 与全局复用单例 Producer 实例</span>
+                    <i class="fa-solid fa-share-nodes"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: KafkaConsumer (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-inbox text-teal-600"></i>
+                            <span>2. 单线程安全 `KafkaConsumer<K, V>` Poll 循环与手动 Commit</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Single-Thread Consumer</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Code Box Consumer -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-teal-300 font-bold">// A. 构建 Consumer 配置并关闭自动提交</div>
+                            <div>Properties props = <span class="text-purple-400">new</span> Properties();</div>
+                            <div>props.<span class="text-blue-300">put</span>(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, <span class="text-emerald-300">"localhost:9092"</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ConsumerConfig.GROUP_ID_CONFIG, <span class="text-emerald-300">"order-group"</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.<span class="text-purple-400">class</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.<span class="text-purple-400">class</span>);</div>
+                            <div>props.<span class="text-blue-300">put</span>(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, <span class="text-rose-400">"false"</span>); <span class="text-slate-400">// 手动提交</span></div>
+
+                            <div class="pt-1 text-teal-300 font-bold">// B. 订阅 Topic 并开启无限 Poll 循环</div>
+                            <div><span class="text-purple-400">try</span> (KafkaConsumer&lt;String, String&gt; consumer = <span class="text-purple-400">new</span> KafkaConsumer&lt;&gt;(props)) {</div>
+                            <div class="pl-3">consumer.<span class="text-blue-300">subscribe</span>(Collections.<span class="text-blue-300">singletonList</span>(<span class="text-emerald-300">"order-events"</span>));</div>
+                            <div class="pl-3"><span class="text-purple-400">while</span> (running) {</div>
+                            <div class="pl-6">ConsumerRecords&lt;String, String&gt; records = </div>
+                            <div class="pl-9">consumer.<span class="text-blue-300">poll</span>(Duration.<span class="text-blue-300">ofMillis</span>(<span class="text-amber-300">100</span>));</div>
+                            <div class="pl-6"><span class="text-purple-400">for</span> (ConsumerRecord&lt;String, String&gt; record : records) {</div>
+                            <div class="pl-9 text-emerald-300">processOrderRecord(record.value());</div>
+                            <div class="pl-6">}</div>
+                            <div class="pl-6 text-amber-300">consumer.commitSync(); <span class="text-slate-400">// 同步提交已消费 Offset</span></div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Consumer Feature Points -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5 text-[10.5px]">
+                            <strong class="text-teal-950 font-bold block">非线程安全警告 (Non-Thread-Safe)</strong>
+                            <p class="text-slate-600 leading-tight">
+                                `KafkaConsumer` <strong>绝对非线程安全</strong>！必须采用“一个线程配一个 KafkaConsumer 实例”模式，或通过线程池异步处理业务再手动提交。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启 Part 03：Slide 23 · Spring for Apache Kafka &amp; 企业级集成</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心原生 API 启发 (Client Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        掌握原生 API 的线程安全性是基础：<code class="font-mono text-teal-800 font-bold">KafkaProducer</code> 是线程安全的且全局共享，而 <code class="font-mono text-teal-800 font-bold">KafkaConsumer</code> 为单线程独占。结合 **关闭 `enable.auto.commit`** 进行手动 Commit 是保障消费防丢防重的黄金法则。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 22 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[55.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Native Java Kafka Client: KafkaProducer &amp; KafkaConsumer 实战</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 强调 Producer 与 Consumer 的线程安全性差异：</span>
+                    “向学员重点做提示：`KafkaProducer` 内部包含完整的 BufferPool 与 Sender 线程，是线程安全的，全应用只需创建一个共享单例；而 `KafkaConsumer` 是**绝对非线程安全**的，多线程同时访问同一个 `KafkaConsumer` 实例会直接抛出 `ConcurrentModificationException`。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析手动 Offset 提交逻辑：</span>
+                    “请学员关注右侧的 `commitSync()` 逻辑：将 `enable.auto.commit` 设为 `false`，确保只有当业务函数 `processOrderRecord()` 成功处理完数据后才触发 Offset 提交。下一部分（Part 03）我们将学习 Spring Kafka 如何自动帮我们封装这一套 Poll 循环与监听器容器。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

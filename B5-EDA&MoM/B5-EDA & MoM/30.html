@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - 企业级消息中间件选型：RabbitMQ vs. Kafka vs. Pulsar 矩阵对比 (Message Middleware Comparison)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring slide header and navigation controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering main container and background decorative elements... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sliders text-purple-600"></i>
+                <span>Part 04 · 次世代 MQ 与事件驱动架构 (EDA) 模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                企业级消息中间件选型：RabbitMQ vs. Kafka vs. Pulsar 矩阵对比
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                AMQP Broker Queues vs. Append-Only Event Stream Logs vs. Cloud-Native Compute-Storage Separated Hub
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building MQ Paradigm Spectrum Visual Banner... -->
+        <!-- Paradigm Spectrum Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>三大消息范式光谱 (RabbitMQ AMQP Queue $\rightarrow$ Kafka Append Log $\rightarrow$ Pulsar Compute-Storage Separation)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Architectural Evolution Spectrum</span>
+                </div>
+
+                <!-- 3 Pillars Spectrum Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs font-mono">
+                    <!-- Pillar 1: RabbitMQ -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-orange-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-orange-400 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-box-archive"></i>
+                                RabbitMQ (AMQP 队列)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 text-[8px] border border-orange-800">Sub-ms Latency</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans">
+                            交换机 (Exchange) 灵活路由，消费即销毁，极低延迟，适合复杂 RPC/任务队列。
+                        </div>
+                    </div>
+
+                    <!-- Pillar 2: Kafka -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-indigo-400 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-hard-drive"></i>
+                                Apache Kafka (追加日志)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-800">Million TPS</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans">
+                            分区追加 Commit Log，零拷贝，持久化 Offset 重放，适合海量流处理与日志。
+                        </div>
+                    </div>
+
+                    <!-- Pillar 3: Pulsar -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-cloud"></i>
+                                Apache Pulsar (存算分离)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-800">Cloud-Native</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans">
+                            BookKeeper 分片存储，无重平衡秒级扩容，四种订阅融合 Queue 与 Stream。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Styling multi-dimensional comparison table matrix... -->
+        <!-- Content Grid: Comprehensive Multi-dimensional Comparison Table -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-white p-3.5 soft-shadow overflow-x-auto">
+                <table class="w-full text-left border-collapse font-sans text-xs">
+                    <thead>
+                        <tr class="border-b border-purple-100 bg-slate-50 font-mono text-[10px] text-slate-700">
+                            <th class="py-1.5 px-2 font-bold w-1/6">对比维度 (Dimension)</th>
+                            <th class="py-1.5 px-2 font-bold text-orange-900 bg-orange-50/50 w-1/4">RabbitMQ (AMQP)</th>
+                            <th class="py-1.5 px-2 font-bold text-indigo-900 bg-indigo-50/50 w-1/4">Apache Kafka</th>
+                            <th class="py-1.5 px-2 font-bold text-purple-900 bg-purple-50/50 w-1/4">Apache Pulsar</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-[10px]">
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">集群存储架构</td>
+                            <td class="py-1.5 px-2 text-slate-700">有状态 Broker 节点内存/磁盘队列</td>
+                            <td class="py-1.5 px-2 text-indigo-900 font-bold">有状态 Broker 绑定本地 Partition 磁盘</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">无状态 Broker + BookKeeper 分片存储 (存算分离)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">消息模型 (Model)</td>
+                            <td class="py-1.5 px-2 text-slate-700">Exchange / Binding / Queue 路由范式</td>
+                            <td class="py-1.5 px-2 text-slate-700">Topic 分区追加日志 (Partitioned Log)</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">统一模型 (支持 Exclusive/Shared 等 4 种订阅)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">吞吐量 (Throughput)</td>
+                            <td class="py-1.5 px-2 text-slate-600">万级 TPS / 节点</td>
+                            <td class="py-1.5 px-2 text-indigo-900 font-bold">百万级 TPS / 集群 (零拷贝 PageCache)</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">百万级 TPS / 集群 (高并发分片写)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">端到端延迟 (Latency)</td>
+                            <td class="py-1.5 px-2 text-orange-800 font-bold">微秒级 ~ 毫秒级 (&lt; 1ms)</td>
+                            <td class="py-1.5 px-2 text-slate-600">毫秒级 (\~10ms，受批量微包限制)</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">毫秒级 (&lt; 5ms，低延迟高吞吐)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">消息持久化与重放</td>
+                            <td class="py-1.5 px-2 text-rose-700">破坏性读取 (Ack 后默认物理擦除)</td>
+                            <td class="py-1.5 px-2 text-emerald-700 font-bold">持久化存盘，支持按 Offset 任意重放</td>
+                            <td class="py-1.5 px-2 text-emerald-700 font-bold">持久化存盘，原生支持对象存储冷数据 Offload</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">集群扩容与 Rebalance</td>
+                            <td class="py-1.5 px-2 text-slate-600">手动镜像队列迁移</td>
+                            <td class="py-1.5 px-2 text-rose-700 font-mono">扩容需全量拷贝硬盘 Partition，过程缓慢</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">零数据迁移 (Zero Rebalance)，秒级拉起 Broker</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1.5 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">多租户与资源隔离</td>
+                            <td class="py-1.5 px-2 text-slate-600">支持 VHost 隔离</td>
+                            <td class="py-1.5 px-2 text-slate-600">较弱 (依赖 Topic ACL)</td>
+                            <td class="py-1.5 px-2 text-purple-900 font-bold">原生 Tenant / Namespace 资源限流隔离</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building decision guidance cards for scenario selection... -->
+        <!-- Decision Guidelines Grid -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-2.5 my-1">
+            <!-- Decision 1: RabbitMQ -->
+            <div class="p-2.5 rounded-xl border border-orange-200 bg-orange-50/30 soft-shadow space-y-1">
+                <div class="flex items-center justify-between font-mono text-xs font-bold text-orange-950">
+                    <span class="flex items-center gap-1">
+                        <i class="fa-solid fa-bullseye text-orange-600"></i>
+                        <span>何时首选 RabbitMQ？</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 text-[8.5px]">Complex Routing</span>
+                </div>
+                <p class="text-[10px] text-slate-700 leading-tight">
+                    需要**死信延迟队列、复杂 Exchange 匹配路由、微秒级响应**，且数据量在中低规（万级 TPS）的企业传统业务 / 订单异步处理场景。
+                </p>
+            </div>
+
+            <!-- Decision 2: Kafka -->
+            <div class="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/30 soft-shadow space-y-1">
+                <div class="flex items-center justify-between font-mono text-xs font-bold text-indigo-950">
+                    <span class="flex items-center gap-1">
+                        <i class="fa-solid fa-chart-line text-indigo-600"></i>
+                        <span>何时首选 Kafka？</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[8.5px]">Log &amp; Streaming</span>
+                </div>
+                <p class="text-[10px] text-slate-700 leading-tight">
+                    追求**百万级吞吐量、日志采集、海量事件流管道、大数据 CDC 及 Flink/Spark 实时流计算**，且集群扩容频率较低的场景。
+                </p>
+            </div>
+
+            <!-- Decision 3: Pulsar -->
+            <div class="p-2.5 rounded-xl border border-purple-200 bg-purple-50/30 soft-shadow space-y-1">
+                <div class="flex items-center justify-between font-mono text-xs font-bold text-purple-950">
+                    <span class="flex items-center gap-1">
+                        <i class="fa-solid fa-cloud text-purple-600"></i>
+                        <span>何时首选 Pulsar？</span>
+                    </span>
+                    <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[8.5px]">Unified Cloud-Native</span>
+                </div>
+                <p class="text-[10px] text-slate-700 leading-tight">
+                    **云原生 Kubernetes 部署、严格多租户隔离、海量冷数据需分层存储 (S3)**，同时需要兼顾工作队列 (Shared) 与事件流 (Streaming) 的大型集团平台。
+                </p>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Rendering bottom callout banner and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心选型金律 (Middleware Trade-off Principle)</h4>
+                    <p class="text-xs text-slate-700">
+                        世上没有完美的中间件！**业务复杂度高选 AMQP (RabbitMQ)；吞吐与流计算优先选 Append Log (Kafka)；多租户与云原生弹性扩容选存算分离 (Pulsar)**。架构师的职责在于根据业务规模与运维成本做出最佳权衡。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 30 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[75.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">企业级消息中间件选型：RabbitMQ vs. Kafka vs. Pulsar 矩阵对比</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer and event listeners... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视中间件选型的权衡思想：</span>
+                    “向学员做解构说明：在技术面试和架构设计中，中间件选型是一个高频考察点。必须向学员澄清：没有‘最好的中间件’，只有‘最契合场景的中间件’。RabbitMQ 的强项是复杂的 AMQP 路由与低延迟；Kafka 的强项是海量追加日志与流处理；而 Pulsar 则代表了云原生存算分离的演进趋势。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析扩容重平衡 (Rebalance) 差异：</span>
+                    “请学员特别关注表格中的‘集群扩容与 Rebalance’一行：Kafka 扩容必须全量复制硬盘上的 Partition，非常缓慢且容易卡顿；而 Pulsar 由于 Broker 无状态且存储基于 Segment 分片，扩容新节点只需挂载新 Bookie 即可，实现了真正的 Zero Rebalance。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
+```eof

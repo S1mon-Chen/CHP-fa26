@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - Consumer Groups 与动态 Rebalance 重平衡机制 (Consumer Groups &amp; Dynamic Rebalance)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Consumer Groups 与动态 Rebalance 重平衡机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Consumer Group Scalability, Exclusive Partition Ownership, Group Coordinator Heartbeats &amp; Dynamic Rebalance
+            </p>
+        </div>
+
+        <!-- Consumer Group Topology Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-users-gear"></i>
+                        <span>Consumer Group 分区映射与故障节点 Rebalance 示意图</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Topic: "order-events" (3 Partitions) | Group: "order-consumers"</span>
+                </div>
+
+                <!-- Diagram Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Partitions (4 cols) -->
+                    <div class="md:col-span-4 space-y-1.5">
+                        <div class="p-2 rounded-xl bg-slate-950 border border-teal-800/80 flex items-center justify-between">
+                            <span class="text-teal-300 font-bold text-[10.5px]">Partition 0</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Broker 1</span>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-indigo-800/80 flex items-center justify-between">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">Partition 1</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Broker 2</span>
+                        </div>
+                        <div class="p-2 rounded-xl bg-slate-950 border border-amber-800/80 flex items-center justify-between">
+                            <span class="text-amber-300 font-bold text-[10.5px]">Partition 2</span>
+                            <span class="text-[9px] text-slate-400 font-sans">Broker 3</span>
+                        </div>
+                    </div>
+
+                    <!-- Coordinator Flow Arrow (3 cols) -->
+                    <div class="md:col-span-3 flex flex-col items-center justify-center p-2 rounded-xl bg-slate-950 border border-slate-800 text-center space-y-1">
+                        <div class="text-[10px] text-teal-400 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-heart-pulse animate-pulse text-rose-500"></i>
+                            <span>Group Coordinator</span>
+                        </div>
+                        <span class="text-[8.5px] text-slate-400 font-sans leading-tight">
+                            监听到心跳超时后<br/>触发毫秒级 Rebalance
+                        </span>
+                        <div class="text-xs text-teal-400 font-bold">&rarr;</div>
+                    </div>
+
+                    <!-- Consumers State (5 cols) -->
+                    <div class="md:col-span-5 space-y-1.5">
+                        <div class="p-2 rounded-xl bg-teal-950/80 border border-teal-500 flex items-center justify-between">
+                            <span class="text-teal-200 font-bold text-[10.5px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                Consumer 1
+                            </span>
+                            <span class="text-[8.5px] bg-teal-900 text-teal-300 px-1.5 py-0.5 rounded border border-teal-700">Assigned P0</span>
+                        </div>
+                        <div class="p-2 rounded-xl bg-indigo-950/80 border border-indigo-500 flex items-center justify-between">
+                            <span class="text-indigo-200 font-bold text-[10.5px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                Consumer 2
+                            </span>
+                            <span class="text-[8.5px] bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-700">Assigned P1 + P2 (Reassigned)</span>
+                        </div>
+                        <!-- Dead Consumer -->
+                        <div class="p-2 rounded-xl bg-rose-950/50 border border-rose-800/80 flex items-center justify-between opacity-75">
+                            <span class="text-rose-300 font-bold text-[10.5px] flex items-center gap-1.5 line-through">
+                                <i class="fa-solid fa-skull text-rose-500"></i>
+                                Consumer 3 (Dead)
+                            </span>
+                            <span class="text-[8.5px] bg-rose-950 text-rose-400 px-1.5 py-0.5 rounded border border-rose-800">Heartbeat Timeout</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Consumer Group Principles) vs Right (Group Coordinator & Rebalance) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Consumer Group Mechanics (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-users text-teal-600"></i>
+                            <span>1. Consumer Group 独占分片与消费模式</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Group Partitioning</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Rule 1: Exclusive Assignment -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-lock text-teal-600"></i>
+                                    <span>分区独占绑定 (Exclusive Partition Ownership)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">1-to-1 Mapping</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                在同一个 Consumer Group 内部，**每个 Partition 有且仅有一个 Consumer 实例在读取**。这种独占机制避免了跨线程竞争锁与重复消费开销。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: Unicast vs Broadcast -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sliders text-teal-600"></i>
+                                    <span>广播 (Pub/Sub) 与单播 (Work Queue) 自由切换</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Group Isolation</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                • **单播平摊**：多个 Consumer 共享同一个 <code class="font-mono text-teal-800 font-bold">group.id</code>，实现工作量均摊。<br/>
+                                • **广播推送**：不同业务注册独立的 <code class="font-mono text-teal-800 font-bold">group.id</code>，均可获得全量消息副本。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3: Scaling Limit -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-simple-high text-teal-600"></i>
+                                    <span>Consumer 扩展上限与空闲线程警告</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Max Consumers $\le$ Partitions</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                若组内 Consumer 数量超过 Topic Partition 总数（例如 3 个 Partitions 配置了 5 个 Consumer），**多出的 2 个 Consumer 将处于完全空闲状态**。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>扩展规则：提升组内消费并行度的前提是增加 Topic 的 Partition 数量</span>
+                    <i class="fa-solid fa-arrow-up-right-dots"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Group Coordinator & Rebalance Protocol (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate text-amber-600"></i>
+                            <span>2. Group Coordinator 与动态 Rebalance 重平衡</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Group Coordinator</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Component 1: Group Coordinator & Heartbeats -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-heart-pulse text-amber-600"></i>
+                                    <span>Group Coordinator 协调者与心跳机制</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Heartbeat Protocol</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                某台特定 Broker 会被指派为该 Consumer Group 的 **Group Coordinator**。各 Consumer 定期向 Coordinator 发送心跳以维持存活状态。
+                            </p>
+                        </div>
+
+                        <!-- Component 2: Rebalance Triggers -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt-lightning text-amber-600"></i>
+                                    <span>触发 Rebalance 的三大条件</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Rebalance Triggers</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                ① 组内新增 Consumer 实例；<br/>
+                                ② 某 Consumer 心跳超时（`session.timeout.ms`）或未能在 `max.poll.interval.ms` 内处理完数据；<br/>
+                                ③ 目标 Topic 扩展了新的 Partitions。
+                            </p>
+                        </div>
+
+                        <!-- Component 3: Rebalance Strategies -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-split-up-and-left text-amber-600"></i>
+                                    <span>Rebalance 策略演进 (Eager vs. Cooperative)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Cooperative Assignor</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                传统 **Eager 重平衡** 会阶段性暂停组内所有 Consumer 消费（Stop-the-World）；而现代 **Cooperative Sticky（合作粘性重平衡）** 仅重分配发生变动的 Partition，实现平滑无感过渡。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 17 · Kafka 极致吞吐三要素（顺序 I/O, PageCache &amp; 零拷贝 Zero-Copy）</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Consumer Group Scalability Trade-off)</h4>
+                    <p class="text-xs text-slate-700">
+                        <code class="font-mono text-teal-800 font-bold">Consumer Group</code> 赋予了 Kafka 灵活切换“工作队列单播”与“订阅广播”的能力。理解 **“分区独占分配”** 与 **“动态 Rebalance 挂起风险”**，是设计高吞吐、低延迟且长稳定性消费者的工程关键。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 16 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">16</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[40.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (15.html <- 16.html -> 17.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Consumer Groups 与动态 Rebalance 重平衡机制</span>
+            <a href="17.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="15.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="17.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 Consumer Group 扩展上限：</span>
+                    “向学员强调：单个 Consumer Group 内部，每个 Partition 最多被一个 Consumer 消费。如果增加 Consumer 实例到超过 Partition 数量，多余的 Consumer 将完全空闲。要提升组内吞吐，必须先给 Topic 扩分区。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析 Rebalance 触发防线：</span>
+                    “请学员关注右侧的 Rebalance 过程：当某台 Consumer 发生故障或者卡顿超过 `max.poll.interval.ms` 时，Group Coordinator 会触发 Rebalance。现代 Kafka 采用 Cooperative Rebalance 策略，减少了 STW 停顿开销。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

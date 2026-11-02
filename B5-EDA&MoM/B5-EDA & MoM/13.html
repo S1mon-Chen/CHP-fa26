@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - Topics &amp; Partitions: 水平扩展与高并发并行切分 (Topic 与 Partition)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Topics 与 Partitions：水平切分与高并发并行扩展
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Logical Topics, Physical Partitions, Parallel Scalability, Partition-Level Ordering &amp; Key Routing
+            </p>
+        </div>
+
+        <!-- Topic & Partitions Visual Topology Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-next"></i>
+                        <span>Topic 物理分区分片架构 (Topic with 3 Partitions Log Architecture)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Logical Topic: "order-events"</span>
+                </div>
+
+                <!-- Partitions Diagram Grid -->
+                <div class="space-y-2 font-mono text-xs">
+                    
+                    <!-- Partition 0 -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 overflow-x-auto">
+                        <div class="px-2.5 py-1 rounded-lg bg-teal-950 border border-teal-700 text-teal-300 font-bold shrink-0 text-[10.5px]">
+                            Partition 0 <span class="text-[9px] font-normal text-teal-400/80">(Broker 1)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 0</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 1</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 2</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 3</div>
+                            <div class="w-7 h-7 rounded bg-teal-900 border border-teal-500 text-teal-200 text-[9.5px] font-bold">Off 4</div>
+                        </div>
+                        <div class="text-[10px] text-teal-400 font-sans shrink-0">
+                            <i class="fa-solid fa-user-check mr-1"></i>Consumer A-1 独占读取
+                        </div>
+                    </div>
+
+                    <!-- Partition 1 -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 overflow-x-auto">
+                        <div class="px-2.5 py-1 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 font-bold shrink-0 text-[10.5px]">
+                            Partition 1 <span class="text-[9px] font-normal text-indigo-400/80">(Broker 2)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 0</div>
+                            <div class="w-7 h-7 rounded bg-indigo-900 border border-indigo-500 text-indigo-200 text-[9.5px] font-bold">Off 1</div>
+                        </div>
+                        <div class="text-[10px] text-indigo-400 font-sans shrink-0">
+                            <i class="fa-solid fa-user-check mr-1"></i>Consumer A-2 独占读取
+                        </div>
+                    </div>
+
+                    <!-- Partition 2 -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 overflow-x-auto">
+                        <div class="px-2.5 py-1 rounded-lg bg-amber-950 border border-amber-700 text-amber-300 font-bold shrink-0 text-[10.5px]">
+                            Partition 2 <span class="text-[9px] font-normal text-amber-400/80">(Broker 3)</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 0</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 1</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 2</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 3</div>
+                            <div class="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 text-[9.5px]">Off 4</div>
+                            <div class="w-7 h-7 rounded bg-amber-900 border border-amber-500 text-amber-200 text-[9.5px] font-bold">Off 5</div>
+                        </div>
+                        <div class="text-[10px] text-amber-400 font-sans shrink-0">
+                            <i class="fa-solid fa-user-check mr-1"></i>Consumer A-3 独占读取
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Topics & Partitions Principles) vs Right (Ordering & Key-based Routing) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Topic Logic & Partition Physical Mechanism (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-teal-600"></i>
+                            <span>1. Topic 逻辑抽象与 Partition 物理分片</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Scalability Unit</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Feature 1: Topic Classification -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-folder-tree text-teal-600"></i>
+                                    <span>Topic：事件流的逻辑分类管道</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Logical Bucket</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Topic 是 Kafka 中用于归类事件流的逻辑名称（如 <code class="font-mono text-teal-800 font-bold">order-events</code>、<code class="font-mono text-teal-800 font-bold">user-logs</code>）。它可以是同质的（仅一种 Schema），也可以是异质的。
+                            </p>
+                        </div>
+
+                        <!-- Feature 2: Partition Parallelism -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-cubes-stacked text-teal-600"></i>
+                                    <span>Partition：吞吐扩展与并发处理的物理基石</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Physical Log</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                每个 Partition 在物理上都是独立存放在具体 Broker 磁盘上的追加日志文件。**Partition 数量直接决定了该 Topic 的最大并行读写吞吐上限**。
+                            </p>
+                        </div>
+
+                        <!-- Feature 3: Dynamic Partition Config -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-sliders text-teal-600"></i>
+                                    <span>动态分区配置与机器水平扩容</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Elastic Scaling</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                通过增加 Partition 数量并将其散布到新增加的物理 Broker 上，Kafka 无需停机即可实现存储容量与 I/O 读写宽带的线性水平扩容。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>切分哲学：分而治之，把大日志拆切为多个独立 Append Log 散布到不同节点</span>
+                    <i class="fa-solid fa-scissors"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Ordering Guarantees & Key-based Routing (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrow-down-1-9 text-amber-600"></i>
+                            <span>2. 分区绝对有序 vs. 全局无序性与 Key 路由</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Ordering Guarantee</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Rule 1: Partition-level Ordering -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-check text-amber-600"></i>
+                                    <span>分区内绝对 FIFO 严格有序 (Partition-Level Order)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">FIFO in Partition</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Kafka 仅能保证**单个 Partition 内部**的事件是按照 Offset 递增顺序严格有序追加与消费的。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: Lack of Global Ordering -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                                    <span>跨分区全局无序 (No Global Order Across Partitions)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Global Unordered</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                在拥有多个 Partitions 的 Topic 中，不同 Partition 之间的事件处理顺序是没有保证的。这是为了获得**高并发吞吐所必须付出的架构权衡 (Trade-off)**。
+                            </p>
+                        </div>
+
+                        <!-- Rule 3: Key Routing -->
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1">
+                            <h4 class="font-bold text-amber-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-key text-amber-600"></i>
+                                    <span>基于 Key 的特定实体绝对有序保证 (Key Routing)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-mono text-[8.5px]">Key Hash Router</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                若需要确保某个实体（如订单 <code class="font-mono text-amber-800 font-bold">order_1001</code>）的所有变更绝对有序，只需将 <code class="font-mono text-amber-800 font-bold">order_1001</code> 作为 **Message Key**，Kafka 会将其路由至同一 Partition。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 14 · Event 物理剖析（Key, Value, Timestamp &amp; Headers）</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Partition Scalability Trade-off)</h4>
+                    <p class="text-xs text-slate-700">
+                        Kafka 的突破性扩展能力源于将 Topic 物理拆分为多个 <code class="font-mono text-teal-800 font-bold">Partition</code>。理解 **“分区内严格有序、跨分区无序、基于 Key 哈希锁定特定实体顺序”** 是设计高并发、强一致事件驱动系统的重中之重。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 13 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[32.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Topics &amp; Partitions: 水平扩展与高并发并行切分</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 Partition 分区切分机制：</span>
+                    “向学员深入剖析：Topic 只是逻辑上的分类容器，真正落到磁盘上的是 Partition。Kafka 之所以能处理每秒上百万消息，是因为它将一个大 Topic 切分成多个物理 Partition 并散布在不同 Broker 上，从而实现了生产和消费的并发并行。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调分区内有序与 Key 路由规则：</span>
+                    “请学员特别注意：Kafka 仅保证‘分区内绝对有序’，不保证全局跨分区有序。在工程实战中，如果我们要保障某个订单（如 `order_1001`）的创建、支付、发货事件绝对按顺序被消费，必须把 `order_1001` 设置为消息的 Key，保证它们被路由到同一个 Partition 中。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

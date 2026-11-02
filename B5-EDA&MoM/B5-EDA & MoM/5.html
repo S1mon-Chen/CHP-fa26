@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 05 - Java Message Service (JMS 2.0) 规范与 API 架构 (JMS 2.0 Architecture)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-file-contract text-amber-600"></i>
+                <span>Part 01 · JMS &amp; 消息通信基础</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Java Message Service (JMS 2.0) 规范与 API 架构
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                JSR 343 Specification, `JMSContext` Fluent API, Provider Abstraction &amp; JTA Distributed Transactions
+            </p>
+        </div>
+
+        <!-- JMS Architecture Architecture Diagram Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-xl border border-slate-200 bg-slate-900 text-slate-100 p-3 soft-shadow">
+                <div class="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800">
+                    <span class="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sitemap"></i>
+                        <span>JMS API 平台集成物理架构拓扑 (JMS Architecture Topology)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">JNDI / Spring Container Injection</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px] font-mono">
+                    <div class="p-2 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                        <div class="text-amber-300 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-database"></i>
+                            <span>1. 资源配置管理 (Admin / JNDI)</span>
+                        </div>
+                        <p class="text-slate-400 text-[9px] font-sans">
+                            管理员创建 `ConnectionFactory` 与 `Destination` (Queue/Topic) 并绑定到 JNDI / Spring 容器。
+                        </p>
+                    </div>
+
+                    <div class="p-2 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                        <div class="text-teal-300 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>2. 依赖注入与逻辑连接 (JMS Client)</span>
+                        </div>
+                        <p class="text-slate-400 text-[9px] font-sans">
+                            应用通过 `@Resource` 或 Spring `@Autowired` 注入 CF 与 Destination，创建 `JMSContext` 实例。
+                        </p>
+                    </div>
+
+                    <div class="p-2 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
+                        <div class="text-purple-300 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-server"></i>
+                            <span>3. 厂商独立服务 (JMS Provider)</span>
+                        </div>
+                        <p class="text-slate-400 text-[9px] font-sans">
+                            底层的 ActiveMQ / Artemis 等消息代理处理真正的 TCP 网络传输、落盘持久化与事务协调。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (JMS Specification & Benefits, 6 cols) vs Right (JMS 1.1 vs 2.0 Code Comparison, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: JMS Spec & Platform Integration Benefits (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                            <span>1. JMS API 核心能力与平台契约特征</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">JSR 343 Spec</span>
+                    </div>
+
+                    <!-- Core Specifications List -->
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <h4 class="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-arrows-split-up-and-left text-amber-600"></i>
+                                <span>厂商无关性 (Provider Independence)</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                应用仅面向 `javax.jms` / `jakarta.jms` 标准接口编程。无论底层的 Provider 切换为 **ActiveMQ, Artemis, RabbitMQ JMS 插件, 还是 IBM MQ**，业务代码无需修改。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <h4 class="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-coins text-teal-600"></i>
+                                <span>JTA 分布式事务集成 (Transaction Participation)</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                JMS 消息收发可无缝参与 **JTA (Java Transaction API)** 全局事务。允许在同一个 XA 事务中原子地完成数据库写操作与消息发送（要么全部提交，要么全部回滚）。
+                            </p>
+                        </div>
+
+                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <h4 class="font-bold text-slate-900 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-gears text-purple-600"></i>
+                                <span>Message-Driven Beans (MDB) 容器并发池化</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Java EE 容器（或 Spring Boot `@JmsListener`）通过线程池自动管理多实例并发拉取消息，提供高性能的高并发事件消费环境。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>规范保证：标准 API + 灵活路由 + XA 强事务支持</span>
+                    <i class="fa-solid fa-check text-emerald-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: JMS 1.1 vs JMS 2.0 Code Comparison (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code"></i>
+                            <span>2. JMS 1.1 冗长代码 vs JMS 2.0 `JMSContext` 流式 API</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">JMS 2.0 Simplification</span>
+                    </div>
+
+                    <!-- Code Box -->
+                    <div class="bg-slate-950 rounded-xl p-2.5 border border-slate-800 font-mono text-[9px] space-y-2 leading-relaxed overflow-x-auto">
+                        <!-- JMS 1.1 Legacy -->
+                        <div>
+                            <div class="text-rose-400 font-bold border-b border-slate-800 pb-0.5 text-[8.5px]">// ❌ 传统 JMS 1.1：极其冗长的嵌套建立与显式关闭</div>
+                            <div class="text-slate-400">Connection connection = connectionFactory.<span class="text-blue-300">createConnection</span>();</div>
+                            <div class="text-slate-400">Session session = connection.<span class="text-blue-300">createSession</span>(<span class="text-purple-400">false</span>, Session.AUTO_ACKNOWLEDGE);</div>
+                            <div class="text-slate-400">MessageProducer producer = session.<span class="text-blue-300">createProducer</span>(queue);</div>
+                            <div class="text-slate-400">TextMessage message = session.<span class="text-blue-300">createTextMessage</span>(<span class="text-emerald-300">"Hello World"</span>);</div>
+                            <div class="text-slate-400">producer.<span class="text-blue-300">send</span>(message);</div>
+                            <div class="text-slate-500">// 繁琐的 try-finally connection.close() ...</div>
+                        </div>
+
+                        <!-- JMS 2.0 Context -->
+                        <div class="pt-1.5 border-t border-slate-800">
+                            <div class="text-emerald-400 font-bold border-b border-slate-800 pb-0.5 text-[8.5px]">// ✅ 现代 JMS 2.0：结合 JMSContext 与 AutoCloseable</div>
+                            <div><span class="text-purple-400">try</span> (JMSContext context = connectionFactory.<span class="text-blue-300">createContext</span>()) {</div>
+                            <div class="pl-4">context.<span class="text-blue-300">createProducer</span>().<span class="text-blue-300">send</span>(queue, <span class="text-emerald-300">"Hello World (JMS 2.0)"</span>);</div>
+                            <div>}</div>
+                            <div class="text-slate-500">// 1 行链式调用完成 Producer 创建与消息投递，自动释放连接！</div>
+                        </div>
+                    </div>
+
+                    <!-- Reliability Levels Box -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[8.5px] text-slate-300 space-y-1">
+                        <span class="text-amber-300 font-bold block">JMS 消息确认模式 (Acknowledge Modes)</span>
+                        <div class="grid grid-cols-3 gap-1 text-[8px] text-center font-sans">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-emerald-300 block">AUTO_ACK</strong>
+                                成功返回自动 Ack
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-amber-300 block">CLIENT_ACK</strong>
+                                客户端显式调用 `msg.acknowledge()`
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-purple-300 block">DUPS_OK</strong>
+                                允许重复，性能更高
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 6 · JMS Message 消息结构与 5 大载荷类型</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (JMS Standard Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        JMS 规范的最大功劳在于定义了 **Java EE 消息抽象统一语言**。无论是通过 JNDI 寻址还是 Spring 的依赖注入，<code class="font-mono text-amber-800 font-bold">JMSContext</code> 彻底抹平了各种消息代理底层的套接字细节，实现了生产级的厂商无缝切换能力。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 5 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">05</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[12.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (4.html <- 5.html -> 6.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">JMS 规范与 API 架构 (JMS 2.0 Architecture)</span>
+            <a href="6.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="4.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="6.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生透视 JMS 2.0 API 的重大简化：</span>
+                    “向学员对比解析：在传统的 JMS 1.1 中，开发者需要依次手动创建 ConnectionFactory、Connection、Session，并在 `finally` 块中繁琐关闭。而 JMS 2.0 (JSR 343) 引入了 `JMSContext` 接口，它实现了 `AutoCloseable`，可以用单行代码 `context.createProducer().send(queue, body)` 极速发送消息。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 强调 JTA 分布式事务支持：</span>
+                    “提示学员注意：JMS 的一大杀手锏是原生支持 JTA 事务。在 Enterprise Java 中，这意味着对数据库的更新与对 JMS 队列的消息发送可以放入同一个全局 XA 事务中，保障强一致性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

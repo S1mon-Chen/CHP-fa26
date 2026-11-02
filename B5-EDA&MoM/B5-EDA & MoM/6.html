@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 06 - JMS Message 物理结构与 5 大载荷类型 (JMS Message Structure)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-cube text-amber-600"></i>
+                <span>Part 01 · JMS &amp; 消息通信基础</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                JMS Message 物理结构与 5 大载荷类型
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                JMS Message Headers, Application/JMSX Properties, Message Selectors &amp; Body Payload Variants
+            </p>
+        </div>
+
+        <!-- Message Structure Banner Diagram -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-xl border border-slate-200 bg-slate-900 text-slate-100 p-3 soft-shadow">
+                <div class="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800">
+                    <span class="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>JMS 消息物理物理三层分图 (JMS Message Physical Anatomy)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Header (Required) + Properties (Optional) + Body (Optional)</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[9.5px]">
+                    <!-- Layer 1: Headers -->
+                    <div class="p-2 rounded-lg bg-amber-950/60 border border-amber-800 space-y-1">
+                        <div class="text-amber-300 font-bold flex items-center justify-between">
+                            <span>1. Message Headers (消息头)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-900 text-amber-200 text-[8px]">Fixed System Fields</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[9px] leading-tight">
+                            系统预定义标准元数据：`JMSMessageID`, `JMSDestination`, `JMSReplyTo`, `JMSCorrelationID`, `JMSDeliveryMode` ...
+                        </p>
+                    </div>
+
+                    <!-- Layer 2: Properties -->
+                    <div class="p-2 rounded-lg bg-indigo-950/60 border border-indigo-800 space-y-1">
+                        <div class="text-indigo-300 font-bold flex items-center justify-between">
+                            <span>2. Message Properties (扩展属性)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-200 text-[8px]">App / JMSX Props</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[9px] leading-tight">
+                            自定义 Key-Value 属性（支持 SQL-92 Message Selectors 过滤）：`JMSXUserID`, `AppRegion`, `Priority` ...
+                        </p>
+                    </div>
+
+                    <!-- Layer 3: Body -->
+                    <div class="p-2 rounded-lg bg-teal-950/60 border border-teal-800 space-y-1">
+                        <div class="text-teal-300 font-bold flex items-center justify-between">
+                            <span>3. Message Body (消息载荷)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-900 text-teal-200 text-[8px]">5 Payload Types</span>
+                        </div>
+                        <p class="text-slate-300 font-sans text-[9px] leading-tight">
+                            灵活业务载荷：`TextMessage`, `MapMessage`, `BytesMessage`, `StreamMessage`, `ObjectMessage`.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Headers & Properties, 6 cols) vs Right (5 Payload Types, 6 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Pre-defined Headers & Message Selectors (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
+                        <span class="text-xs font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-amber-600"></i>
+                            <span>1. 标准 Headers 元数据与 Message Selectors 过滤</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">SQL-92 Filtering</span>
+                    </div>
+
+                    <!-- Header Fields Matrix -->
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                            <h4 class="font-bold text-slate-900 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-tag text-amber-600"></i>
+                                    <span>核心预定义 Header 标头</span>
+                                </span>
+                                <span class="text-[9.5px] font-mono text-slate-400">System Modifiable</span>
+                            </h4>
+                            <div class="grid grid-cols-2 gap-1.5 font-mono text-[9.5px] text-slate-600">
+                                <div class="p-1 rounded bg-white border border-slate-200">
+                                    <strong class="text-amber-800 block">JMSDestination</strong> 目标 Queue/Topic
+                                </div>
+                                <div class="p-1 rounded bg-white border border-slate-200">
+                                    <strong class="text-amber-800 block">JMSDeliveryMode</strong> PERSISTENT / NON
+                                </div>
+                                <div class="p-1 rounded bg-white border border-slate-200">
+                                    <strong class="text-indigo-800 block">JMSReplyTo</strong> RPC 回复 Destination
+                                </div>
+                                <div class="p-1 rounded bg-white border border-slate-200">
+                                    <strong class="text-indigo-800 block">JMSCorrelationID</strong> 关联请求链路 ID
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Message Selectors Section -->
+                        <div class="p-2.5 rounded-xl bg-indigo-50/40 border border-indigo-200 space-y-1.5">
+                            <h4 class="font-bold text-indigo-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-filter text-indigo-600"></i>
+                                    <span>Message Selectors 消息服务端过滤</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px]">SQL-92 Expression</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                Consumer 可在创建时指定 SQL-92 条件（基于 Properties），**Broker 会在服务端直接拦截过滤**，只推送符合条件的消息，极大地节省网络带宽。
+                            </p>
+
+                            <!-- Code Example -->
+                            <div class="p-2 rounded bg-slate-900 text-slate-200 font-mono text-[9px] space-y-1">
+                                <div class="text-indigo-300">// Producer 设置扩展属性</div>
+                                <div>message.<span class="text-blue-300">setStringProperty</span>(<span class="text-emerald-300">"Region"</span>, <span class="text-emerald-300">"CN_EAST"</span>);</div>
+                                <div>message.<span class="text-blue-300">setDoubleProperty</span>(<span class="text-emerald-300">"Amount"</span>, <span class="text-purple-300">1200.50</span>);</div>
+                                <div class="text-indigo-300 pt-1">// Consumer 使用 SQL-92 选择器表达式过滤</div>
+                                <div>String selector = <span class="text-emerald-300">"Region = 'CN_EAST' AND Amount > 1000"</span>;</div>
+                                <div>JMSConsumer consumer = context.<span class="text-blue-300">createConsumer</span>(queue, selector);</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>过滤性能：服务端路由拦截，避免无关消息灌满客户端网络</span>
+                    <i class="fa-solid fa-shield-halved text-amber-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: 5 Payload Types Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-slate-900 text-slate-100 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                        <span class="text-xs font-mono font-bold text-teal-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>2. JMS Message Body 5 大核心载荷类型</span>
+                        </span>
+                        <span class="text-[10px] font-mono text-slate-400">JMS Payload Variants</span>
+                    </div>
+
+                    <!-- Payload Types Table / Grid -->
+                    <div class="space-y-1.5 text-[10px] font-sans">
+                        
+                        <!-- Type 1: TextMessage -->
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5">
+                            <div class="px-2 py-1 rounded bg-teal-900/60 border border-teal-700 text-teal-300 font-mono font-bold shrink-0 text-[9.5px]">
+                                TextMessage
+                            </div>
+                            <div class="space-y-0.5">
+                                <strong class="text-slate-200 block text-[10.5px]">文本消息（最常用）</strong>
+                                <p class="text-slate-400 text-[9.5px] leading-tight">
+                                    包含一个 `java.lang.String` 对象。完美承载 **JSON, XML 或 HTML** 等结构化纯文本文本。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Type 2: MapMessage -->
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5">
+                            <div class="px-2 py-1 rounded bg-indigo-900/60 border border-indigo-700 text-indigo-300 font-mono font-bold shrink-0 text-[9.5px]">
+                                MapMessage
+                            </div>
+                            <div class="space-y-0.5">
+                                <strong class="text-slate-200 block text-[10.5px]">键值对字典消息</strong>
+                                <p class="text-slate-400 text-[9.5px] leading-tight">
+                                    包含一系列 Name-Value 键值对。键为 `String`，值为 Java 基础类型。无序排列，支持随机检索。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Type 3: BytesMessage -->
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5">
+                            <div class="px-2 py-1 rounded bg-amber-900/60 border border-amber-700 text-amber-300 font-mono font-bold shrink-0 text-[9.5px]">
+                                BytesMessage
+                            </div>
+                            <div class="space-y-0.5">
+                                <strong class="text-slate-200 block text-[10.5px]">未解释二进制字节流</strong>
+                                <p class="text-slate-400 text-[9.5px] leading-tight">
+                                    包含连续的原始 `byte[]` 字节数组。常用于对接已有二进制私有协议报文或音频/图片文件。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Type 4: StreamMessage -->
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5">
+                            <div class="px-2 py-1 rounded bg-purple-900/60 border border-purple-700 text-purple-300 font-mono font-bold shrink-0 text-[9.5px]">
+                                StreamMessage
+                            </div>
+                            <div class="space-y-0.5">
+                                <strong class="text-slate-200 block text-[10.5px]">顺序基础数据流</strong>
+                                <p class="text-slate-400 text-[9.5px] leading-tight">
+                                    按写入顺序依次读取的 Java 原始类型数据流（Sequential Primitive Stream）。
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Type 5: ObjectMessage -->
+                        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-2.5">
+                            <div class="px-2 py-1 rounded bg-rose-900/60 border border-rose-700 text-rose-300 font-mono font-bold shrink-0 text-[9.5px]">
+                                ObjectMessage
+                            </div>
+                            <div class="space-y-0.5">
+                                <strong class="text-slate-200 block text-[10.5px]">Java 序列化对象</strong>
+                                <p class="text-slate-400 text-[9.5px] leading-tight">
+                                    包含实现了 `Serializable` 接口的 Java 对象（注：跨语言兼容性较差，现代开发更推荐 `TextMessage` + JSON）。
+                                </p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 7 · P2P (Queue) 与 Pub/Sub (Topic) 传递范式</span>
+                    <i class="fa-solid fa-arrow-right text-amber-400"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (Message Payload Best Practices)</h4>
+                    <p class="text-xs text-slate-700">
+                        在现代高并发微服务架构中，尽可能**避免使用依赖 JVM 强绑定的 `ObjectMessage`**，优先采用 <code class="font-mono text-amber-800 font-bold">TextMessage</code>（搭配 JSON 文本）或 <code class="font-mono text-amber-800 font-bold">BytesMessage</code>（搭配 Protobuf 二进制），以保障极高的跨语言互操作性与极致解析性能。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 6 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">06</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[15.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (5.html <- 6.html -> 7.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">JMS Message 物理结构与 5 大载荷类型</span>
+            <a href="7.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="5.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="7.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学生透视 JMS 消息物理三层结构：</span>
+                    “向学员做解构说明：JMS 消息由 Header、Properties 与 Body 三部分组成。重点向学员演示 Message Selectors——它允许 Consumer 传入 SQL-92 语法在 Broker 侧完成路由拦截，极大避免了无用消息穿透网络。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 强调 5 大载荷类型的工程选择：</span>
+                    “提示学员注意：虽然 JMS 提供了 `ObjectMessage` 支持 Java 对象直接序列化，但在微服务多语言（Java + Go + Python）混编架构中，`ObjectMessage` 会产生极其脆弱的技术栈绑定。现代生产环境普遍推荐使用 `TextMessage` 承载 JSON 或 `BytesMessage` 承载 Protobuf。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '7.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

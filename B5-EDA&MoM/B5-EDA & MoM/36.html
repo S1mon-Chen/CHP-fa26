@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 36 - 基于 Kafka Streams 与 Apache Flink 的实时流计算与 ETL (Real-Time Stream Processing)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            violet: '#6d28d9',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-violet-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-bolt text-purple-600"></i>
+                <span>Part 04 · 次世代 MQ 与事件驱动架构 (EDA) 模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                基于 Kafka Streams 与 Apache Flink 的实时流计算与 ETL
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Stream vs. Batch, KStream/KTable Dualism, Event Time &amp; Watermarks, Stateful Aggregations &amp; RocksDB State Store
+            </p>
+        </div>
+
+        <!-- Real-time Stream Processing Topology Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>实时流计算处理管线：Kafka Topic $\to$ Stream Processor (RocksDB State) $\to$ Downstream Sink Topic</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Stream-Table Duality ($KStream \leftrightarrow KTable$) &amp; Sliding Window</span>
+                </div>
+
+                <!-- Stream Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 text-xs font-mono items-center">
+                    
+                    <!-- Source Topic (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-inbox text-purple-400"></i>
+                                1. 源事件流 (Source)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Kafka Topic</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>事件: <code class="text-emerald-300">KStream&lt;OrderId, OrderEvent&gt;</code></div>
+                            <div>特征: 无界不可变变更事件流</div>
+                        </div>
+                    </div>
+
+                    <!-- Stream Processor Core (6 cols) -->
+                    <div class="md:col-span-6 p-2.5 rounded-xl bg-slate-950 border border-violet-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-violet-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-gears text-violet-400"></i>
+                                2. 流计算引擎 (Kafka Streams / Flink)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-violet-950 text-violet-300 text-[8px] border border-violet-700">Stateful Processing</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5 text-[8.5px] font-sans text-slate-300">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <span class="text-amber-300 font-bold block">滑动窗口聚合:</span>
+                                5 分钟窗口统计 <code class="text-emerald-300">windowedBy()</code>
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <span class="text-teal-300 font-bold block">本地状态库 (RocksDB):</span>
+                                高效维护增量累加器 State
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sink Topic (3 cols) -->
+                    <div class="md:col-span-3 p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-paper-plane text-teal-400"></i>
+                                3. 聚合结果流 (Sink)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">KTable Output</span>
+                        </div>
+                        <div class="text-[8.5px] font-sans text-slate-300 space-y-0.5">
+                            <div>结果: <code class="text-amber-300">KTable&lt;Window, Metrics&gt;</code></div>
+                            <div>作用: 实时大屏、风控告警、BI 统计</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (Stream Principles & KStream/KTable) vs Right (Code Realization & Framework Comparison) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Stream Principles & Duality (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-purple-600"></i>
+                            <span>1. 实时流计算原理与流表对偶性 (Stream-Table Duality)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Stream vs. Table</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Principle 1: Stream vs Batch -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-clock-rotate-left text-purple-600"></i>
+                                    <span>批处理 (Batch) vs. 实时流处理 (Stream Processing)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-mono text-[8.5px]">Low Latency</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                传统批处理（如 Spark/Hadoop）按定时天/小时调度有界数据集，延迟极高。流计算针对**无界连续事件流**（Unbounded Stream），实现毫秒级的逐条增量计算与 ETL 转换。
+                            </p>
+                        </div>
+
+                        <!-- Principle 2: Stream-Table Duality -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-table-cells text-violet-600"></i>
+                                    <span>流表对偶性 (Stream-Table Duality: $KStream \leftrightarrow KTable$)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-mono text-[8.5px]">Duality</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                • **KStream (日志/流)**：包含完整历史的变更记录流（Insert/Update 事件）。<br/>
+                                • **KTable (数据库表/快照)**：KStream 的最新状态聚合快照（按 Key 只保留最新的最新表述）。两者可自由互相转换！
+                            </p>
+                        </div>
+
+                        <!-- Principle 3: Event Time & Watermark -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <h4 class="font-bold text-purple-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-stopwatch text-teal-600"></i>
+                                    <span>Event Time 时间语义与水位线 (Watermarks) 机制</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-mono text-[8.5px]">Out-of-Order Handling</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                区分**事件发生时间 (Event Time)** 与**进入系统处理时间 (Processing Time)**。借助 Watermark 水位线机制处理网络乱序到达与延迟迟到事件。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>黄金定律：数据不是静态存盘后才被查询，而是在流动过程中被实时计算</span>
+                    <i class="fa-solid fa-infinity"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: Code Realization & Comparison Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-violet-200 bg-violet-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-violet-200">
+                        <span class="text-xs font-mono font-bold text-violet-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-violet-600"></i>
+                            <span>2. Kafka Streams Java 代码实战与 Flink 选型矩阵</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-violet-100 text-violet-800 font-mono text-[9.5px] font-bold">Kafka Streams DSL</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Code Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">// Kafka Streams 实时滑动窗口聚合 (`OrderStreamTopology.java`)</div>
+                            <div>StreamsBuilder builder = <span class="text-purple-400">new</span> StreamsBuilder();</div>
+                            <div>KStream&lt;String, OrderEvent&gt; orders = builder.<span class="text-blue-300">stream</span>(<span class="text-emerald-300">"order-events"</span>);</div>
+
+                            <div class="mt-1 text-slate-400">// 按用户 ID 分组，按 5 分钟滚动窗口计算累计消费金额</div>
+                            <div>KTable&lt;Windowed&lt;String&gt;, Double&gt; totalSpend = orders</div>
+                            <div class="pl-3">.<span class="text-blue-300">selectKey</span>((k, v) -&gt; v.getUserId())</div>
+                            <div class="pl-3">.<span class="text-blue-300">groupByKey</span>()</div>
+                            <div class="pl-3">.<span class="text-blue-300">windowedBy</span>(TimeWindows.<span class="text-blue-300">ofSizeWithNoGrace</span>(Duration.<span class="text-blue-300">ofMinutes</span>(<span class="text-amber-300">5</span>)))</div>
+                            <div class="pl-3">.<span class="text-blue-300">aggregate</span>(</div>
+                            <div class="pl-6">() -&gt; <span class="text-amber-300">0.0</span>, <span class="text-slate-400">// 初始化累加器</span></div>
+                            <div class="pl-6">(userId, event, aggregate) -&gt; aggregate + event.getAmount(),</div>
+                            <div class="pl-6">Materialized.&lt;String, Double, WindowStore&lt;Bytes, byte[]&gt;&gt;<span class="text-blue-300">as</span>(<span class="text-emerald-300">"spend-store"</span>)</div>
+                            <div class="pl-3">);</div>
+
+                            <div class="mt-1">totalSpend.<span class="text-blue-300">toStream</span>().<span class="text-blue-300">to</span>(<span class="text-emerald-300">"aggregated-spend-topic"</span>); <span class="text-teal-300">// 输出回下游 Topic</span></div>
+                        </div>
+
+                        <!-- Comparison Matrix Table -->
+                        <div class="rounded-xl border border-violet-100 bg-white p-2 space-y-1 overflow-x-auto mt-1">
+                            <table class="w-full text-left border-collapse font-sans text-xs">
+                                <thead>
+                                    <tr class="border-b border-violet-100 bg-slate-50 font-mono text-[9.5px] text-slate-700">
+                                        <th class="py-1 px-1.5 font-bold w-1/4">维度</th>
+                                        <th class="py-1 px-1.5 font-bold text-indigo-900 bg-indigo-50/50 w-3/8">Kafka Streams</th>
+                                        <th class="py-1 px-1.5 font-bold text-purple-900 bg-purple-50/50 w-3/8">Apache Flink</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-[9.5px]">
+                                    <tr>
+                                        <td class="py-1 px-1.5 font-mono font-bold text-slate-900 bg-slate-50/30">部署依赖</td>
+                                        <td class="py-1 px-1.5 text-purple-800 font-bold">轻量级 Java 库 (嵌入 Spring Boot)</td>
+                                        <td class="py-1 px-1.5 text-slate-600">重量级独立 Flink JobManager 集群</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-1 px-1.5 font-mono font-bold text-slate-900 bg-slate-50/30">状态存储与 Checkpoint</td>
+                                        <td class="py-1 px-1.5 text-slate-600">嵌入式 RocksDB + Kafka Changelog</td>
+                                        <td class="py-1 px-1.5 text-purple-800 font-bold">Chandy-Lamport 分布式快照 Checkpoint</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-1 px-1.5 font-mono font-bold text-slate-900 bg-slate-50/30">适用场景</td>
+                                        <td class="py-1 px-1.5 text-purple-800 font-bold">微服务内部简单流式轻量级 ETL</td>
+                                        <td class="py-1 px-1.5 text-purple-800 font-bold">超大规模复杂 CEP 实时风控与实时数仓</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-violet-200 text-[10px] font-mono text-violet-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 37 · 消息中间件选型决策树与技术评估模型</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (Stream Processing Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        实时流计算代表了从**“被动数据库存储检索”**向**“主动事件流式计算”**的范式飞跃。轻量级的 <code class="font-mono text-purple-800 font-bold">Kafka Streams</code> 适合直接嵌入 Spring Boot 微服务处理轻量级 ETL，而重型的 <code class="font-mono text-purple-800 font-bold">Apache Flink</code> 则是海量数据实时数仓与复杂事件处理 (CEP) 的不二之选。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-700 font-bold">Slide 36 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">36</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[90.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (35.html <- 36.html -> 37.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="35.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">基于 Kafka Streams 与 Apache Flink 的实时流计算与 ETL</span>
+            <a href="37.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="35.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="37.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学生透视流表对偶性 (KStream vs. KTable)：</span>
+                    “向学员强调：理解流计算的关键在于‘流表对偶性’。KStream 是包含所有历史修改的变更事件流，而 KTable 是按 Key 聚合后的最新数据状态表。我们可以用 KStream 记录用户的每一次消费事件，用 KTable 维护用户的当前总余额。”
+                </div>
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">💡 剖析 Kafka Streams 与 Flink 的选型考量：</span>
+                    “请学员关注右侧的选型对比：如果只是在已有的 Spring Boot 微服务里做轻量级的数据清洗（如过滤非法字符、按窗口滑动求和），直接使用嵌入式的 Kafka Streams Jar 包即可，无需部署额外的集群；如果需要面对千万级 TPS 实时数仓或复杂 CEP 规则，则推荐选型 Apache Flink。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '37.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '35.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

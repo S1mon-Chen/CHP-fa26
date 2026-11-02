@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 20 - Kafka 控制面演进：ZooKeeper 依赖 vs. KRaft 自研共识协议 (Control Plane Evolution)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-network-wired text-teal-600"></i>
+                <span>Part 02 · Apache Kafka 核心架构与原理深度剖析</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Kafka 控制面演进：ZooKeeper 依赖 vs. KRaft 自研共识协议
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                KIP-500 Architecture, External ZooKeeper Bottlenecks, KRaft Quorum Controllers &amp; Event-Driven Metadata Log
+            </p>
+        </div>
+
+        <!-- Architecture Topology Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project"></i>
+                        <span>控制面拓扑演进对比 (Control Plane Evolution: ZooKeeper vs. KRaft)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">KIP-500: Removing ZooKeeper Dependency</span>
+                </div>
+
+                <!-- Control Plane Topology Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                    
+                    <!-- Left: Legacy ZooKeeper Architecture -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-900/70 space-y-2">
+                        <div class="flex items-center justify-between border-b border-rose-950 pb-1">
+                            <span class="font-bold text-rose-300 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-cubes-stacked text-rose-400"></i>
+                                传统 ZooKeeper 控制面 (Legacy Mode)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8.5px] border border-rose-800">External ZK Ensembles</span>
+                        </div>
+                        <div class="space-y-1.5 text-[9px] font-sans">
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>1. 元数据存储地址：</span>
+                                <span class="text-rose-400 font-mono font-bold">外部 3-Node ZooKeeper 集群</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>2. Controller 选主机制：</span>
+                                <span class="text-amber-300 font-mono">抢占临时节点 `/controller`</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>3. 元数据同步缺陷：</span>
+                                <span class="text-rose-400 font-mono">Watch 风暴 + 全量全推加载慢</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Modern KRaft Architecture -->
+                    <div class="md:col-span-1 p-2.5 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-emerald-950 pb-1">
+                            <span class="font-bold text-emerald-300 text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                                现代化 KRaft 自研共识控制面 (KRaft Mode)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8.5px] border border-emerald-700">Zero External ZK</span>
+                        </div>
+                        <div class="space-y-1.5 text-[9px] font-sans">
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>1. 元数据存储地址：</span>
+                                <span class="text-emerald-400 font-mono font-bold">内部元数据日志 Topic `@metadata`</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>2. Controller 选主机制：</span>
+                                <span class="text-emerald-300 font-mono">Active Quorum Controllers (Raft 协议)</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-slate-300">
+                                <span>3. 元数据同步优势：</span>
+                                <span class="text-emerald-400 font-mono">事件驱动极速复制，支持百万级分区</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left (ZooKeeper Bottlenecks) vs Right (KRaft Architecture & Comparison Matrix) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Column: Legacy ZooKeeper Control Plane Bottlenecks (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                            <span>1. 传统 ZooKeeper 控制面物理瓶颈</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9.5px] font-bold">Legacy ZK Limitations</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Bottleneck 1: Dual State Synchronization -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-arrows-spin text-rose-600"></i>
+                                    <span>双重状态一致性与额外组件运维开销</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Dual Metadata</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                运维团队必须同时维护 Kafka 与独立 ZooKeeper 两个系统的安全、JVM 参数与集群高可用；Controller 需要在内存状态与 ZK ZNode 树之间频繁同步，极易发生状态不一致。
+                            </p>
+                        </div>
+
+                        <!-- Bottleneck 2: ZK Watch Storms & High Recovery Latency -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-volcano text-rose-600"></i>
+                                    <span>ZK Watch 惊群效应与 Controller 故障慢恢复</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Watch Storms</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                当 Controller 宕机重选时，新 Controller 必须从 ZooKeeper 全量读取数十万分区的元数据。同时向所有 Broker 发送 `UpdateMetadataRequest` 广播引发 **Watch 惊群效应**，恢复停顿时间可达数分钟！
+                            </p>
+                        </div>
+
+                        <!-- Bottleneck 3: Partition Scalability Ceiling -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1">
+                            <h4 class="font-bold text-teal-950 text-[11px] flex items-center justify-between">
+                                <span class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-simple-high text-rose-600"></i>
+                                    <span>集群分区扩展上限 (20 万分区天花板)</span>
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">200k Partition Limit</span>
+                            </h4>
+                            <p class="text-[10.5px] text-slate-600 leading-relaxed">
+                                受限于 ZooKeeper 内存存储结构与 RPC 传输瓶颈，单 Kafka 集群的分区总量通常被限制在 **20 万个以内**，无法满足现代超大规模多租户云原生平台的要求。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>架构痛点：外部 ZooKeeper 成为了阻碍 Kafka 向百万级分区扩展的致命死穴</span>
+                    <i class="fa-solid fa-ban"></i>
+                </div>
+            </div>
+
+            <!-- Right Column: KRaft Mode (KIP-500) & Architecture Comparison Matrix (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-amber-600"></i>
+                            <span>2. KRaft 自研共识协议与全维度对比矩阵</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">KRaft (KIP-500)</span>
+                    </div>
+
+                    <!-- Comparison Table Matrix -->
+                    <div class="rounded-xl border border-amber-100 bg-white p-2.5 space-y-1.5 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-xs">
+                            <thead>
+                                <tr class="border-b border-amber-100 bg-slate-50 font-mono text-[10px] text-slate-700">
+                                    <th class="py-1 px-2 font-bold w-1/4">对比维度</th>
+                                    <th class="py-1 px-2 font-bold text-rose-900 bg-rose-50/50 w-3/8">传统 ZooKeeper 模式</th>
+                                    <th class="py-1 px-2 font-bold text-emerald-900 bg-emerald-50/50 w-3/8">现代化 KRaft 模式 (Kafka 3.3+)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[10px]">
+                                <tr>
+                                    <td class="py-1 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">外部组件依赖</td>
+                                    <td class="py-1 px-2 text-rose-800 font-mono">强依赖外部 ZK 集群</td>
+                                    <td class="py-1 px-2 text-emerald-800 font-mono font-bold">零外部依赖 (Zero Dependency)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">元数据存储方式</td>
+                                    <td class="py-1 px-2 text-slate-600">ZK 内存树状 ZNode 节点</td>
+                                    <td class="py-1 px-2 text-emerald-800 font-mono font-bold">内部日志 Topic `@metadata`</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">Failover 恢复时间</td>
+                                    <td class="py-1 px-2 text-rose-800 font-mono">数分钟（需全量拉取元数据）</td>
+                                    <td class="py-1 px-2 text-emerald-800 font-bold">毫秒级 (Quorum 已热加载 Log)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">单集群分区上限</td>
+                                    <td class="py-1 px-2 text-slate-600">约 200,000 Partitions</td>
+                                    <td class="py-1 px-2 text-emerald-800 font-bold">1,000,000+ Partitions (突破天花板)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-2 font-mono font-bold text-slate-900 bg-slate-50/30">运维与监控门槛</td>
+                                    <td class="py-1 px-2 text-slate-600">双系统维护，极其繁琐</td>
+                                    <td class="py-1 px-2 text-emerald-800 font-bold">单一软件治理，极简云原生部署</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- KIP-500 Milestone Callout -->
+                    <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 mt-2">
+                        <div class="text-amber-300 font-bold flex items-center justify-between">
+                            <span>KIP-500 演进里程碑 (ZooKeeper Deprecation Roadmap)</span>
+                            <span class="text-emerald-400 text-[8px]">Kafka 3.3+ Production Ready</span>
+                        </div>
+                        <div class="text-slate-300 text-[8px] leading-tight font-sans">
+                            Kafka 3.3 宣告 KRaft 正式达到生产级可用；Kafka 3.5 废弃 ZooKeeper 模式；<strong>Kafka 4.0 已完全移除了 ZooKeeper 代码</strong>，开启纯 KRaft 共识新纪元。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Part 03 · Spring for Apache Kafka &amp; 企业级集成</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (KRaft Paradigm Shift)</h4>
+                    <p class="text-xs text-slate-700">
+                        将控制面元数据抽象为 Kafka 自身最擅长的**“内部追加日志 Topic (<code class="font-mono text-teal-800 font-bold">@metadata</code>)”**，不仅彻底摆脱了外部 ZooKeeper 的运维枷锁，更为 Kafka 带来了**毫秒级 Controller Failover** 与**突破百万分区的超高扩展能力**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-700 font-bold">Slide 20 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">20</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[50.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (19.html <- 20.html -> 21.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="19.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Kafka 控制面演进：ZooKeeper 依赖 vs. KRaft 自研共识协议</span>
+            <a href="21.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="19.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="21.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学生透视 KIP-500 移除 ZooKeeper 的动机：</span>
+                    “向学员做架构解构：过去 Kafka 依赖 ZooKeeper 存储集群元数据。一旦集群分区规模达到 20 万以上，或者 Controller 发生崩溃重选，ZooKeeper 的 Watch 惊群效应会导致全量元数据加载极其缓慢，服务挂起长达数分钟。这成为了 Kafka 向云原生百万分区扩展的致命瓶颈。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析 KRaft 模式的灵感与优势：</span>
+                    “请学员重点关注 KRaft (KIP-500) 的设计妙处：Kafka 团队把控制面的元数据本身，也当作一个标准的 Kafka 追加日志 Topic (`@metadata`) 来管理。通过内置在 Broker 内部的 Raft 共识 Quorum Controller，实现了元数据的高高效事件驱动复制，将 Failover 缩短到毫秒级，并支持 100 万以上的超级集群分区。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

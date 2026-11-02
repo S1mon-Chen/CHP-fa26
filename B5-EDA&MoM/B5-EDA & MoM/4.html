@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 04 - 什么是 Messaging 与消息中间件三大核心价值 (Decoupling, Peak Shaving &amp; Asynchrony)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            orange: '#ea580c'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 5 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-1/3 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-layer-group text-amber-600"></i>
+                <span>Part 01 · JMS &amp; 消息通信基础</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                什么是 Messaging（消息机制）与消息中间件三大核心价值
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Peer-to-Peer Communication, Temporal &amp; Spatial Decoupling, Peak Shaving Buffers &amp; Asynchrony
+            </p>
+        </div>
+
+        <!-- Messaging Definition Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-xl border border-slate-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="space-y-1">
+                    <span class="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-cube"></i>
+                        <span>消息机制物理定义 (Messaging Concept Definition)</span>
+                    </span>
+                    <p class="text-xs text-slate-300 leading-relaxed font-sans">
+                        **Messaging（消息机制）** 是软件组件或应用程序之间进行**分布式、点对点 (Peer-to-Peer) 或广播通信**的技术手段。客户端连接到消息代理（Message Broker），通过发送与读取结构化 Message 实现高度解耦的数据交互。
+                    </p>
+                </div>
+                <div class="shrink-0 font-mono text-[10px] bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 text-emerald-400 text-center">
+                    <i class="fa-solid fa-network-wired mb-1 text-sm block"></i>
+                    <span>Loose Coupling Agent</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Three Pillars Grid -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-3.5 my-1">
+            
+            <!-- Pillar 1: Asynchrony -->
+            <div class="group rounded-2xl border border-teal-200 bg-teal-50/20 p-4 soft-shadow hover:border-teal-300 transition flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-teal-200">
+                        <span class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-teal-600"></i>
+                            <span>价值 1：极速异步化 (Asynchrony)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9.5px] font-bold">Latency Reduction</span>
+                    </div>
+
+                    <p class="text-xs text-slate-700 leading-relaxed font-sans mb-2">
+                        将非核心主干逻辑（如注册成功后发送邮件/短信、赠送优惠券、日志上报）从同步阻塞链路中剥离，交由消息队列异步分发。
+                    </p>
+
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[10px] space-y-1.5 border border-slate-800">
+                        <div class="text-slate-400 text-[9px]">// 串行 vs 异步延迟对比</div>
+                        <div class="flex items-center justify-between text-rose-400 text-[9.5px]">
+                            <span>同步串行: $10\text{ms} + 200\text{ms} + 300\text{ms}$</span>
+                            <span class="font-bold">$= 510\text{ms}$</span>
+                        </div>
+                        <div class="flex items-center justify-between text-emerald-400 text-[9.5px] pt-1 border-t border-slate-800">
+                            <span>异步 MQ: $10\text{ms} + 2\text{ms (Send MQ)}$</span>
+                            <span class="font-bold">$\approx 12\text{ms}$</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-teal-200 text-[10px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>主流程极速响应，用户体验飙升 40x+</span>
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+            </div>
+
+            <!-- Pillar 2: Peak Shaving -->
+            <div class="group rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow hover:border-amber-300 transition flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <span class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-filter-circle-dollar text-amber-600"></i>
+                            <span>价值 2：流量削峰填谷 (Peak Shaving)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9.5px] font-bold">Request Buffer</span>
+                    </div>
+
+                    <p class="text-xs text-slate-700 leading-relaxed font-sans mb-2">
+                        在双 11 秒杀、整点抢票等突发爆发流量打来时，消息中间件充当**“蓄水池 (Reservoir Buffer)”**，将数万/秒请求暂存，下游按数据库承受极限平滑拉取。
+                    </p>
+
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[10px] space-y-1.5 border border-slate-800">
+                        <div class="text-slate-400 text-[9px]">// 流量蓄水池缓冲流</div>
+                        <div class="flex items-center justify-between text-[9.5px]">
+                            <span class="text-rose-400">入口瞬时洪峰: $50,000\text{ QPS}$</span>
+                        </div>
+                        <div class="text-amber-300 font-bold text-center text-[9px]">
+                            &darr; [ MQ Queue Request Buffer ] &darr;
+                        </div>
+                        <div class="flex items-center justify-between text-emerald-400 text-[9.5px] pt-1 border-t border-slate-800">
+                            <span>DB 安全消费阈值: $1,000\text{ QPS}$</span>
+                            <span class="font-bold">Zero Avalanche</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-amber-200 text-[10px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>保护脆弱数据库，彻底杜绝系统雪崩</span>
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <!-- Pillar 3: Loose Coupling -->
+            <div class="group rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow hover:border-purple-300 transition flex flex-col justify-between space-y-2.5">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <span class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-link-slash text-purple-600"></i>
+                            <span>价值 3：架构松耦合 (Loose Coupling)</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9.5px] font-bold">Space/Time Anonymity</span>
+                    </div>
+
+                    <p class="text-xs text-slate-700 leading-relaxed font-sans mb-2">
+                        生产者只负责将 Event 抛入队列，无需感知消费者的网络 IP、调用接口契约甚至语言实现。当未来新增消费方时，**生产者代码零修改**。
+                    </p>
+
+                    <div class="space-y-1.5 text-[11px] font-sans">
+                        <div class="flex items-start gap-1.5 text-slate-700">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>**空间解耦**：生产者无需知道消费者 IP 地址与端口。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5 text-slate-700">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>**时间解耦**：发送时消费者可离线，上线后补发。</span>
+                        </div>
+                        <div class="flex items-start gap-1.5 text-slate-700">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>**语言/技术解耦**：Java 发消息，Python/Go 消费处理。</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-purple-200 text-[10px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>新服务无缝接入，符合开闭原则 (OCP)</span>
+                    <i class="fa-solid fa-arrows-split-up-and-left"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (Architectural Trade-off)</h4>
+                    <p class="text-xs text-slate-700">
+                        引入消息中间件虽然带来了**解耦、削峰、异步**三大优势，但也引入了**系统复杂度上升、暂态一致性延迟（最终一致性）与消息重发防重**等新挑战。下几页我们将讨论如何利用标准规范 (JMS) 与高吞吐存储 (Kafka) 应对这些挑战。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-700 font-bold">Slide 4 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">04</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[10.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">什么是 Messaging 与消息中间件三大核心价值</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学员牢记消息中间件 3 大核心价值：</span>
+                    “向学员强调：面试和工程设计中，引入消息中间件的理由归结为三个词：异步化（Asynchrony）、削峰填谷（Peak Shaving）与架构松耦合（Loose Coupling）。请大家结合页面上的毫秒延迟对比与秒杀蓄水池模型进行记忆。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 承上启下引入 JMS 规范：</span>
+                    “提示学员：有了消息机制的思想后，如何在 Java EE 体系中标准化地使用它？下一页（Slide 5）我们将学习 Java 官方定义的消息服务规范——JMS (Java Message Service)。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
