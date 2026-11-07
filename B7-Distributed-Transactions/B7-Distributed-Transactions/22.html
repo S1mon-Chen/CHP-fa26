@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - TCC 模式原理：Try、Confirm 与 Cancel (TCC Pattern Mechanics)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-rotate text-teal-600"></i>
+                <span>Part 04 · 微服务最终一致性模式：TCC、Saga 与消息事务</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                TCC 模式原理：Try、Confirm 与 Cancel 三阶段 (TCC Pattern Mechanics)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Application-Level Two-Phase Commit, Resource Reservation, Frozen Balance Isolation &amp; High Throughput
+            </p>
+        </div>
+
+        <!-- TCC Two-Stage Application Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-teal-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-teal-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-teal-400"></i>
+                        <span>TCC 应用层两阶段资源预留管线 (Try $\rightarrow$ Confirm / Cancel Execution Flow)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Resource Reservation guarantees Confirm execution success</span>
+                </div>
+
+                <!-- 3 TCC Phases Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    <!-- Phase 1: Try -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-teal-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-hourglass-start text-teal-400"></i>
+                                阶段 1：Try (预留资源)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Reservation</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>业务检查：</strong>检查账户余额、库存量等前置业务合法性。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>资源预留：</strong>不直接扣减余额，而是加上 <code class="text-teal-300 font-mono">frozen_balance</code> 冻结资金。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2A: Confirm -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                阶段 2A：Confirm (提交确认)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">All Try Success</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>全成功响应：</strong>所有分支服务的 Try 均成功后触发。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>使用预留：</strong>真正的物理扣减，扣除 <code class="text-emerald-300 font-mono">frozen_balance</code> 并划转。由于 Try 已做预留，Confirm 默认必定成功！
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2B: Cancel -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-xmark text-rose-400"></i>
+                                阶段 2B：Cancel (取消解冻)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Any Try Fails</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>任一异常触发：</strong>有任一分支服务 Try 失败或超时触发。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>释放资源：</strong>扣减 <code class="text-rose-300 font-mono">frozen_balance</code> 解冻资源，将状态恢复为初始状态。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Resource Reservation DB Schema) vs Right Card (TCC vs 2PC Advantages) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Resource Reservation DB Schema Example -->
+            <div class="rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-teal-600"></i>
+                            <span>1. TCC 资源预留数据表结构设计 (Resource Reservation Schema)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Try Isolation</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-teal-400 font-bold">// 资金账户表结构增加冻结金额字段 frozen_balance</div>
+                            <div class="text-slate-300"><span class="text-indigo-400">CREATE TABLE</span> account (</div>
+                            <div class="pl-4 text-slate-300">user_id <span class="text-cyan-300">VARCHAR(64) PRIMARY KEY</span>,</div>
+                            <div class="pl-4 text-slate-300">balance <span class="text-cyan-300">DECIMAL(18,2)</span>, <span class="text-slate-500">-- 可用余额</span></div>
+                            <div class="pl-4 text-teal-300 font-bold">frozen_balance <span class="text-cyan-300">DECIMAL(18,2) DEFAULT 0.00</span> <span class="text-slate-500">-- 冻结金额 (预留资源)</span></div>
+                            <div class="text-slate-300">);</div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-teal-950 font-mono">Try 阶段物理 SQL 演推 ($100 元)</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed font-mono">
+                                UPDATE account SET balance = balance - 100, frozen_balance = frozen_balance + 100 WHERE user_id = 'Alice' AND balance >= 100;
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>本质：将数据锁定提升至应用层中间状态，本地 DB 事务随 Try 结束立即提交</span>
+                    <i class="fa-solid fa-lock-open"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: TCC vs 2PC Advantages -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-emerald-600"></i>
+                            <span>2. 相比 2PC 强一致协议的物理性能优势</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">TCC vs 2PC</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="p-1 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">优势 1：无物理数据库排他长锁</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    2PC 的 RM 在 Prepare 后必须挂起持锁等待。TCC 的 Try 在本地更新完 <code class="font-mono text-emerald-800 font-bold">frozen_balance</code> 后<strong>立刻提交本地 DB 事务</strong>，归还连接池，极大释放了高并发数据库吞吐！
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">优势 2：跨数据源/第三方接口支持</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    TCC 是纯应用层协议，不依赖底层数据库的 XA 驱动。任何能够暴露 HTTP/RPC Try-Confirm-Cancel 接口的外部服务均可接入。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 23 · TCC 异常治理：防空回滚、防悬挂与防重幂等性</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (TCC Reservation Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        TCC 模式的成功取决于<strong>“预留资源 (Reservation)”</strong>的设计。Try 阶段将并发冲突转化为业务状态冻结，保证了 Confirm 阶段可以无阻塞并发提交。然而，TCC 也要求开发者必须妥善处理网络丢包导致的**空回滚与悬挂问题**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-800 font-bold">Slide 22 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">22</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[55.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (21.html <- 22.html -> 23.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">TCC 模式原理：Try、Confirm 与 Cancel</span>
+            <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="21.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="23.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学员理解 TCC 应用层两阶段提交原理：</span>
+                    “向学员做解构说明：TCC 是一种应用层面的两阶段提交。Try 是预留资源（如将资金放入 `frozen_balance`），Confirm 是物理扣减预留资源，Cancel 是解冻预留资源。因为 Try 阶段完成了资源预留，Confirm 阶段默认保证 100% 成功。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 剖析 TCC 比 2PC 性能高百倍的根本原因：</span>
+                    “请学员特别关注右侧卡片：2PC 必须保持物理数据库行锁和 DB 连接，直到 Stage 2 完成；而 TCC 的 Try 阶段在更新完 `frozen_balance` 后**立刻提交本地数据库事务**并归还连接！下一个 Slide 23 将带领大家攻克 TCC 的三大物理陷阱：防空回滚、防悬挂与幂等性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '23.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '21.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

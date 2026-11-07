@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - Seata AT 模式回滚链路与脏写校验机制 (Seata AT Mode Rollback Pipeline)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-rotate-left text-emerald-600"></i>
+                <span>Part 05 · 企业级分布式事务框架：Apache Seata 深度实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Seata AT 模式回滚链路与脏写校验机制 (AT Mode Rollback Pipeline)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Phase 1 Execution, Undo Log Replay, Dirty Write Detection (`Current == After Image`) &amp; Human Escalation
+            </p>
+        </div>
+
+        <!-- Rollback Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-emerald-400"></i>
+                        <span>Seata AT 模式二阶段反向补偿与脏写防御演进流程 (AT Rollback Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Reversing SQL Execution with Before Image Snapshot</span>
+                </div>
+
+                <!-- 4 Step Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Step 1: Read Undo Log -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-file-code text-emerald-400"></i>
+                                步骤 1：解析撤销日志
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Fetch Undo</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>• TC 下发全局回滚指令与分支 XID</div>
+                            <div>• RM 读取本地 <code class="text-emerald-300 font-mono">undo_log</code> 记录</div>
+                            <div class="text-emerald-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 反序列化反解析出 Before / After Image
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Query Current DB Data -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-magnifying-glass text-indigo-400"></i>
+                                步骤 2：查库校验脏写
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Dirty Check</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>• 开启本地 DB 临时事务</div>
+                            <div>• <code class="text-indigo-300 font-mono">SELECT ... FOR UPDATE</code> 查当前行</div>
+                            <div class="text-indigo-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 比对 Current Data 与 After Image
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Match Decision -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-scale-balanced text-amber-400"></i>
+                                步骤 3：数据匹配判定
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Validation</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>• <strong class="text-emerald-300">通过</strong>：Current == After Image</div>
+                            <div>• <strong class="text-rose-300">失败</strong>：Current != After Image</div>
+                            <div class="text-amber-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 未通过说明一阶段提交后发生越权脏写
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Execute Reverse SQL -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-teal-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-wand-magic-sparkles text-teal-400"></i>
+                                步骤 4：反向补偿还原
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Restore</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>• 用 Before Image 生成反向还原 SQL</div>
+                            <div>• 提交本地还原事务，删除 <code class="text-teal-300 font-mono">undo_log</code></div>
+                            <div class="text-teal-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 向 TC 汇报分支回滚成功
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Phase 1 & Phase 2 Detail) vs Right Card (Dirty Write Exception Escalation) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Phase 1 & 2 Execution Deep Dive -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-emerald-600"></i>
+                            <span>1. 二阶段反向补偿 SQL 自动生成与物理提交细节</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">SQL Generation</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="p-1 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">一阶段正向修改示例</span>
+                                <p class="text-[8.5px] font-mono text-emerald-900 mt-0.5">
+                                    UPDATE account SET balance = balance - 20 WHERE id = 1;
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">镜像数据快照 (In `undo_log` JSON Payload)</span>
+                                <p class="text-[8.5px] font-mono text-slate-600 mt-0.5">
+                                    Before Image: <code class="text-indigo-900 font-bold">{ id: 1, balance: 100 }</code><br/>
+                                    After Image: <code class="text-indigo-900 font-bold">{ id: 1, balance: 80 }</code>
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">二阶段自动生成的反向更新 SQL</span>
+                                <p class="text-[8.5px] font-mono text-teal-900 mt-0.5">
+                                    UPDATE account SET balance = 100 WHERE id = 1 AND balance = 80;
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：反向 SQL 附加 `WHERE balance = 80` 条件做 CAS 级别的原子防护</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Dirty Write Detection & Exception Escalation -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                            <span>2. 脏写发生时的升轨防御与人工干预 (Dirty Write Escalation)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">Escalation Flow</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">脏写产生原因 (Root Cause)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    在一阶段本地 DB 事务提交后、二阶段回滚前，有**非 Seata 管理的底层 SQL** 直接越过代理数据源强行修改了这行数据（如 DBA 手动执行了 UPDATE 脚本）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">升轨处置机制 (Escalation Protocol)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    Seata **拒绝直接盲目覆写 Before Image**（否则会覆盖非 Seata 的有效修改）。RM 抛出不可重试异常 <code class="font-mono text-rose-900 font-bold">BranchRollbackFailed_Unretriable</code>，在控制台弹出严重告警并**通知管理员进行人工对账修复**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 33 · Seata AT 模式全局锁 (Global Lock) 机制与隔离级别保障</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (AT Rollback Mechanics Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Seata AT 模式的二阶段回滚不是盲目的覆写，而是**带有并发 CAS 校验的智能补偿**。通过比对 `Current Data == After Image`，Seata 能够精准识别越权物理脏写并及时告警升轨，确保分布式环境下的数据安全。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 32 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[80.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Seata AT 模式回滚链路与脏写校验机制</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解二阶段回滚的反向 SQL 构造：</span>
+                    “向学员做解构说明：当 TC 下发回滚指令时，RM 会取出 `undo_log` 中的 JSON 快照。如果 Before Image 是 `balance=100`，After Image 是 `balance=80`，Seata 会构造反向更新 SQL：`UPDATE account SET balance = 100 WHERE id = 1 AND balance = 80`。”
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">💡 剖析脏写校验失败的人工升轨处置：</span>
+                    “请学员特别关注右侧卡片：为什么要比对 `Current == After Image`？因为如果在二阶段回滚前，有 DBA 手动在底层改了这个字段，导致当前数据变成了 `balance=50`，Seata 发现当前值与 After Image (80) 不相等，说明发生非法脏写！此时直接覆写 100 会覆盖非 Seata 的修改，所以 Seata 会抛出异常并升轨进行人工干预告警。下一个 Slide 33 将讲解 Seata 的全局锁 (Global Lock) 保护机制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

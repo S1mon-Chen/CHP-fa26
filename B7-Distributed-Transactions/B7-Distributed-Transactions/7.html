@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - Spring 事务回滚规则与 Checked Exception 踩坑指南 (Spring Rollback Rules)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-triangle-exclamation text-indigo-600"></i>
+                <span>Part 01 · Spring 本地事务管理与离线锁模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring 事务回滚规则与 Exception 踩坑指南 (Rollback Rules)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Default Rollback Policy, `RuntimeException` vs `Checked Exception`, `rollbackFor = Exception.class` &amp; Try-Catch Traps
+            </p>
+        </div>
+
+        <!-- Visual Rollback Policy Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-shield-cat text-indigo-400"></i>
+                        <span>Spring 异常捕获与回滚决策树 (Spring Exception Rollback Decision Spectrum)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Default Policy: Rollback on RuntimeException &amp; Error ONLY</span>
+                </div>
+
+                <!-- Exception Classification Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Box 1: RuntimeException (Auto Rollback) -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[10.5px]">Unchecked Exception</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Auto Rollback</span>
+                        </div>
+                        <div class="text-[9px] font-sans text-slate-300 space-y-1">
+                            <div class="font-mono text-emerald-400 font-bold">• RuntimeException及其子类</div>
+                            <div class="text-slate-400 text-[8.5px]">如 NullPointerException, ArithmeticException (10/0)</div>
+                            <p class="text-emerald-300 font-bold text-[8.5px] border-t border-slate-800 pt-1">
+                                ✓ Spring 拦截器捕获后自动触发 <code class="font-mono">setRollbackOnly()</code> 物理回滚。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Box 2: Checked Exception (NO Rollback by default) -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">Checked Exception</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">NO Rollback!</span>
+                        </div>
+                        <div class="text-[9px] font-sans text-slate-300 space-y-1">
+                            <div class="font-mono text-rose-400 font-bold">• Checked Exception (受检异常)</div>
+                            <div class="text-slate-400 text-[8.5px]">如 IOException, SQLException, Exception</div>
+                            <p class="text-rose-400 font-bold text-[8.5px] border-t border-slate-800 pt-1">
+                                ❌ 默认策略下 Spring 判定为业务预预期异常，<strong>不触发回滚而直接物理提交</strong>！
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Box 3: Solution (rollbackFor = Exception.class) -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">Production Standard</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">rollbackFor</span>
+                        </div>
+                        <div class="text-[9px] font-sans text-slate-300 space-y-1">
+                            <div class="font-mono text-indigo-300 font-bold">• 生产防线显式配置</div>
+                            <div class="text-slate-300 text-[8.5px]"><code class="font-mono text-amber-300">@Transactional(rollbackFor = Exception.class)</code></div>
+                            <p class="text-indigo-200 font-bold text-[8.5px] border-t border-slate-800 pt-1">
+                                ★ 覆盖所有 Exception 子类，彻底防止数据静默损坏。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Code Examples) vs Right Card (Try-Catch Trap & Manual Rollback) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Checked Exception Pitfall & Fix -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-600"></i>
+                            <span>1. 受检异常 Checked Exception 物理踩坑与修正</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Checked Exception</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <!-- Bad Example -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                            <div class="text-rose-400 font-bold">// ❌ 踩坑示范：IOException 是 Checked Exception，默认不回滚！</div>
+                            <div><span class="text-indigo-400">@Transactional</span></div>
+                            <div><span class="text-indigo-400">public void</span> <span class="text-cyan-300">processOrder</span>() <span class="text-indigo-400">throws</span> IOException {</div>
+                            <div class="pl-4 text-slate-300">orderDao.insert(order); <span class="text-slate-500">// 写库成功</span></div>
+                            <div class="pl-4 text-rose-300"><span class="text-indigo-400">throw new</span> IOException(<span class="text-emerald-300">"Network Timeout"</span>); <span class="text-slate-500">// 抛出受检异常</span></div>
+                            <div>} <span class="text-rose-400 font-bold">// 结果：Spring 不回滚，导致数据库脏写入！</span></div>
+                        </div>
+
+                        <!-- Good Example -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                            <div class="text-emerald-400 font-bold">// ✅ 生产标准方案：显示指定 rollbackFor = Exception.class</div>
+                            <div><span class="text-indigo-400">@Transactional</span>(rollbackFor = Exception.<span class="text-indigo-400">class</span>)</div>
+                            <div><span class="text-indigo-400">public void</span> <span class="text-cyan-300">processOrderCorrect</span>() <span class="text-indigo-400">throws</span> Exception {</div>
+                            <div class="pl-4 text-slate-300">orderDao.insert(order);</div>
+                            <div class="pl-4 text-slate-300"><span class="text-indigo-400">throw new</span> Exception(<span class="text-emerald-300">"Custom Error"</span>);</div>
+                            <div>} <span class="text-emerald-400 font-bold">// 结果：正确触发事务全局回滚！</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：无思考地使用裸 `@Transactional` 是绝大多数生产数据不一致的源头</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: The Try-Catch Trap & Manual Rollback -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bug text-cyan-600"></i>
+                            <span>2. try-catch 吞掉异常陷阱与手动触发回滚</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Try-Catch Trap</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100 space-y-0.5">
+                                <span class="font-bold text-rose-950 font-mono">内部 try-catch 吞掉异常后果</span>
+                                <p class="text-[8.5px] text-slate-600">
+                                    若方法内部用 <code class="font-mono text-rose-900 font-bold">try-catch</code> 捕获了异常且未将其向上重新抛出，AOP 切面代理无法感知到异常，事务会正常提交！
+                                </p>
+                            </div>
+
+                            <!-- Code Example for Manual Rollback -->
+                            <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                                <div class="text-amber-300 font-bold">// 方案：如必须在内层 try-catch，需手动标记 setRollbackOnly()</div>
+                                <div><span class="text-indigo-400">@Transactional</span></div>
+                                <div><span class="text-indigo-400">public void</span> <span class="text-cyan-300">updateWithCatch</span>() {</div>
+                                <div class="pl-3 text-indigo-400">try {</div>
+                                <div class="pl-6 text-slate-300">accountDao.update();</div>
+                                <div class="pl-3 text-indigo-400">} catch (Exception e) {</div>
+                                <div class="pl-6 text-amber-300">TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();</div>
+                                <div class="pl-3 text-indigo-400">}</div>
+                                <div>}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 8 · 生产环境八大 `@Transactional` 事务失效陷阱</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Rollback Policy Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        理解 Spring 回滚规则的核心是记住 **“AOP 拦截器是通过捕获未被吞掉的异常来决定 `commit` 还是 `rollback`”** 的。要防止 Checked Exception 静默提交破坏数据，必须显式加上 <code class="font-mono text-indigo-900 font-bold">rollbackFor = Exception.class</code>；而要在 `try-catch` 中吞掉异常又想回滚，必须调用 <code class="font-mono text-indigo-900 font-bold">setRollbackOnly()</code>。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 7 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring 事务回滚规则与 Exception 踩坑指南</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员透视 Spring 默认回滚规则陷阱：</span>
+                    “向学员做解构说明：许多同学以为标注了 `@Transactional`，方法抛出任何异常都会自动回滚。这是一个非常危险的误区！Spring 默认只对 `RuntimeException`（非受检异常）和 `Error` 回滚。对于受检异常（如 `IOException`），Spring 会直接提交事务！”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 强调 `rollbackFor` 与 `try-catch` 解决方案：</span>
+                    “请学员特别关注生产标准：1. 一律加上 `rollbackFor = Exception.class` 显式覆盖受检异常；2. 若在业务方法内部捕获了异常（try-catch），切记调用 `TransactionAspectSupport.currentTransactionStatus().setRollbackOnly()` 手动置回滚标记。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.exitFullscreen) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

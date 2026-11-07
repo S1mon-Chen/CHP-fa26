@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - 分布式一致性模型谱系：强一致 vs. 最终一致 vs. 弱一致 (Consistency Spectrum)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- <!-- STREAMING_CHUNK:Configuring header navigation and controls... --> -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- <!-- STREAMING_CHUNK:Rendering main title block and consistency spectrum banner... --> -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sliders text-cyan-600"></i>
+                <span>Part 02 · 分布式环境下的数据一致性理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                分布式一致性模型谱系：强一致 vs. 最终一致 vs. 弱一致 (Consistency Spectrum)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                From Linearizability &amp; Sequential Consistency to BASE Eventual Convergence &amp; Weak Best-effort Models
+            </p>
+        </div>
+
+        <!-- Consistency Spectrum Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-left-right text-cyan-400"></i>
+                        <span>分布式一致性模型连续光谱 (Consistency Guarantee Spectrum)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Strict Latency Trade-off: Stronger Consistency $\implies$ Higher Latency &amp; Lower Throughput</span>
+                </div>
+
+                <!-- 3 Models Spectrum Bar -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    <!-- Strong Consistency -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">强一致性 (Strong Consistency)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Linearizability</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            写操作成功后，任何节点的后续读取都<strong>必须实时返回最新写入值</strong>。等价于单机物理全局原子钟。
+                        </p>
+                    </div>
+
+                    <!-- Eventual Consistency -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[10.5px]">最终一致性 (Eventual Consistency)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">BASE Convergence</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            允许短时间内读到陈旧旧值，但在经过一个<strong>有界时间窗口 (Bounded Time)</strong> 后，所有节点数据达成完全一致。
+                        </p>
+                    </div>
+
+                    <!-- Weak Consistency -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[10.5px]">弱一致性 (Weak Consistency)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Best-effort</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            不保证何时能读到最新写入值，甚至<strong>允许部分更新数据丢失</strong>。追求极致低延迟与吞吐能力。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- <!-- STREAMING_CHUNK:Constructing consistency comparison matrix and scenario cards... --> -->
+        <!-- Content Grid: Left Card (3 Models Breakdown) vs Right Card (Comparison Matrix) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Detailed Models Breakdown -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                            <span>1. 三大一致性模型的内核机制与技术代表</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Model Mechanics</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">强一致性代表 (Strong)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    • <strong>算法/协议</strong>：XA 2PC/3PC、Paxos、Raft、Spanner TrueTime。<br/>
+                                    • <strong>特点</strong>：通过同步阻塞锁或多数派 Quorum 投票达成同步，物理延迟高，吞吐受限。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">最终一致性代表 (Eventual)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    • <strong>模式/组件</strong>：TCC 预留、Saga 补偿、本地消息表、MQ 事务消息、Seata AT。<br/>
+                                    • <strong>特点</strong>：无物理长锁，利用异步消息重试、逆向补偿或对账补单在短时间内对齐数据。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">弱一致性代表 (Weak)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    • <strong>场景/协议</strong>：UDP 实时音视频流、DNS 域名缓存、直播弹幕、历史浏览痕迹。<br/>
+                                    • <strong>特点</strong>：丢包无妨，不做重试补偿，换取毫秒级物理响应速度。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：越强的一致性保证，意味着越高的物理延迟与越低的可用性</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Systematic Comparison Table Matrix -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells text-cyan-600"></i>
+                            <span>2. 一致性模型全方位对比矩阵 (Comparison Matrix)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Decision Matrix</span>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="rounded-xl border border-cyan-100 bg-white p-2 space-y-1 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-[9px]">
+                            <thead>
+                                <tr class="border-b border-cyan-100 bg-slate-50 font-mono text-[8.5px] text-slate-700">
+                                    <th class="py-1 px-1.5 font-bold">评估维度</th>
+                                    <th class="py-1 px-1.5 font-bold text-indigo-900">强一致性 (Strong)</th>
+                                    <th class="py-1 px-1.5 font-bold text-teal-900">最终一致性 (Eventual)</th>
+                                    <th class="py-1 px-1.5 font-bold text-amber-900">弱一致性 (Weak)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8.5px]">
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">读取特征</td>
+                                    <td class="py-1 px-1.5 text-indigo-800 font-medium">必须返回最新写入值</td>
+                                    <td class="py-1 px-1.5 text-teal-800 font-medium">允许暂读旧值，最终一致</td>
+                                    <td class="py-1 px-1.5 text-amber-800 font-medium">不保证何时能读到最新值</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">响应延迟</td>
+                                    <td class="py-1 px-1.5 text-rose-700 font-bold">高 (取决于同步等待)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">低 (异步解耦)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极低 (即发即忘)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">系统吞吐量</td>
+                                    <td class="py-1 px-1.5 text-rose-700 font-bold">低 (受限于锁与网络)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极高 (高并发微服务)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极致 (无锁无同步)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">典型场景</td>
+                                    <td class="py-1 px-1.5 text-slate-700">金融核心转账、库存主表</td>
+                                    <td class="py-1 px-1.5 text-slate-700">电商下单、物流、发券</td>
+                                    <td class="py-1 px-1.5 text-slate-700">音视频流、点赞、浏览历史</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>Part 02 完结：开启 Part 03 · Slide 16 传统强一致性分布式事务：XA 规范与 2PC/3PC 协议</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- <!-- STREAMING_CHUNK:Adding footer controls and speaker notes drawer... --> -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">Part 02 总结 (Consistency Spectrum Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        分布式系统的设计核心在于<strong>根据业务场景精准选择一致性模型</strong>。绝不应盲目在所有微服务中追求强一致性，通过将非核心业务降级为最终一致性或弱一致性，可以获得极高的系统吞吐量与弹性扩展能力。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 15 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[37.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">分布式一致性模型谱系</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 总结 Part 02 并引导学员透视一致性光谱：</span>
+                    “向学员做解构说明：本 Slide 总结 Part 02 分布式数据一致性理论。一致性不是非黑即白的，而是一个光谱。从最严格的强一致性（Linearizability），到高并发微服务首选的最终一致性（BASE），再到实时流式计算中的弱一致性。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Part 03 强一致性 XA 与 2PC/3PC 协议：</span>
+                    “请学员关注右下角提示：既然强一致性要求如此苛刻，工业界历史上是如何实现强一致性分布式事务的呢？下一个模块 **Part 03（Slide 16）** 将详细拆解著名的 XA 规范与 2PC/3PC 两阶段提交协议。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

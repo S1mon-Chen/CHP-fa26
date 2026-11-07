@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 38 - Seata 实战：@GlobalTransactional 在 Spring Boot 中的落地 (Code Practical)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-code text-emerald-600"></i>
+                <span>Part 05 · 企业级分布式事务框架：Apache Seata 深度实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Seata 实战：`@GlobalTransactional` 在 Spring Boot 中的落地 (Code Practical)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Declarative Global Transaction Annotation, XID Propagation via Feign/RPC &amp; Spring Boot YAML Configuration
+            </p>
+        </div>
+
+        <!-- Architecture Execution Flow Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-emerald-400"></i>
+                        <span>`@GlobalTransactional` 声明式事务在微服务调用链中的执行管线 (Execution Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Zero Code Invasion: Intercepted by Seata Spring AOP Aspect</span>
+                </div>
+
+                <!-- 3 Step Flow Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Step 1: TM Begin -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">1. TM 开启全局事务</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">TM Begin</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            `OrderService` 带有 <code class="text-indigo-300 font-mono">@GlobalTransactional</code>。TM 切面拦截向 TC 申请开启全局事务并绑定全局唯一 <code class="text-indigo-300 font-mono">XID</code>。
+                        </p>
+                    </div>
+
+                    <!-- Step 2: XID Propagation -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[10.5px]">2. Feign RPC 隐式透传 XID</span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">XID Propagation</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            Seata Feign 拦截器拦截 HTTP 请求，向 Request Header 中隐式注入 <code class="text-teal-300 font-mono">TX_XID</code>，将下游 `Stock` 和 `Account` 服务绑定入同一个全局事务。
+                        </p>
+                    </div>
+
+                    <!-- Step 3: Two Phase Result -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[10.5px]">3. 异常拦截与自动回滚</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Global Rollback</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            若任意分支（如账户余额不足）抛出 Exception，TM 捕获后通知 TC。TC 向各地 RM 下发反向 <code class="text-emerald-300 font-mono">rollback</code> 指令，依靠 `undo_log` 还原物理数据。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Java Code) vs Right Card (YAML Config & RPC Setup) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: OrderServiceImpl.java (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-emerald-600"></i>
+                            <span>1. 订单服务主入口代码 (`OrderServiceImpl.java`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Java Implementation</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-emerald-400 font-bold">// 生产级分布式事务切面标注</div>
+                            <div><span class="text-indigo-400">@Service</span></div>
+                            <div><span class="text-indigo-400">public class</span> <span class="text-cyan-300">OrderServiceImpl</span> <span class="text-indigo-400">implements</span> OrderService {</div>
+                            
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-indigo-400">private</span> StockFeignClient stockFeignClient;</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-indigo-400">private</span> AccountFeignClient accountFeignClient;</div>
+                            <div class="pl-3"><span class="text-indigo-400">@Autowired</span> <span class="text-indigo-400">private</span> OrderDao orderDao;</div>
+
+                            <div class="pl-3 pt-1 text-emerald-300 font-bold">@GlobalTransactional(name = "create-order-tx", rollbackFor = Exception.class)</div>
+                            <div class="pl-3"><span class="text-indigo-400">public void</span> <span class="text-cyan-300">createOrder</span>(OrderDTO orderDTO) {</div>
+                            <div class="pl-6 text-slate-400">log.info("开启全局分布式事务，XID = {}", RootContext.getXID());</div>
+                            
+                            <div class="pl-6 text-slate-400">// ① 本地新增订单记录 (Order DB)</div>
+                            <div class="pl-6">orderDao.create(orderDTO);</div>
+                            
+                            <div class="pl-6 text-slate-400">// ② 远程 RPC 扣减库存 (Stock DB - Branch TX 1)</div>
+                            <div class="pl-6">stockFeignClient.deduct(orderDTO.getCommodityCode(), orderDTO.getCount());</div>
+
+                            <div class="pl-6 text-slate-400">// ③ 远程 RPC 扣减账户余额 (Account DB - Branch TX 2)</div>
+                            <div class="pl-6">accountFeignClient.debit(orderDTO.getUserId(), orderDTO.getOrderMoney());</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：简单的 `@GlobalTransactional` 注解完全接管了底层极其繁琐的两阶段提交与回滚</span>
+                    <i class="fa-solid fa-cube"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Spring Boot application.yml Configuration (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-purple-600"></i>
+                            <span>2. Spring Boot 配置文件与服务分组配置 (`application.yml`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">YAML Config</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-purple-300 font-bold">seata:</div>
+                            <div class="pl-3 text-slate-300">enabled: <span class="text-emerald-300">true</span></div>
+                            <div class="pl-3 text-purple-300 font-bold">tx-service-group: <span class="text-emerald-300">my_test_tx_group</span> <span class="text-slate-500"># 逻辑事务分组</span></div>
+                            <div class="pl-3 text-slate-300">service:</div>
+                            <div class="pl-6 text-slate-300">vgroup-mapping:</div>
+                            <div class="pl-9 text-amber-300 font-bold">my_test_tx_group: <span class="text-emerald-300">default</span> <span class="text-slate-500"># 映射到 Seata TC 集群</span></div>
+                            <div class="pl-6 text-slate-300">grouplist:</div>
+                            <div class="pl-9 text-cyan-300">default: <span class="text-emerald-300">127.0.0.1:8091</span> <span class="text-slate-500"># TC 协调器服务地址</span></div>
+                            <div class="pl-3 text-slate-300">client:</div>
+                            <div class="pl-6 text-slate-300">rm:</div>
+                            <div class="pl-9 text-slate-300">lock:</div>
+                            <div class="pl-12 text-slate-300">retry-interval: <span class="text-emerald-300">10</span></div>
+                            <div class="pl-12 text-slate-300">retry-times: <span class="text-emerald-300">30</span></div>
+                        </div>
+
+                        <div class="p-1.5 rounded-xl bg-white border border-purple-100 space-y-0.5 text-[9.5px]">
+                            <div class="font-bold text-purple-950 font-mono">服务分组 (Service Group Mapping)</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                通过映射关系，微服务可以解耦直接硬编码 TC 地址。生产环境中可利用 Nacos / Eureka 动态注册与发现 Seata TC 协调器集群。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 39 · 第 7 讲课程总结与分布式事务知识图谱</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心实战心得 (Spring Boot Seata Practical Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        在 Spring Boot 项目中落地 Seata 非常简洁。只要在业务入口方法标注 <code class="font-mono text-emerald-900 font-bold">@GlobalTransactional</code>，并在各个微服务分支数据库建立 <code class="font-mono text-emerald-900 font-bold">undo_log</code> 表，Seata 就能自动拦截 Feign/Dubbo 调用并完成跨库事务保护。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 38 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">38</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[95.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (37.html <- 38.html -> 39.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="37.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Seata 实战：`@GlobalTransactional` 在 Spring Boot 中的落地</span>
+            <a href="39.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="37.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="39.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解 `@GlobalTransactional` 的代码落地：</span>
+                    “向学员解构说明：这页代码展示了 Seata 在 Spring Boot 中最优雅的用法。只需要在主订单入口方法上加上 `@GlobalTransactional`，无论后面通过 Feign 调用多少个子微服务，只要中途有任何异常，Seata 就会自动通知 TC，由 TC 下发回滚，各分支依赖 `undo_log` 表自动撤销！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调配置文件中的事务分组 (tx-service-group)：</span>
+                    “请学员注意右侧 YAML 配置文件中的 `tx-service-group` 和 `vgroup-mapping`：这是 Seata 实现逻辑事务分组映射到物理 TC 协调器集群的关键配置，在生产上线时非常利于高可用扩容。下一个 Slide 39 将总结全讲知识图谱。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '39.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '37.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

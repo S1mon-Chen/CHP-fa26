@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 2PC 协议四大致命缺陷 (Critical Flaws of 2PC)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- <!-- STREAMING_CHUNK:Configuring header bar and slide metadata controls... --> -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- <!-- STREAMING_CHUNK:Rendering slide title block and overview banner... --> -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-triangle-exclamation text-purple-600"></i>
+                <span>Part 03 · 传统强一致性分布式事务：XA 与 2PC/3PC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                2PC 协议四大致命缺陷 (Critical Flaws of 2PC)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Synchronous Blocking, Single Point of Failure (SPOF), Data Split-Brain &amp; High Performance Overhead
+            </p>
+        </div>
+
+        <!-- <!-- STREAMING_CHUNK:Building 4-column visual banner for 2PC protocol flaws... --> -->
+        <!-- 2PC Flaws Classification Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-bug text-rose-400"></i>
+                        <span>两阶段提交 (2PC) 物理缺陷解构 (2PC Protocol Flaws Mapping)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Why Traditional 2PC Fails in High-Concurrency Microservices</span>
+                </div>
+
+                <!-- 4 Flaws Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Flaw 1: Synchronous Blocking -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">1. 同步阻塞 (Blocking)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Lock Hold</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            RM 在 Prepare 阶段加排他锁后挂起，必须等待 TM 下发最终裁决，持锁时间包含跨网络往返。
+                        </p>
+                    </div>
+
+                    <!-- Flaw 2: Single Point of Failure -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[10.5px]">2. 单点故障 (SPOF)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">TM Crash</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            TM 作为集中协调节点，若在阶段 1 后突然宕机崩溃，所有 RM 的资源锁将被永久挂起悬挂。
+                        </p>
+                    </div>
+
+                    <!-- Flaw 3: Data Split-Brain -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">3. 数据不一致 (Split-Brain)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Partial Commit</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            阶段 2 突发网络分区，部分 RM 收到 Commit 物理提交，未收到的 RM 保持挂起，数据分裂！
+                        </p>
+                    </div>
+
+                    <!-- Flaw 4: Performance Drop -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[10.5px]">4. 性能极度剧挫</span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Throughput Drop</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            跨网络两次 TCP 往返 RPC 加 TM 全局日志写盘，在高并发下导致数据库连接池瞬间崩溃。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- <!-- STREAMING_CHUNK:Constructing 2-column detailed breakdown grid for 2PC flaws... --> -->
+        <!-- Content Grid: Left Card (Flaws 1 & 2) vs Right Card (Flaws 3 & 4) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Synchronous Blocking & Single Point of Failure -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-lock text-purple-600"></i>
+                            <span>1. 同步阻塞 (Synchronous Blocking) 与单点故障 (SPOF)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Blocking &amp; SPOF</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">排他锁挂起时间长 (Synchronous Lock Holding)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    RM 在 Prepare 阶段获得物理行锁 ($X$ 锁) 并写回 Undo/Redo，但在 TM 下发最终 Commit/Rollback 命令前，RM **绝对无法释放锁**。其他试图访问该数据的写请求被全面强行阻塞！
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">TM 协调器单点瘫痪 (Coordinator Crash)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    若 TM 在 Prepare 完成后、下发裁决前突然宕机，RM 处于已经回复 YES 的准备状态，不敢自行提交也不敢自行回滚，导致所有参与者的资源被**永久悬挂锁定**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>本质：2PC 的两阶段物理锁绑定打破了微服务高并发无锁原则</span>
+                    <i class="fa-solid fa-ban"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Data Split-Brain & Performance Overhead -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-split-up-and-left text-indigo-600"></i>
+                            <span>2. 网络脑裂 (Data Split-Brain) 与高延迟瓶颈</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Split-Brain &amp; Overhead</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">阶段 2 突发网络分区脑裂 (Data Inconsistency)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    当 TM 发送 Commit 消息时，若其中一条 TCP 链路断开，收到 Commit 的 RM1 物理提交，未收到的 RM2 继续阻塞悬挂或超时回滚，引发**严重跨库数据分裂 (Split-Brain)**！
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">吞吐量剧烈下挫 (Throughput Collapse)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    两阶段提交需要跨 TCP 网络进行 2 轮 RPC 通信，加上 TM 本地同步写盘写全局事务日志，使得单次事务耗时提升一个数量级，TPS 下跌 90% 以上。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 19 · 三阶段提交协议 (3PC) 引入 CanCommit 与超时机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- <!-- STREAMING_CHUNK:Inserting callout banner with engineering insight... --> -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (2PC Protocol Engineering Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        2PC 协议虽然在理论上保障了跨库强一致性，但其<strong>同步阻塞、单点故障、脑裂风险与低吞吐开销</strong>使其无法胜任现代高并发云原生微服务。这也倒逼了 3PC 协议的诞生以及应用层柔性事务（TCC / Saga）的兴起。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 18 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- <!-- STREAMING_CHUNK:Configuring footer navigation controls and speaker notes drawer... --> -->
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[45.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">2PC 协议四大致命缺陷</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员透视 2PC 协议的四大致命缺陷：</span>
+                    “向学员做解构说明：上一 Slide 我们拆解了 2PC 的 Prepare 和 Commit 两阶段。本 Slide 要让学员深刻明白：2PC 虽然实现了物理强一致，但在微服务场景下有四大致命伤：1. 同步阻塞卡锁；2. TM 单点故障导致资源永久挂起；3. 阶段 2 网络断开引发跨库脑裂数据不一致；4. 两次网络往返导致 TPS 下跌 90%。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 3PC 协议与柔性事务：</span>
+                    “请学员关注右下角提示：为了解决 2PC 的单点挂起与阻塞问题，3PC 协议引入了 CanCommit 预询问与双向超时机制。在下一个 Slide 19 中，我们将深入剖析 3PC 协议及其依然遗留的网络分区问题。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

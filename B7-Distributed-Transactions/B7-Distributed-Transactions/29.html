@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 29 - 全链路电商分布式事务架构模式选型 (End-to-End E-Commerce Transaction Selection)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sitemap text-emerald-600"></i>
+                <span>Part 04 · 微服务最终一致性模式：TCC、Saga 与消息事务</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                全链路电商分布式事务架构模式选型 (End-to-End E-Commerce Transaction Selection)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Hybrid Architecture: Combining Seata AT, TCC, Saga &amp; Transactional MQ in a Unified Order Placement Flow
+            </p>
+        </div>
+
+        <!-- E-Commerce Order Placement Hybrid Topology Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-cart-shopping text-emerald-400"></i>
+                        <span>典型电商下单全链路混合分布式事务架构拓扑 (Hybrid E-Commerce Order Architecture)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Context-Aware Pattern Allocation per Sub-Service Boundary</span>
+                </div>
+
+                <!-- 4 Step E-Commerce Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Sub-Service 1: Stock Service -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-teal-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-boxes-stacked text-teal-400"></i>
+                                1. 扣减库存 (Stock)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Seata AT</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• <strong>子服务</strong>：`Stock-Service`</div>
+                            <div>• <strong>特点</strong>：高并发、强实时更新要求</div>
+                            <div class="text-teal-300 font-bold border-t border-slate-800 pt-0.5">
+                                ★ 选型：<strong>Seata AT 模式</strong>（低代码侵入，SQL 镜像自动回滚）
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sub-Service 2: Account Service -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-purple-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-wallet text-purple-400"></i>
+                                2. 扣减余额 (Account)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">TCC Mode</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• <strong>子服务</strong>：`Account-Service`</div>
+                            <div>• <strong>特点</strong>：金融级敏感资金交易</div>
+                            <div class="text-purple-300 font-bold border-t border-slate-800 pt-0.5">
+                                ★ 选型：<strong>TCC 模式</strong>（`frozen_balance` 预留资金防超扣）
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sub-Service 3: Member Service -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-gift text-amber-400"></i>
+                                3. 赠送积分 (Member)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Transactional MQ</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• <strong>子服务</strong>：`Member-Service`</div>
+                            <div>• <strong>特点</strong>：非实时关键路径，容忍延迟</div>
+                            <div class="text-amber-300 font-bold border-t border-slate-800 pt-0.5">
+                                ★ 选型：<strong>MQ 事务消息</strong>（异步解耦，秒级最终一致）
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sub-Service 4: Logistics System -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-truck-fast text-indigo-400"></i>
+                                4. 仓储发货 (Logistics)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Saga Mode</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• <strong>子服务</strong>：第三方 ERP / WMS 仓储系统</div>
+                            <div>• <strong>特点</strong>：跨机构 API，无法改动代码</div>
+                            <div class="text-indigo-300 font-bold border-t border-slate-800 pt-0.5">
+                                ★ 选型：<strong>Saga 模式</strong>（状态机正向指令与逆向撤销）
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Order Service Orchestration Code) vs Right Card (Selection Decision Flowchart) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Order Service Orchestration Spring Code -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-emerald-600"></i>
+                            <span>1. 订单主入口混合事务编排 (`OrderServiceImpl`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Hybrid Master</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-emerald-400 font-bold">// 主下单入口使用 @GlobalTransactional + MQ 混合驱动</div>
+                            <div><span class="text-indigo-400">@Service</span></div>
+                            <div><span class="text-indigo-400">public class</span> <span class="text-cyan-300">OrderServiceImpl</span> {</div>
+                            
+                            <div class="pl-3 text-indigo-400">@GlobalTransactional(name = "create-order", rollbackFor = Exception.class)</div>
+                            <div class="pl-3"><span class="text-indigo-400">public void</span> <span class="text-cyan-300">submitOrder</span>(OrderRequest req) {</div>
+                            <div class="pl-6 text-slate-400">// ① 扣库存 (Seata AT 模式)</div>
+                            <div class="pl-6">stockFeignClient.deduct(req.getSkuId(), req.getCount());</div>
+                            
+                            <div class="pl-6 text-slate-400">// ② 扣余额 (TCC 模式 - Try 阶段)</div>
+                            <div class="pl-6">accountTccAction.prepare(req.getUserId(), req.getAmount());</div>
+                            
+                            <div class="pl-6 text-slate-400">// ③ 发送积分赠送事务消息 (RocketMQ)</div>
+                            <div class="pl-6">rocketMQTemplate.sendMessageInTransaction(<span class="text-emerald-300">"points-topic"</span>, msg);</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：按子系统敏感度、响应延迟与系统边界进行针对性差异选型</span>
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Decision Flowchart & Pattern Selection Criteria -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-indigo-600"></i>
+                            <span>2. 企业级分布式事务四大选型准则 (Decision Criteria)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Selection Rules</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="p-1 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">准则 1：非核心主干路径，优先采用 MQ 事务消息</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    对延迟不敏感的旁路逻辑（发积分、送优惠券、日志审计），**一律使用异步消息**，彻底切断物理调用链。
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950 font-mono">准则 2：核心自研 RDBMS 服务，首选 Seata AT 模式</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    对于自身维护的关系型数据库，**Seata AT 模式提供零代码侵入**，性价比最高。
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">准则 3：资金与超卖敏感业务，采用 TCC 预留资源</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    涉及现金划转或高并发抢购，采用 **TCC 显式冻结资源**，防止高并发脏写与超卖事故。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>Part 04 完结：开启 Part 05 · Slide 30 企业级分布式事务框架：Apache Seata 深度实战</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">Part 04 总结 (Microservice Transaction Governance Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        真实的微服务架构**绝不存在“一种模式打天下”的万能方案**。优秀的服务端架构师应当像排兵布阵一样：在主干链路上用 **TCC/AT** 保障实时数据安全，在旁路上用 **MQ 事务消息** 实现高性能异步解耦，在外部接口上用 **Saga** 完成退避补偿。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 29 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">29</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[72.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (28.html <- 29.html -> 30.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="28.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">全链路电商分布式事务架构模式选型</span>
+            <a href="30.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="28.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="30.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 总结 Part 04 并引导学员做全链路混合选型：</span>
+                    “向学员做解构说明：本 Slide 总结 Part 04。请学员看这个真实的电商下单案例：扣库存用 Seata AT，扣余额用 TCC 预留，赠积分用 MQ 事务消息异步化，发货用 Saga 对接第三方 ERP。这就示范了如何在真实复杂架构中混合运用各种柔性事务模式。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Part 05 企业级框架 Apache Seata：</span>
+                    “请学员关注右下角提示：本页标记着 Part 04 的完结。下一个模块 **Part 05（Slide 30）** 将带大家深入探讨工业界事实上的分布式事务标准中间件——**Apache Seata** 的内核架构与 AT/TCC/Saga/XA 模式部署。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '30.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 长事务并发离线锁：乐观离线锁 vs. 悲观离线锁 (PoEAA Offline Locks)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring header navigation and action buttons... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering main layout and title block... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-lock text-indigo-600"></i>
+                <span>Part 01 · Spring 本地事务管理与离线锁模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                长事务并发离线锁：乐观离线锁 vs. 悲观离线锁 (PoEAA Offline Locks)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Business Transaction vs. System Transaction, Optimistic Offline Lock, Pessimistic Offline Lock &amp; Coarse-Grained Lock
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building PoEAA offline locks architectural comparison grid... -->
+        <!-- Business Transaction vs System Transaction Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-indigo-400"></i>
+                        <span>业务长事务 (Business Transaction) 与系统事务 (System Transaction) 关系映射</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">PoEAA Pattern: Managing Offline Locks Across User Think-Time</span>
+                </div>
+
+                <!-- Transaction Scope Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 text-xs font-mono items-center">
+                    <!-- Business Transaction Container -->
+                    <div class="md:col-span-12 p-2.5 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-user-clock text-indigo-400"></i>
+                                业务长事务 (Business Transaction - 跨多个 HTTP 请求 / 用户思考时间)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Offline Lock Domain</span>
+                        </div>
+
+                        <!-- 3 System Transactions Grid -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px] font-sans">
+                            <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+                                <div class="font-bold text-cyan-300 font-mono">系统事务 1：读取数据</div>
+                                <p class="text-slate-400 leading-tight">用户点击编辑按钮。开短事务加载客户 129 信息（带 version），释放 DB 连接。</p>
+                            </div>
+
+                            <div class="p-2 rounded-lg bg-amber-950/40 border border-amber-800/80 space-y-1">
+                                <div class="font-bold text-amber-300 font-mono">用户思考阶段 (Think-Time)</div>
+                                <p class="text-amber-200/90 leading-tight">用户在页面修改名称。<strong>绝不能保持物理 DB 连接或加 DB 排他锁</strong>（否则会打爆连接池）。</p>
+                            </div>
+
+                            <div class="p-2 rounded-lg bg-slate-900 border border-slate-800 space-y-1">
+                                <div class="font-bold text-emerald-300 font-mono">系统事务 2：校验与提交</div>
+                                <p class="text-slate-400 leading-tight">用户提交表单。开短事务比对版本，成功则更新 version + 1，失败则回滚。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Constructing code examples and coarse-grained lock details... -->
+        <!-- Content Grid: Left Card (Optimistic Offline Lock) vs Right Card (Pessimistic & Coarse-Grained Lock) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Optimistic Offline Lock -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-600"></i>
+                            <span>1. 乐观离线锁 (Optimistic Offline Lock)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Optimistic Versioning</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">核心原理与物理机制</div>
+                            <p class="text-[8.5px] text-slate-600">
+                                假定多会话并发冲突概率低。在数据表中维护 <code class="font-mono text-indigo-800 font-bold">version</code> 版本列。在提交阶段通过 SQL 检查版本号是否发生变动：
+                            </p>
+                        </div>
+
+                        <!-- Code Example -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-indigo-400 font-bold">// 带有 version 校验的更新 SQL</div>
+                            <div class="text-slate-300">UPDATE customer</div>
+                            <div class="text-slate-300">SET name = <span class="text-emerald-300">'NewName'</span>, version = version + 1</div>
+                            <div class="text-amber-300 font-bold">WHERE id = 129 AND version = 1;</div>
+                            <div class="text-slate-500">// 若影响行数 (Rows Affected) == 0，说明被其他 Session 抢先修改</div>
+                            <div class="text-rose-400 font-bold">// 抛出 OptimisticLockException，业务显式回滚处理！</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>优点：不持有物理 DB 锁，吞吐量极高；JPA 标准提供 `@Version` 原生支持</span>
+                    <i class="fa-solid fa-check"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Pessimistic Offline Lock & Coarse-Grained Lock -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-lock text-cyan-600"></i>
+                            <span>2. 悲观离线锁与粗粒度锁 (Pessimistic &amp; Coarse-Grained)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Pessimistic &amp; Coarse</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">悲观离线锁 (Pessimistic Offline Lock)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    假定冲突高发。在业务长事务开始时（用户加载编辑页），通过独立 **Lock Manager**（如 Redis 或数据库 <code class="font-mono text-cyan-900 font-bold">lock_table</code>）申请数据行的锁定令牌，阻止其他会话开启编辑。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">粗粒度锁 (Coarse-Grained Lock)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    当修改涉及一组关联对象（如 <code class="font-mono text-amber-900 font-bold">Customer</code> 及其包含的多条 <code class="font-mono text-amber-900 font-bold">Address</code>）时，不给每条 Address 单独维护锁，而是**让组内所有成员共享对根对象 (Customer) 的同一个版本/锁令牌**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>Part 01 完结：开启 Part 02 · Slide 11 分布式环境下的数据一致性理论 (CAP &amp; BASE)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Inserting footer controls and speaker notes drawer... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">Part 01 总结 (Spring 本地事务与离线锁心法)</h4>
+                    <p class="text-xs text-slate-700">
+                        单机本地事务中，Spring <code class="font-mono text-indigo-900 font-bold">@Transactional</code> 借助 **AOP 代理切面** 与 **`ThreadLocal` 绑定连接** 托管了声明式事务；而在跨越 HTTP 用户思考时间的长事务中，**乐观离线锁 (Version)** 与 **悲观离线锁 (Lock Manager)** 则补齐了长会话下的离线并发控制。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">长事务并发离线锁：乐观离线锁 vs. 悲观离线锁</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解长事务 (Business Transaction) 的痛点：</span>
+                    “向学员解构说明：在 Web 应用中，一个业务事务可能跨越多个 HTTP 请求（例如用户加载页面、编辑表单、点击提交）。在这段用户思考时间 (Think-Time) 内，**绝对不能保持数据库连接或加物理数据库锁**，否则连接池会被瞬间打爆。这就需要 PoEAA 提出的离线锁模式。”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 总结 Part 01 并预告 Part 02：</span>
+                    “请学员关注离线锁与粗粒度锁的区别：乐观离线锁靠 `version` 校验；悲观离线锁靠独立 Lock Manager；粗粒度锁让聚合根（如 Customer）共享同一个 Version 对象。本页也标记着 Part 01 的完结。在下一页（Slide 11）中，我们将正式跨越单机边界，进入 **Part 02 分布式数据一致性理论（CAP 与 BASE）** 的探讨。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

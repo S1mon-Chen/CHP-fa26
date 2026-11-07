@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - CAP 工程权衡与选型：CP 强一致 vs. AP 高可用 (Engineering Trade-offs in CAP)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring header navigation and controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering title block and CAP trade-off theorem... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-scale-balanced text-cyan-600"></i>
+                <span>Part 02 · 分布式环境下的数据一致性理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                CAP 工程权衡与选型：CP 强一致 vs. AP 高可用 (Engineering Trade-offs)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Physical Inevitability of Network Partitions ($P$), CP Architecture, AP Architecture &amp; System Selection Matrix
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Constructing CP vs AP architectural comparison grid... -->
+        <!-- Inevitability of P Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-network-wired text-cyan-400"></i>
+                        <span>网络分区 ($P$) 的物理必然性与架构抉择公式 (Physical Inevitability)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Inevitability: $\text{Network Partition } P \text{ is Guaranteed to Occur}$</span>
+                </div>
+
+                <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-center text-xs font-mono">
+                    <div class="text-cyan-300 font-bold mb-1">
+                        $$\text{CAP 工程现实}: \quad P \text{ 物理上不可避免} \implies \text{架构师的唯一抉择是 } (C + P) \quad \text{或} \quad (A + P)$$
+                    </div>
+                    <p class="text-[9.5px] font-sans text-slate-300 leading-relaxed max-w-4xl mx-auto">
+                        因为光纤断裂、路由器宕机、网络拥堵丢包等物理故障是**必然发生的**，所以系统在网络发生分区 ($P$) 时，必须面临抉择：是**牺牲可用性去捍卫强一致性 (CP)**，还是**牺牲强一致性去保障高可用 (AP)**？
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building scenario decision matrix and real-world examples... -->
+        <!-- Content Grid: Left Card (CP Architecture) vs Right Card (AP Architecture) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: CP Architecture (Consistency + Partition Tolerance) -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                            <span>1. CP 强一致架构模式 (Consistency + Partition Tolerance)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">CP Strategy</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">物理机制 (Mechanics)</div>
+                            <p class="text-[8.5px] text-slate-600">
+                                当网络分区发生、数据无法跨节点即时同步时，为了避免客户端读到旧数据或写入不一致数据，系统**拒绝/阻塞网络隔离节点的读写请求**。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">代代价与折中 (Trade-off)</div>
+                            <p class="text-[8.5px] text-slate-600">
+                                <strong>牺牲高可用性 ($A$)</strong>。部分节点在分区期间直接返回 `500 Internal Error` 或请求超时挂起。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800">
+                            <div class="text-indigo-300 font-bold">典型代表系统 &amp; 场景：</div>
+                            <div class="text-slate-300">• 数据库/协调组件：ZooKeeper, HBase, Redis Cluster, Etcd</div>
+                            <div class="text-slate-300">• 核心业务场景：银行转账、账户核算、分布式锁、主键生成器</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：数据绝对不能错！宁可服务报 500，也决不能读错或脏写</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: AP Architecture (Availability + Partition Tolerance) -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-emerald-600"></i>
+                            <span>2. AP 高可用架构模式 (Availability + Partition Tolerance)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">AP Strategy</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-emerald-950 font-mono">物理机制 (Mechanics)</div>
+                            <p class="text-[8.5px] text-slate-600">
+                                当网络分区发生时，每个节点依靠自身现有状态**继续响应客户端请求**，即使该节点的数据可能尚未同步到最新版本。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-emerald-950 font-mono">代价与折中 (Trade-off)</div>
+                            <p class="text-[8.5px] text-slate-600">
+                                <strong>牺牲强一致性 ($C$)</strong>。客户端可能短时间读到陈旧旧值，依靠后期的**最终一致性 (Eventual Consistency)** 机制修复。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800">
+                            <div class="text-emerald-300 font-bold">典型代表系统 &amp; 场景：</div>
+                            <div class="text-slate-300">• 数据库/服务发现：Eureka, Cassandra, DynamoDB, RocketMQ</div>
+                            <div class="text-slate-300">• 核心业务场景：商品页面浏览、社交点赞/评论、日志收集、推荐系统</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 14 · BASE 理论与柔性事务：基本可用、软状态与最终一致性</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Generating footer controls and speaker notes drawer... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启发 (CP vs AP Trade-off Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        架构设计没有绝对的优劣，只有**场景匹配**。对于金融转账和核心账务，数据错误是不可接受的，必须选 <code class="font-mono text-cyan-900 font-bold">CP</code>；而对于电商商品浏览与社交点赞，保证页面 100% 能够打开远比实时准确重要，必须选 <code class="font-mono text-cyan-900 font-bold">AP</code>。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 13 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[32.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">CAP 工程权衡与选型：CP 强一致 vs. AP 高可用</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 CP 与 AP 选型的工程本质：</span>
+                    “向学员做解构说明：上一 Slide 我们剖析了 CAP 的定义。本 Slide 要让学员深刻明白：网络分区（P）在物理现实中是必然发生的，所以工程师的核心任务不是去试图三者兼得，而是在网络分区发生时，选择 CP 还是 AP。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 对比金融场景与互联网场景的差异：</span>
+                    “请学员对比左右两张卡片：金融转账（如 ZooKeeper、HBase、转账交易）选 CP——宁可系统不可用报 500，也决不能读错钱；而商品浏览、社交点赞（如 Eureka、Cassandra）选 AP——即使看到的商品存库延迟了几秒，也必须优先保证页面能点开。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

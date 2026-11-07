@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - CAP 定理深度剖析 (CAP Theorem Deep Dive)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-scale-balanced text-cyan-600"></i>
+                <span>Part 02 · 分布式环境下的数据一致性理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                CAP 定理深度剖析 (CAP Theorem Deep Dive)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Consistency, Availability &amp; Partition Tolerance: Brewer's Theorem &amp; The Impossible Triangle
+            </p>
+        </div>
+
+        <!-- CAP Triangle Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-shapes text-cyan-400"></i>
+                        <span>Brewer CAP 不可能三角模型 (Brewer's CAP Triangle)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Theorem: No Distributed System Can Provide C, A, and P Simultaneously</span>
+                </div>
+
+                <!-- 3 Dimensions Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    <!-- C: Consistency -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">C - Consistency (强一致性)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Linearizability</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            所有节点在同一时刻看到完全相同的数据。一次写入成功后，后续任何节点的读取操作都必须返回该最新写入值。
+                        </p>
+                    </div>
+
+                    <!-- A: Availability -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[10.5px]">A - Availability (高可用性)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Non-Error Response</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            服务在一个合理的时间范围内（Bounded Time）始终响应客户端请求，并返回非错误结果，但不保证数据是最新的。
+                        </p>
+                    </div>
+
+                    <!-- P: Partition Tolerance -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-cyan-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-cyan-300 font-bold text-[10.5px]">P - Partition Tolerance (分区容忍性)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">Network Partition</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            当分布式网络因断纤、丢包或路由故障产生网络分区（Network Partition）时，系统仍能够继续提供服务。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (CAP Dimensions Detail) vs Right Card (The Impossible Triangle) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: CAP Dimensions Breakdown -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-cyan-600"></i>
+                            <span>1. CAP 定理三大物理维度的精准解构</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">CAP Elements</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">Consistency (强一致性)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    这里的 Consistency 特指<strong>线性一致性 (Linearizability)</strong>，等价于单机全局原子钟下读写操作的即时物理同步，要求极其苛刻。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">Availability (高可用性)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    强调“非故障节点必须响应非超时、非错误的结果”。任何导致请求挂起超时或直接返回 <code>500 Server Error</code> 的行为均视为打破可用性。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">Partition Tolerance (分区容忍性)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    强调“分布式系统在物理网络发生断纤、丢包或路由延迟引发网络分区 (Network Partition) 时，系统仍能继续运行并提供服务”。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>本质：CAP 是物理网络不可靠性在分布式算法上的必然约束</span>
+                    <i class="fa-solid fa-network-wired"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Why C, A, P Cannot Coexist -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-exclamation text-indigo-600"></i>
+                            <span>2. 为什么 C、A、P 三者物理上无法兼得？</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Mathematical Proof</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">网络分区 (Partition) 发生时的两难推导</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    当节点 $N_1$ 与 $N_2$ 之间网络断开（$P$ 发生），客户端向 $N_1$ 写入了新值 $v_2$：<br/>
+                                    • 若要保证 <strong>Consistency ($C$)</strong>：$N_2$ 无法同步新值 $v_2$，此时向 $N_2$ 读取请求必须<strong>拒绝/阻塞</strong>，这破坏了 <strong>Availability ($A$)</strong>！<br/>
+                                    • 若要保证 <strong>Availability ($A$)</strong>：$N_2$ 必须继续响应客户端，但只能返回旧值 $v_1$，这破坏了 <strong>Consistency ($C$)</strong>！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 13 · CAP 工程权衡：CP 强一致 vs. AP 高可用架构选型</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启发 (CAP Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        理解 CAP 定理的关键在于明白 <strong>“P (网络分区) 在物理网络中是必然发生的客观事实”</strong>。因此，架构师的真正选择从来不是“三选二”，而是在网络分区发生时，选择<strong>牺牲可用性去保强一致性 (CP)</strong>，还是<strong>牺牲强一致性去保高可用性 (AP)</strong>。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 12 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">12</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[30.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (11.html <- 12.html -> 13.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">CAP 定理深度剖析</span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="11.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="13.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 CAP 定理的推导过程：</span>
+                    “向学员做逻辑拆解：CAP 定理由 Eric Brewer 提出。关键要说明‘为什么不能三者兼得’——因为物理网络必然存在分区（P）。当网络断开时，写节点的数据无法同步到读节点。此时如果你要保证读节点响应（A），就只能返回旧数据，牺牲了一致性（C）；如果你要保证数据一致（C），就必须拒绝读节点响应，牺牲了可用性（A）。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Slide 13 的 CP vs AP 工程权衡：</span>
+                    “请学员关注右下角提示：既然三者无法兼得，那么在分布式系统选型时，究竟是选择 CP 还是 AP？在下一个 Slide 13 中，我们将详细探讨 CP 架构（如 ZooKeeper、HBase、金融转账）与 AP 架构（如 Eureka、Cassandra、商品浏览）的选型取舍。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

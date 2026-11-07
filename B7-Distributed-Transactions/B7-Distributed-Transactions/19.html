@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - 三阶段提交协议：CanCommit、PreCommit 与 DoCommit (Three-Phase Commit Protocol)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                <span>Part 03 · 传统强一致性分布式事务：XA 与 2PC/3PC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                三阶段提交协议：CanCommit、PreCommit 与 DoCommit (3PC Protocol)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Phase 1: CanCommit, Phase 2: PreCommit, Phase 3: DoCommit &amp; Dual-Timeout Non-Blocking Mechanics
+            </p>
+        </div>
+
+        <!-- 3PC Three-Stage Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-split-up-and-left text-purple-400"></i>
+                        <span>3PC 三阶段物理消息管线 (3PC Phase 1 $\rightarrow$ Phase 2 $\rightarrow$ Phase 3)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Optimizing 2PC with Non-locking Pre-check &amp; RM Timeouts</span>
+                </div>
+
+                <!-- 3PC Stages Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    <!-- Phase 1: CanCommit -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-question text-indigo-400"></i>
+                                阶段 1：CanCommit (询问)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">No Lock</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>TM 询问意向：</strong>向参与者下发 <code class="text-indigo-300 font-mono">CanCommit</code> 请求。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>RM 检查网络状态：</strong>评估自身数据库连接与状态，<strong>不锁资源</strong>回复 YES/NO。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2: PreCommit -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-hourglass-half text-amber-400"></i>
+                                阶段 2：PreCommit (预提交)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Locking</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>全赞成 $\rightarrow$ 预提交：</strong>TM 广播 <code class="text-amber-300 font-mono">PreCommit</code>；RM 执行 SQL 锁定资源，写 Undo/Redo 并回复 ACK。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>任一拒绝 $\rightarrow$ 中止：</strong>TM 广播 <code class="text-rose-400 font-mono">Abort</code>，撤销流程。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 3: DoCommit -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-purple-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-purple-400"></i>
+                                阶段 3：DoCommit (提交)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Decision</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>正式提交：</strong>TM 发送 <code class="text-emerald-400 font-mono">DoCommit</code>，RM 提交事务释放锁并响应 <code class="text-emerald-400 font-mono">HaveCommitted</code>。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong>超时自动提交：</strong>若 RM 在 PreCommit 后超时未收到 TM 指令，<strong>默认自动执行 Commit</strong>！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (2 Key Improvements over 2PC) vs Right Card (3PC Dual Timeout Mechanics) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Improvements Over 2PC -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-indigo-600"></i>
+                            <span>1. 相比 2PC 协议的两大核心改进物理机制</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">2 Key Upgrades</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">改进 1：引入 CanCommit 预探针，提前过滤无法提交的节点</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                2PC 直接在第一阶段要求 RM 执行 SQL 并在磁盘上锁定行资源。3PC 增加 <code class="font-mono text-indigo-800 font-bold">CanCommit</code> 预探针，在<strong>不持有任何数据库锁</strong>的前提下先确认参与者的网络通信与基础可用性，大幅减少了无效的资源排他锁定。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">改进 2：引入参与者 (RM) 端超时机制，破除单点死锁悬挂</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                2PC 中只有 TM 有超时机制，导致 RM 在投票后若 TM 宕机便会无限期阻塞挂起。3PC 赋予了 RM 超时能力：RM 在 <code class="font-mono text-indigo-800 font-bold">PreCommit</code> 接收成功后，若进入阶段 3 超时未等到 TM 命令，**默认认为多数派均已准备就绪，自动触发提交 (Auto-Commit)**。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：3PC 通过增加一个阶段与双向超时，降低了协调者单点故障带来的长时间阻塞</span>
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Dual Timeout Mechanics & Remaining Vulnerabilities -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat text-purple-600"></i>
+                            <span>2. 3PC 遗留的隐患与网络脑裂问题 (3PC Vulnerabilities)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">3PC Limits</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">阶段 3 发生网络分区导致的数据分裂 (Data Inconsistency)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    若 TM 在阶段 2 决定下发 <code class="font-mono text-rose-900 font-bold">Abort</code>（例如某些 RM 拒绝了 PreCommit），但此时产生网络分区，部分 RM2 未收到 Abort 消息，其超时后依然会<strong>强制自动提交 (Auto-Commit)</strong>，而收到 Abort 的 RM1 则执行回滚，<strong>跨库数据依然产生不一致</strong>！
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950 font-mono">工程结论 (Engineering Conclusion)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5 leading-relaxed">
+                                    3PC 增加了通信轮次（跨网络 3 次往返），进一步拉长了整体延迟，且**依然无法从根本上解决网络分区引发的数据不一致**。因此工业界微服务架构普遍放弃了 3PC，全面转向 **BASE 柔性事务模式**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 20 · 2PC/3PC 协议与云原生微服务的不兼容性总结</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (3PC Protocol Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        3PC 协议通过增加 <code class="font-mono text-purple-900 font-bold">CanCommit</code> 阶段与参与者超时机制，缓解了 2PC 的单点卡死问题。然而，试图在物理不可靠的网络上通过多轮 TCP 握手实现绝对强一致性，无异于“在沙滩上建高楼”。这促使分布式系统走向 **Part 04 柔性事务与最终一致性**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 19 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">三阶段提交协议 (3PC Protocol)</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员理解 3PC 对 2PC 的两大改进：</span>
+                    “向学员解构说明：3PC 是为了解决 2PC 的缺点而提出的。两大核心改进：1. 增加了 CanCommit 阶段，不锁资源先问问节点好不好使；2. 给参与者 RM 增加了超时机制。如果在 PreCommit 之后与 TM 失去联系，RM 不再像 2PC 那样无限卡住，而是默认自动执行 Commit。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 3PC 为何仍无法解决网络脑裂数据不一致：</span>
+                    “请学员特别关注右侧卡片：RM 端超时自动 Commit 虽然解开了死锁，但在网络脑裂时会带来新的灾难：如果 TM 原本下发的是 Abort 命令，由于网络断开部分 RM 没收到而超时自动 Commit，数据依然被撕裂了！接下来的 Slide 20 将总结 2PC/3PC 协议与云原生微服务的不兼容性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

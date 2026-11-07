@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 37 - Seata 四大模式选型矩阵与决策树 (Seata Four Modes Decision Matrix)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sliders text-emerald-600"></i>
+                <span>Part 05 · 企业级分布式事务框架：Apache Seata 深度实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Seata 四大模式选型矩阵与决策树 (Seata Four Modes Decision Matrix)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                AT vs. TCC vs. Saga vs. XA: Architectural Decision Tree &amp; Enterprise Trade-off Matrix
+            </p>
+        </div>
+
+        <!-- Decision Tree Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sitemap text-emerald-400"></i>
+                        <span>Seata 架构模式选型极速决策路线图 (Seata 4 Modes Decision Flowchart)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Context-Driven Pattern Selection</span>
+                </div>
+
+                <!-- Decision Flowchart Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 text-xs font-mono">
+                    
+                    <!-- AT Mode Decision -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[10.5px]">AT 模式 (默认主推)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Non-Intrusive</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            • **条件**：自研微服务 + 关系型数据库 (RDBMS)<br/>
+                            • **优势**：无代码侵入，SQL 镜像自动 Undo 回滚，高吞吐量。
+                        </p>
+                    </div>
+
+                    <!-- TCC Mode Decision -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[10.5px]">TCC 模式 (应用层预留)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">Non-SQL / Redis</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            • **条件**：NoSQL (Redis/Mongo) 或极高并发不希望去 TC 抢全局锁<br/>
+                            • **优势**：显式预留资源，极高吞吐。
+                        </p>
+                    </div>
+
+                    <!-- Saga Mode Decision -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">Saga 模式 (状态机长事务)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Legacy / 3rd-Party</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            • **条件**：改造旧外包系统、长达数小时长活事务或跨第三方 API<br/>
+                            • **优势**：JSON 可视化状态机编排。
+                        </p>
+                    </div>
+
+                    <!-- XA Mode Decision -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-cyan-700 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-cyan-300 font-bold text-[10.5px]">XA 模式 (物理强一致)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">Strict ACID</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            • **条件**：核心金融核算对中间脏读零容忍 + 数据库支持 XA 驱动<br/>
+                            • **优势**：DB 原生保障强一致。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Full Comparison Table Matrix) vs Right Card (Production Golden Rules) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Full Matrix Comparison Table (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells text-emerald-600"></i>
+                            <span>1. Seata 四大模式全方位维度对比矩阵 (Comprehensive Comparison)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">4 Modes Matrix</span>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="rounded-xl border border-emerald-100 bg-white p-2 space-y-1 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-[9px]">
+                            <thead>
+                                <tr class="border-b border-emerald-100 bg-slate-50 font-mono text-[8.5px] text-slate-700">
+                                    <th class="py-1 px-1.5 font-bold">对比维度</th>
+                                    <th class="py-1 px-1.5 font-bold text-emerald-900">AT 模式 (主推)</th>
+                                    <th class="py-1 px-1.5 font-bold text-teal-900">TCC 模式</th>
+                                    <th class="py-1 px-1.5 font-bold text-indigo-900">Saga 模式</th>
+                                    <th class="py-1 px-1.5 font-bold text-cyan-900">XA 模式</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8.5px]">
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">代码侵入性</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">零侵入 (仅注解)</td>
+                                    <td class="py-1 px-1.5 text-rose-700 font-bold">高 (手写 3 方法)</td>
+                                    <td class="py-1 px-1.5 text-amber-700 font-medium">中 (配置 JSON)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">零侵入 (数据源代理)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">一致性等级</td>
+                                    <td class="py-1 px-1.5 text-teal-800">柔性最终一致性</td>
+                                    <td class="py-1 px-1.5 text-teal-800">柔性最终一致性</td>
+                                    <td class="py-1 px-1.5 text-teal-800">柔性最终一致性</td>
+                                    <td class="py-1 px-1.5 text-cyan-900 font-bold">物理强一致性 (ACID)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">物理锁持有时长</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">短 (一阶段释放 DB 锁)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">短 (应用层预留状态)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">短 (无物理锁)</td>
+                                    <td class="py-1 px-1.5 text-rose-700 font-bold">长 (从 1 阶段挂起至 2 阶段)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">并发吞吐量</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极高</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极致 (无 TC 锁竞争)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">极高</td>
+                                    <td class="py-1 px-1.5 text-slate-600">较低</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">数据源要求</td>
+                                    <td class="py-1 px-1.5 text-slate-700">RDBMS + `undo_log`</td>
+                                    <td class="py-1 px-1.5 text-teal-800 font-bold">任意 (Redis/NoSQL/RPC)</td>
+                                    <td class="py-1 px-1.5 text-indigo-800 font-bold">任意 (包含第三方 API)</td>
+                                    <td class="py-1 px-1.5 text-slate-700">必须支持 XA 驱动</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：选型就是根据系统边界、吞吐要求与一致性容忍度做科学折中</span>
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Production Selection Rules (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check text-purple-600"></i>
+                            <span>2. 生产环境四大架构选型准则 (Production Rules)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Golden Rules</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9.5px]">
+                            <div class="p-1 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">准则 1：自研 RDBMS 微服务，无脑首选 AT 模式</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    80% 的微服务场景（如订单、商品、用户）首选 **AT 模式**，开发效率最高，几乎零代码改动。
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">准则 2：非关系型数据库或秒杀高并发，采用 TCC 模式</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    对 Redis 扣减或高并发热点资金，选择 **TCC 模式**，避开 TC 全局锁争抢瓶颈。
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">准则 3：异构旧系统与第三方 API，采用 Saga 模式</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    对接第三方支付或外包 ERP 无法修改底层代码时，使用 **Saga 状态机编排** 撤销接口。
+                                </p>
+                            </div>
+
+                            <div class="p-1 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">准则 4：金融核算脏读零容忍，采用 XA 模式</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    涉及国家合规与金融账务强一致性时，牺牲部分并发性能换取 **XA 物理强一致**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 38 · Seata 实战：`@GlobalTransactional` 在 Spring Boot 中的落地</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Seata Decision Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        Apache Seata 的伟大之处在于**在一个统一的框架内整合了 AT、TCC、Saga 与 XA 四大模式**。架构师可以在同一个微服务系统中，根据不同子服务的业务敏感度与性能要求混用不同模式，实现真正的按需调优。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 37 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">37</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[92.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (36.html <- 37.html -> 38.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="36.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Seata 四大模式选型矩阵与决策树</span>
+            <a href="38.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="36.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="38.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员做 Seata 四大模式的综合总结：</span>
+                    “向学员做解构说明：前面我们分别拆解了 AT、TCC、Saga 与 XA 四大模式。本 Slide 是整讲最核心的总结页。请大家抓牢这四大选型原则：1. 自研 RDBMS 无脑选 AT 模式；2. 非关系型/极高并发用 TCC；3. 第三方/旧系统用 Saga；4. 金融强一致用 XA。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 Seata 的多模式混合调优能力：</span>
+                    “请学员特别注意：Seata 最强的地方在于一个系统内可以混合使用这四种模式。比如订单用 AT，扣款用 TCC，积分用 MQ 消息，发货用 Saga！在下一个 Slide 38 中，我们将手把手看 `@GlobalTransactional` 在 Spring Boot 中的实战代码。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '38.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '36.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 08 - 生产环境八大 @Transactional 事务失效陷阱 (Eight Common @Transactional Pitfalls)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-bug text-indigo-600"></i>
+                <span>Part 01 · Spring 本地事务管理与离线锁模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                生产环境八大 `@Transactional` 事务失效陷阱 (Eight Common Pitfalls)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                AOP Proxy Bypassing, Class Self-Invocation, Non-Public Modifiers, Swallowed Exceptions &amp; Multi-Thread Boundaries
+            </p>
+        </div>
+
+        <!-- Visual Pitfall Classification Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                        <span>Spring `@Transactional` 事务失效八大物理场景分类 (8 Transaction Failure Patterns)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Core Rule: AOP Aspect Interception &amp; ThreadLocal Connection Boundaries</span>
+                </div>
+
+                <!-- 8 Pitfalls Grid (4 Columns, 2 Rows) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                    
+                    <!-- Pitfall 1: Self Invocation -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">1. 同类自调用</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">AOP Bypass</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            方法内部使用 <code class="font-mono text-rose-300">this.method()</code> 调用同类带注解方法，绕过代理切面。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 2: Non-public Method -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">2. 非 public 修饰</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Private Method</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            注解加在 <code class="font-mono text-rose-300">private / protected</code> 方法上，Spring 默认拦截器直接忽略。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 3: Unmanaged Bean -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">3. Bean 未被托管</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Not Spring Bean</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            类缺少 <code class="font-mono text-rose-300">@Service / @Component</code>，直接通过 <code class="font-mono text-rose-300">new</code> 创建无法被代理。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 4: Final Class/Method -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[10.5px]">4. final 类/方法</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">CGLIB Barrier</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            CGLIB 通过生成子类重写方法代理，<code class="font-mono text-rose-300">final</code> 阻止了子类重写。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 5: Swallowed Exception -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[10.5px]">5. 内部吞掉异常</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Try-Catch Trap</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            内层 <code class="font-mono text-amber-300">try-catch</code> 捕获异常未向上抛出，AOP 代理无法感知到错误。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 6: Checked Exception -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[10.5px]">6. Checked 异常未设</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Default Policy</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            抛出受检异常未配 <code class="font-mono text-amber-300">rollbackFor = Exception.class</code>，默认提交。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 7: Multi-Threading -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">7. 跨线程异步调用</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">ThreadLocal Lost</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            新子线程无法复用主线程绑定的 <code class="font-mono text-indigo-300">ThreadLocal</code> 物理 DB 连接。
+                        </p>
+                    </div>
+
+                    <!-- Pitfall 8: Unsupported DB Engine -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px]">8. 存储引擎不支持</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">MyISAM Engine</span>
+                        </div>
+                        <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                            MySQL 使用了不支持事务的 <code class="font-mono text-indigo-300">MyISAM</code> 引擎而非 <code class="font-mono text-indigo-300">InnoDB</code>。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Self-Invocation Code Pitfall) vs Right Card (Solutions) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Self-Invocation Pitfall Code Example -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-rose-600"></i>
+                            <span>1. 高频罪魁祸首：同类内部自调用 (Self-Invocation)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">Self-Invocation Trap</span>
+                    </div>
+
+                    <!-- Code Example -->
+                    <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                        <div class="text-rose-400 font-bold">// ❌ 踩坑示范：直接调用 this.updateStock()，绕过了 Spring AOP 代理切面！</div>
+                        <div><span class="text-indigo-400">@Service</span></div>
+                        <div><span class="text-indigo-400">public class</span> <span class="text-cyan-300">OrderServiceImpl</span> <span class="text-indigo-400">implements</span> OrderService {</div>
+                        
+                        <div class="pl-3 text-slate-300"><span class="text-indigo-400">public void</span> <span class="text-cyan-300">createOrder</span>() {</div>
+                        <div class="pl-6 text-rose-300"><span class="text-indigo-400">this</span>.updateStock(); <span class="text-slate-500">// 直接目标调用，@Transactional 完全失效！</span></div>
+                        <div class="pl-3 text-slate-300">}</div>
+
+                        <div class="pl-3 text-indigo-400">@Transactional</div>
+                        <div class="pl-3 text-slate-300"><span class="text-indigo-400">public void</span> <span class="text-cyan-300">updateStock</span>() {</div>
+                        <div class="pl-6 text-slate-300">stockDao.deduct();</div>
+                        <div class="pl-3 text-slate-300">}</div>
+                        <div>}</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>本质：Spring AOP 代理对象只有被外部 Bean 调用时才能触发拦截器管线</span>
+                    <i class="fa-solid fa-ban"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Fix Solutions for Self-Invocation -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-wrench text-emerald-600"></i>
+                            <span>2. 同类自调用失效三大物理解法 (Solutions)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Fix Solutions</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <!-- Solution 1: Refactor to independent Service -->
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-emerald-950 font-mono flex items-center gap-1">
+                                <i class="fa-solid fa-check text-emerald-600"></i>
+                                <span>方案 1：解耦拆分到独立 Service（强烈推荐）</span>
+                            </div>
+                            <p class="text-[8.5px] text-slate-600">
+                                将 <code class="font-mono text-emerald-800 font-bold">updateStock()</code> 拆分重构到独立的 <code class="font-mono text-emerald-800 font-bold">StockService</code> 中，在 <code class="font-mono text-emerald-800 font-bold">OrderService</code> 里注入并调用。
+                            </p>
+                        </div>
+
+                        <!-- Solution 2: AopContext.currentProxy() -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                            <div class="text-emerald-400 font-bold">// 方案 2：使用 AopContext.currentProxy() 强行获取当前 AOP 代理对象</div>
+                            <div><span class="text-indigo-400">public void</span> <span class="text-cyan-300">createOrderCorrect</span>() {</div>
+                            <div class="pl-3 text-emerald-300">((OrderService) AopContext.currentProxy()).updateStock();</div>
+                            <div>} <span class="text-slate-500">// 需在配置类标注 @EnableAspectJAutoProxy(exposeProxy = true)</span></div>
+                        </div>
+
+                        <!-- Solution 3: Self-injection -->
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-0.5 text-[9.5px]">
+                            <div class="font-bold text-emerald-950 font-mono flex items-center gap-1">
+                                <i class="fa-solid fa-check text-emerald-600"></i>
+                                <span>方案 3：通过 `@Lazy` 自身循环注入代理对象</span>
+                            </div>
+                            <p class="text-[8.5px] text-slate-600">
+                                在类内部使用 <code class="font-mono text-emerald-800 font-bold">@Autowired @Lazy private OrderService self;</code> 注入自身代理对象，并使用 <code class="font-mono text-emerald-800 font-bold">self.updateStock()</code>。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 9 · Spring 事务隔离级别与底层数据库隔离映射</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Transaction Pitfalls Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Spring <code class="font-mono text-indigo-900 font-bold">@Transactional</code> 事务生效的基础是 **Spring AOP 代理切面的正常拦截** 与 **底层数据库连接绑定至当前线程的 `ThreadLocal`**。记住这八大陷阱，能在代码 Code Review 中规避 95% 以上的生产静默提交事故！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 8 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">08</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[20.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (7.html <- 8.html -> 9.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">生产环境八大 `@Transactional` 事务失效陷阱</span>
+            <a href="9.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="7.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="9.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解生产环境常见的 8 大失效陷阱：</span>
+                    “向学员做解构说明：很多同学在开发中遇到 `@Transactional` 不生效，找半天找不到原因。这 8 大陷阱覆盖了 95% 以上的生产事故。最典型的就是‘同类自调用’——当类内方法直接调用带 `@Transactional` 的本地方法时，由于使用的是原始的 `this` 引用而非代理对象，AOP 拦截器根本无法触发！”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 强调同类自调用的 3 种解法：</span>
+                    “请特别提醒学员右侧的解决方案：最优雅的是重构代码，把方法拆分到独立 Service；如果非要在同类中调用，可以使用 `AopContext.currentProxy()` 或者通过 `@Lazy` 自身循环注入代理对象，确保调用走的是 AOP 代理。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

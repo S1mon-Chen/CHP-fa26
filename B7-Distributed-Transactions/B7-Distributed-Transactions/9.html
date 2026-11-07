@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 09 - Spring 事务隔离级别与底层数据库映射 (Spring Isolation Level Mapping)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-layer-group text-indigo-600"></i>
+                <span>Part 01 · Spring 本地事务管理与离线锁模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring 事务隔离级别与底层数据库映射 (Isolation Level Mapping)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Spring Isolation Enum, JDBC Connection Setting, DB Default Mappings &amp; Concurrency Anomalies Prevention
+            </p>
+        </div>
+
+        <!-- Visual Isolation Levels Table Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-table-cells text-indigo-400"></i>
+                        <span>Spring 隔离级别枚举与底层数据库映射矩阵 (Isolation Level Mapping Matrix)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">JDBC Connection Isolation &amp; Concurrency Anomalies</span>
+                </div>
+
+                <!-- Matrix Table Container -->
+                <div class="rounded-xl border border-slate-800 bg-slate-950 p-2 space-y-1 overflow-x-auto">
+                    <table class="w-full text-left border-collapse font-sans text-[9.5px]">
+                        <thead>
+                            <tr class="border-b border-slate-800 bg-slate-900/80 font-mono text-[9px] text-slate-300">
+                                <th class="py-1.5 px-2 font-bold w-1/4">Spring 隔离级别枚举 (`Isolation`)</th>
+                                <th class="py-1.5 px-2 font-bold w-1/4 text-indigo-300">底层数据库设置与映射 (JDBC Level)</th>
+                                <th class="py-1.5 px-2 font-bold w-1/4 text-emerald-300">解决的并发异常 (Prevented)</th>
+                                <th class="py-1.5 px-2 font-bold w-1/4 text-amber-300">典型数据库默认配置 (DB Defaults)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/80 text-[9px] font-mono">
+                            <!-- DEFAULT -->
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="py-1.5 px-2 font-bold text-indigo-300">DEFAULT <span class="text-[7.5px] text-indigo-400 font-normal">(默认)</span></td>
+                                <td class="py-1.5 px-2 text-slate-300">遵循底层 Connection 默认隔离级别</td>
+                                <td class="py-1.5 px-2 text-slate-300">取决于底层数据库配置</td>
+                                <td class="py-1.5 px-2 font-sans text-slate-300">MySQL = RR; Oracle/Postgres/SQL Server = RC</td>
+                            </tr>
+                            <!-- READ_UNCOMMITTED -->
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="py-1.5 px-2 font-bold text-rose-300">READ_UNCOMMITTED</td>
+                                <td class="py-1.5 px-2 text-rose-200"><code class="text-rose-300 font-mono">TRANSACTION_READ_UNCOMMITTED</code></td>
+                                <td class="py-1.5 px-2 text-slate-400">仅防脏写（允许脏读、不可重复读、幻读）</td>
+                                <td class="py-1.5 px-2 font-sans text-slate-400">极少生产使用（极度不安全）</td>
+                            </tr>
+                            <!-- READ_COMMITTED -->
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="py-1.5 px-2 font-bold text-amber-300">READ_COMMITTED</td>
+                                <td class="py-1.5 px-2 text-amber-200"><code class="text-amber-300 font-mono">TRANSACTION_READ_COMMITTED</code></td>
+                                <td class="py-1.5 px-2 text-emerald-300 font-bold">防止脏读 (Dirty Read)</td>
+                                <td class="py-1.5 px-2 font-sans text-amber-200">Oracle, PostgreSQL, SQL Server 默认</td>
+                            </tr>
+                            <!-- REPEATABLE_READ -->
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="py-1.5 px-2 font-bold text-teal-300">REPEATABLE_READ</td>
+                                <td class="py-1.5 px-2 text-teal-200"><code class="text-teal-300 font-mono">TRANSACTION_REPEATABLE_READ</code></td>
+                                <td class="py-1.5 px-2 text-emerald-300 font-bold">防止脏读 + 不可重复读 (Non-Repeatable Read)</td>
+                                <td class="py-1.5 px-2 font-sans text-teal-200">MySQL InnoDB 默认（MVCC+Next-Key 防幻读）</td>
+                            </tr>
+                            <!-- SERIALIZABLE -->
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="py-1.5 px-2 font-bold text-purple-300">SERIALIZABLE</td>
+                                <td class="py-1.5 px-2 text-purple-200"><code class="text-purple-300 font-mono">TRANSACTION_SERIALIZABLE</code></td>
+                                <td class="py-1.5 px-2 text-emerald-300 font-bold">防止脏读 + 不可重复读 + 幻读 (Phantom)</td>
+                                <td class="py-1.5 px-2 font-sans text-purple-200">最高安全级别（串行读写锁，高并发吞吐低）</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Spring Code & JDBC Setting) vs Right Card (Database Engine Mappings) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Spring Annotation & JDBC API Code -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-600"></i>
+                            <span>1. Spring 声明式配置与底层 JDBC 接口设置</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Spring vs JDBC</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <!-- Spring @Transactional Example -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                            <div class="text-indigo-400 font-bold">// 1. Spring 声明式隔离级别标注</div>
+                            <div><span class="text-indigo-400">@Transactional</span>(isolation = Isolation.READ_COMMITTED)</div>
+                            <div><span class="text-indigo-400">public void</span> <span class="text-cyan-300">queryFinancialReport</span>() {</div>
+                            <div class="pl-4 text-slate-300">accountDao.getReport();</div>
+                            <div>}</div>
+                        </div>
+
+                        <!-- Native JDBC Connection Example -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto">
+                            <div class="text-emerald-400 font-bold">// 2. Spring 底层通过 JDBC API 映射设置数据库 Connection</div>
+                            <div>Connection con = dataSource.getConnection();</div>
+                            <div class="text-amber-300 font-bold">con.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：Spring `@Transactional` 隔离属性最终下发为 JDBC `Connection` 设置</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: DB Engine Default Differences & Trade-offs -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-cyan-600"></i>
+                            <span>2. 主流数据库默认隔离级别与并发权衡</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">DB Defaults</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">MySQL InnoDB（默认 REPEATABLE_READ）</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    配合 **MVCC 快照读** 与 **Next-Key Lock（临键锁）当前读**，在 RR 级别下已经解决了绝大多数幻读问题，兼顾高并发与一致性。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">Oracle / PostgreSQL / SQL Server（默认 READ_COMMITTED）</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    行业绝大多数数据库默认选型 **RC 级别**，避免过重的区间间隙锁，依靠 MVCC 实现读写解耦，大幅提升多线程并发吞吐。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 10 · 长事务并发离线锁：乐观离线锁 vs. 悲观离线锁 (PoEAA)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Isolation Level Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        理解 Spring 事务隔离级别的核心是意识到 **“Spring 本身不提供隔离实现，而是通过 JDBC API 将配置透传给底层数据库 `Connection`”**。在生产选型中，若使用 MySQL InnoDB，默认 <code class="font-mono text-indigo-900 font-bold">DEFAULT (REPEATABLE_READ)</code> 已能提供极佳的隔离保护；若在 Oracle 或 PostgreSQL 下，通常配合 <code class="font-mono text-indigo-900 font-bold">READ_COMMITTED</code>。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 9 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">09</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[22.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (8.html <- 9.html -> 10.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="8.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring 事务隔离级别与底层数据库映射</span>
+            <a href="10.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="8.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="10.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 Spring 隔离级别透传本质：</span>
+                    “向学员做解构说明：很多同学误以为 Spring 框架内部自己实现了一套数据库锁或 MVCC。实际上，Spring 的 `@Transactional(isolation = ...)` 只是将参数通过 JDBC API 映射下发给数据库连接：`connection.setTransactionIsolation(...)`。隔离性是由底层数据库引擎保障的。”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 强调不同数据库默认隔离级别的区别：</span>
+                    “请提醒学员特别注意：MySQL InnoDB 默认的隔离级别是 `REPEATABLE_READ`，并且它通过 MVCC 快照读和 Next-Key Lock 当前读，解决掉了绝大部分幻读；而 Oracle、PostgreSQL、SQL Server 的默认隔离级别是 `READ_COMMITTED`。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

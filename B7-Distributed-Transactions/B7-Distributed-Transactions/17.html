@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 2PC 两阶段提交协议物理链路 (Two-Phase Commit Protocol)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                <span>Part 03 · 传统强一致性分布式事务：XA 与 2PC/3PC</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                2PC 两阶段提交协议物理链路 (Two-Phase Commit Protocol)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Stage 1: Prepare Phase (Voting) vs. Stage 2: Commit / Rollback Phase (Global Decision)
+            </p>
+        </div>
+
+        <!-- 2PC Two-Stage Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-split-up-and-left text-purple-400"></i>
+                        <span>2PC 两阶段提交协议消息交互管道 (2PC Protocol Stage 1 &amp; Stage 2 Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Standard XA Protocol Implementation</span>
+                </div>
+
+                <!-- 2PC Stages Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    <!-- Stage 1: Prepare Phase -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-hourglass-start text-indigo-400"></i>
+                                阶段 1：准备阶段 (Stage 1 - Prepare / Vote Phase)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Voting</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-indigo-300 font-mono">① TM 下发 Prepare 指令：</strong>向全局参与的每个 RM 发送 <code class="text-indigo-300 font-mono">xa_prepare(XID)</code> 广播。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-indigo-300 font-mono">② RM 执行预操作：</strong>本地 RM 执行 SQL，写入 Undo/Redo 日志，持物理行锁，但<strong>暂不提交</strong>。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-indigo-300 font-mono">③ RM 投票响应：</strong>若本地写日志加锁均成功，回复 <code class="text-emerald-400 font-mono">Prepared (YES)</code>；否则回复 <code class="text-rose-400 font-mono">No</code>。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Stage 2: Commit / Rollback Phase -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-purple-700 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-purple-400"></i>
+                                阶段 2：提交/回滚阶段 (Stage 2 - Decision Phase)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Decision</span>
+                        </div>
+                        <div class="space-y-1 text-[9px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-purple-300 font-mono">全赞成 $\to$ 全局提交 (Global Commit)：</strong>若所有 RM 均返回 YES，TM 记落盘日志，广播 <code class="text-emerald-400 font-mono">xa_commit(XID)</code>，RM 物理提交并释放资源。
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800">
+                                <strong class="text-purple-300 font-mono">任一反对 $\to$ 全局回滚 (Global Rollback)：</strong>若有任一 RM 投 NO 或响应超时，TM 广播 <code class="text-rose-400 font-mono">xa_rollback(XID)</code>，所有 RM 利用 Undo 日志回滚撤销。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Prepare Phase Mechanics) vs Right Card (Commit Phase & Lock Holding) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Prepare Phase Mechanics & Atomicity Guarantee -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-indigo-600"></i>
+                            <span>1. 准备阶段 (Prepare Phase) 物理约束</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Prepare Details</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">写 Redo/Undo 日志落盘承诺</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                RM 在向 TM 回复 <code class="font-mono text-indigo-800 font-bold">Prepared</code> 前，必须将相关的修改记录与撤销记录持久化写回磁盘 (<code class="font-mono text-indigo-800 font-bold">fsync</code>)。这一步意味着 RM 向 TM 做出<strong>物理承诺：一旦后续要求 Commit，RM 拥有绝对能力物理提交该事务</strong>。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">独占资源排他锁定 (2PL)</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                RM 在 Prepare 阶段获取数据行的排他锁 ($X$ 锁)，该锁将一直保持锁定，直到阶段 2 的 <code class="font-mono text-indigo-800 font-bold">xa_commit</code> 或 <code class="font-mono text-indigo-800 font-bold">xa_rollback</code> 抵达。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：准备阶段将“能不能提交”的风险提前在锁定资源后进行集中问询</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Decision Phase & Lock Duration Issue -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-purple-600"></i>
+                            <span>2. 裁决阶段 (Decision Phase) 与锁持有开销</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Decision Details</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950 font-mono">全局决定一票否决权 (Unanimous Consent)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    TM 扮演超级裁决官。只有所有 RM 100% 同意 Prepare，才能下发 Commit。任何一个 RM 崩溃、超时或拒绝，整个分布式事务一律全局回滚。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">锁挂起时长（跨 TCP 两次往返延迟）</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    资源被锁定的时间包含：<br/>
+                                    $$\text{Lock Hold Time} \approx T_{\text{Local Prepare}} + 2 \times T_{\text{RPC Round-trip}} + T_{\text{TM Log}} + T_{\text{Local Commit}}$$
+                                    高并发场景下，此锁挂起开销将导致底层数据库连接池瞬间崩溃！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 18 · 2PC 协议四大致命缺陷（同步阻塞、单点故障、数据不一致）</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心架构启发 (2PC Protocol Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        2PC 协议物理上实现了跨数据库的<strong>强一致性 (Strong Consistency)</strong>。然而，强一致性的代价是 RM 在 Prepare 后持锁挂起，必须等待 TM 下发裁决指令。这种两阶段物理锁绑定是引发高并发下性能瓶颈的罪魁祸首。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 17 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">2PC 两阶段提交协议物理链路</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员理解 2PC 协议的两阶段细节：</span>
+                    “向学员做解构说明：两阶段提交协议（2PC）将事务提交拆分为 Prepare 和 Commit 两步。在 Prepare 阶段，RM 执行本地 SQL、写入 Undo/Redo 日志，持排他锁但不提交，并返回 Prepared 投票。只有当所有 RM 均通过投票后，TM 才下发全局 Commit。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 2PC 锁持有的物理时间消耗：</span>
+                    “请学员特别关注右侧卡片的物理锁持有时间计算：锁的持有时长包含了跨网络 TCP 两次往返 RPC 延迟。高并发下，这会导致数据库行锁长时间无法释放。在下一个 Slide 18 中，我们将深入剖析 2PC 协议的四大致命缺陷。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

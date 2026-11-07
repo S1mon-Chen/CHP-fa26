@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - Saga 模式原理：长活事务与反向补偿链 (Saga Pattern Mechanics)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-split-up-and-left text-indigo-600"></i>
+                <span>Part 04 · 微服务最终一致性模式：TCC、Saga 与消息事务</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Saga 模式原理：长活事务与反向补偿链 (Saga Pattern Mechanics)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Long Living Transactions (LLTs), Forward Transactions ($T_i$), Compensating Transactions ($C_i$) &amp; Backward Recovery
+            </p>
+        </div>
+
+        <!-- Saga Two Execution Pathways Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-indigo-400"></i>
+                        <span>Saga 模式正向执行链与反向补偿链演演示意图 (Saga Execution Pathways)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Hector Garcia-Molina &amp; Kenneth Salem (1987)</span>
+                </div>
+
+                <!-- 2 Execution Lines Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    
+                    <!-- Line 1: Forward Success Pipeline -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                场景 A：全正向顺利执行 (All Forward Success)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Happy Path</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[9px]">
+                            <div class="flex items-center justify-around text-center text-slate-200">
+                                <div class="p-1.5 rounded bg-emerald-950 border border-emerald-700 font-bold text-emerald-300">$T_1$ (扣库存)</div>
+                                <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                                <div class="p-1.5 rounded bg-emerald-950 border border-emerald-700 font-bold text-emerald-300">$T_2$ (扣余额)</div>
+                                <i class="fa-solid fa-arrow-right text-emerald-400"></i>
+                                <div class="p-1.5 rounded bg-emerald-950 border border-emerald-700 font-bold text-emerald-300">$T_3$ (创订单)</div>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-400 leading-relaxed text-center pt-1 border-t border-slate-800/80">
+                                每个子服务执行完正向本地 DB 事务后<strong>立即提交</strong>，释放底层数据库物理锁。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Line 2: Backward Compensation Pipeline -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-xmark text-rose-400"></i>
+                                场景 B：异常触发逆向补偿 (Backward Rollback)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Compensating</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5 text-[9px]">
+                            <div class="flex items-center justify-around text-center text-slate-200">
+                                <div class="p-1.5 rounded bg-indigo-950 border border-indigo-700 text-indigo-300">$T_1$ (成功)</div>
+                                <i class="fa-solid fa-arrow-right text-slate-500"></i>
+                                <div class="p-1.5 rounded bg-indigo-950 border border-indigo-700 text-indigo-300">$T_2$ (成功)</div>
+                                <i class="fa-solid fa-arrow-right text-rose-400"></i>
+                                <div class="p-1.5 rounded bg-rose-950 border border-rose-700 text-rose-300 font-bold">$T_3$ (失败!)</div>
+                            </div>
+                            <div class="flex items-center justify-center gap-2 text-rose-300 font-bold pt-1 border-t border-slate-800">
+                                <i class="fa-solid fa-arrow-left"></i>
+                                <span>逆向触发补偿链：$C_2$ (退余额) $\to$ $C_1$ (加回库存)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Saga Mathematical Principles) vs Right Card (Isolation Trade-off & Guarantees) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Saga Mathematical Formalization -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-square-root-variable text-indigo-600"></i>
+                            <span>1. Saga 模式数学定义与方程推演</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Formal Definition</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">长活事务 (Long Living Transaction) 拆解</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                Saga 将一个包含 $n$ 个步骤的大事务 $S$ 拆分为有序的本地正向事务序列与逆向补偿序列：
+                            </p>
+                            <div class="p-1.5 rounded bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800">
+                                <div class="text-indigo-300">• 正向事务序列: $T_1, T_2, T_3, \dots, T_n$</div>
+                                <div class="text-rose-300">• 反向补偿序列: $C_1, C_2, C_3, \dots, C_{n-1}$</div>
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="font-bold text-indigo-950 font-mono">Saga 最终执行定理 (Execution Invariant)</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                两种物理终态保证：<br/>
+                                • <strong>全成功序列</strong>：$T_1, T_2, \dots, T_n$（全局业务完成）<br/>
+                                • <strong>补偿完成序列</strong>：$T_1, T_2, \dots, T_k, C_k, C_{k-1}, \dots, C_1 \quad (k < n)$（全局无缝退回平滑一致）
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：用有界的本地事务组合与逆向补偿，消除长事务对 DB 锁的死锁持有</span>
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Isolation Loss Trade-off & Guarantees -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat text-purple-600"></i>
+                            <span>2. 补偿约束原则与缺少隔离性 (Lack of Isolation) 风险</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Trade-offs &amp; Rules</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950 font-mono">法则 1：$T_i$ 与 $C_i$ 必须具备物理幂等性</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    因为网络抖动，补偿请求可能被多次重试发起，$C_i$ 必须满足幂等性（重复执行 $N$ 次效果与 1 次一致）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950 font-mono">法则 2：$C_i$ 必须物理保证最终一定会成功</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    补偿事务 $C_i$ **不允许抛出业务异常失败**，遇到网络故障必须死磕重试直到成功，或人工干预兜底。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">核心缺陷：缺少 ACD 中的 Isolation (脏读风险)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    $T_1$ 提交后数据对外部可见。若随后 $T_3$ 失败触发 $C_1$ 撤销，其他在此期间读取 $T_1$ 改动的外部请求便发生了**脏读 (Dirty Read)**！需配合“延迟挂起”或语义锁缓解。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 25 · Saga 两种协调模式：集中编排 (Orchestration) vs 协同 (Choreography)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心架构启发 (Saga Compensation Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        Saga 模式用<strong>“正向提交 + 逆向补偿”</strong>替代了全局锁，特别适合步骤繁多、耗时极长的跨服务甚至跨第三方系统的长活事务。然而，开发者必须妥善应对<strong>缺少隔离性导致的中间脏数据可见问题</strong>。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 24 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[60.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Saga 模式原理：长活事务与反向补偿链</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 Saga 模式的物理源起：</span>
+                    “向学员做历史溯源：Saga 模式早在 1987 年由 Garcia-Molina 提出，专门用于解决长活事务 (Long Living Transactions)。在微服务架构中，一个跨 5 个服务的大事务如果用 2PC 锁住资源，系统会瞬间瘫痪；Saga 则让每个服务正向执行并立刻提交本地 DB 事务，如果后面第 4 步报错，再按相反顺序调用 $C_3 \to C_2 \to C_1$ 逆向补偿还原。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 Saga 的缺点：缺少 Isolation 隔离性：</span>
+                    “请学员特别注意右侧卡片的缺点：Saga 牺牲了 ACID 中的隔离性。因为正向事务 $T_1$ 提交后数据就已经变了，此时如果 $T_3$ 报错回滚，在 $C_1$ 还没执行前外部读取到了 $T_1$ 的中间数据，就造成了脏读。在下一个 Slide 25 中，我们将探讨 Saga 的两种控制机制：集中编排 (Orchestration) 与协同 (Choreography)。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 33 - Seata AT 模式全局锁机制与隔离级别保障 (Global Lock Protection)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-lock text-emerald-600"></i>
+                <span>Part 05 · 企业级分布式事务框架：Apache Seata 深度实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Seata AT 模式全局锁机制与隔离级别保障 (Global Lock Protection)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Global Lock Lifecycle, Write Isolation (Dirty Write Prevention) &amp; Read Isolation (`@GlobalLock` / `SELECT ... FOR UPDATE`)
+            </p>
+        </div>
+
+        <!-- Global Lock Conflict Topology Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-emerald-400"></i>
+                        <span>并发全局事务全局锁 (Global Lock) 争抢与写隔离演意思意图 (Global Lock Mechanics)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">TC In-Memory Lock Key Format: `table_name:primary_key`</span>
+                </div>
+
+                <!-- 3 Step Global Lock Flow Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Global Tx 1 -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                全局事务 1 (Tx 1)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Lock Holder</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>① 获得本地 DB 锁：修改 `account` 行记录</div>
+                            <div>② 向 TC 申请全局锁：<code class="text-emerald-300 font-mono">account:1</code> 成功！</div>
+                            <div class="text-emerald-300 font-bold border-t border-slate-800 pt-0.5">
+                                ③ 提交本地 DB 锁（快速归还连接池）
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Concurrent Global Tx 2 -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-clock-rotate-left text-amber-400"></i>
+                                并发全局事务 2 (Tx 2)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Lock Waiting</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>① 获得本地 DB 锁：尝试修改同一行 `account:1`</div>
+                            <div>② 向 TC 申请全局锁：<code class="text-amber-300 font-mono">account:1</code> 被 Tx 1 占有！</div>
+                            <div class="text-amber-300 font-bold border-t border-slate-800 pt-0.5">
+                                ③ 轮询重试等待，直到 Tx 1 释放或超时回滚
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Safety Guarantee Outcome -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                                隔离保障物理后果
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Safety Outcome</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>• **彻底杜绝脏写 (Dirty Write)**</div>
+                            <div>• 替代昂贵的物理数据库行长锁</div>
+                            <div class="text-indigo-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 若等待超时（`lockRetryTimeout`），Tx 2 自动回滚本地事务
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Write Isolation) vs Right Card (Read Isolation & @GlobalLock) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Write Isolation Mechanics -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-pen-to-square text-emerald-600"></i>
+                            <span>1. AT 模式写隔离机制 (Write Isolation Protocol)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Write Isolation</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">全局锁的物理定义与生命周期</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    全局锁（Global Lock）由 TC 中央内存统一维护。它在 **一阶段本地 DB 事务提交前** 向 TC 申请注册；在 **二阶段全局 Commit 或 Rollback 完成后** 由 TC 异步注销释放。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">防脏写重试与回滚控制 (Retry &amp; Rollback)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    如果并发事务无法抢到全局锁，它会在配置的时间内（默认 <code class="font-mono text-rose-900 font-bold">lockRetryInterval = 10ms</code>，<code class="font-mono text-rose-900 font-bold">lockRetryTimes = 30</code>）重试。超时后本地事务被强行回滚，同时释放已持有的本地 DB 锁，彻底杜绝死锁。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：用内存极轻量的 TC 全局锁，替换跨网络持有底层 DB 排他行锁</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Read Isolation & @GlobalLock -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-eye text-indigo-600"></i>
+                            <span>2. AT 模式读隔离与 `@GlobalLock` 强一致读</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Read Isolation</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">默认读隔离级别：Read Uncommitted (读未提交)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    由于一阶段本地 DB 事务已经提交，修改在二阶段提交前对外部直接 SQL 已经可见。因此 AT 模式默认的读隔离级别是读未提交。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">实现强一致读 (Read Committed)：`SELECT ... FOR UPDATE` &amp; `@GlobalLock`</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    若普通查询方法需要读到绝对一致的数据（确保当前行没有正在被其他全局事务修改或准备回滚）：<br/>
+                                    • 方法 A：在代理数据源下执行 <code class="font-mono text-emerald-900 font-bold">SELECT ... FOR UPDATE</code>，Seata 会自动校验全局锁。<br/>
+                                    • 方法 B：非全局事务方法上标注注解 <code class="font-mono text-emerald-900 font-bold">@GlobalLock</code>，跳过分支注册，仅校验全局锁状态！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 34 · Seata TCC 模式原理与 Try/Confirm/Cancel 手动控制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Global Lock Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        Seata AT 模式之所以能兼顾<strong>高吞吐与写安全</strong>，关键就在于用内存极轻量的 **TC 全局锁** 替代了底层数据库锁。通过全局锁进行并发控制，既保证了一阶段提交归还连接池，又彻底堵住了脏写风险。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 33 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">33</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[82.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (32.html <- 33.html -> 34.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="32.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Seata AT 模式全局锁机制与隔离级别保障</span>
+            <a href="34.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="32.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="34.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员透视写隔离与全局锁机制：</span>
+                    “向学员解构说明：为什么 AT 模式需要全局锁（Global Lock）？因为一阶段本地事务在物理数据库里提交了，底层的数据库锁已经被释放！如果有另一个全局事务此时也想修改同一行，就会产生脏写。所以在本地提交前，RM 必须先去 TC 抢占全局锁 `table_name:primary_key`，确保写隔离。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 `@GlobalLock` 如何实现读已提交（读隔离）：</span>
+                    “请学员特别关注右侧卡片：由于一阶段提交了，默认的读隔离级别是 Read Uncommitted。如果我们某个非全局事务方法需要进行读已提交（防止读到未完成全局 Commit/Rollback 的中间数据），只需要加上 `@GlobalLock` 注解或使用 `SELECT ... FOR UPDATE`，Seata 就会在读取前去 TC 校验全局锁状态！下一个 Slide 34 将讲解 Seata 的 TCC 模式。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '34.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '32.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

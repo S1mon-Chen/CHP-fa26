@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 36 - Seata XA 模式：整合原生 DB 规范的强一致分布式事务 (Seata XA Mode)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-cyan-600"></i>
+                <span>Part 05 · 企业级分布式事务框架：Apache Seata 深度实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Seata XA 模式：整合原生 DB 规范的强一致分布式事务 (Seata XA Mode)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                `DataSourceProxyXA`, Native Database XA Protocol, Strong Consistency &amp; Phase 1/Phase 2 Execution
+            </p>
+        </div>
+
+        <!-- Seata XA Mode Execution Pipeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-cyan-400"></i>
+                        <span>Seata XA 模式两阶段原生数据库指令管线 (Seata XA Protocol Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Database-Native XA Driver Integration via DataSourceProxyXA</span>
+                </div>
+
+                <!-- 2 Phase Execution Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    
+                    <!-- Phase 1: Prepare -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-cyan-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-cyan-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-database text-cyan-400"></i>
+                                一阶段：业务 SQL 执行与 XA PREPARE (Phase 1)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">XA PREPARE</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div>① **注册分支**：`DataSourceProxyXA` 拦截 JDBC 连接，向 TC 注册分支。</div>
+                            <div>② **开启 XA 事务**：代理驱动向底层数据库下发 <code class="text-cyan-300 font-mono">XA START 'xid'</code>。</div>
+                            <div>③ **执行业务 SQL**：执行 SQL（如 `UPDATE`），锁定物理行资源。</div>
+                            <div>④ **预提交**：下发 <code class="text-cyan-300 font-mono">XA END 'xid'</code> 并执行 <code class="text-cyan-300 font-mono">XA PREPARE 'xid'</code>。</div>
+                            <div class="text-cyan-300 font-bold border-t border-slate-800 pt-0.5">
+                                ⑤ **汇报状态**：向 TC 汇报 `Prepared` 成功（物理数据库排他锁持续保持！）。
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2: Global Commit or Rollback -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-arrows-rotate text-indigo-400"></i>
+                                二阶段：全局裁决与 XA COMMIT / ROLLBACK (Phase 2)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">XA COMMIT</span>
+                        </div>
+                        <div class="space-y-1 text-[8.5px] font-sans text-slate-300 leading-relaxed">
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 space-y-0.5">
+                                <strong class="text-emerald-300 font-mono">全局 Commit (全成功)</strong>
+                                <p class="text-slate-400">TC 向各 RM 下发指令，RM 向数据库执行 <code class="text-emerald-300 font-mono">XA COMMIT 'xid'</code>，完成物理提交并释放 DB 排他行锁。</p>
+                            </div>
+                            <div class="p-1 rounded bg-slate-900 border border-slate-800 space-y-0.5">
+                                <strong class="text-rose-300 font-mono">全局 Rollback (任一失败)</strong>
+                                <p class="text-slate-400">TC 下发回滚，RM 执行 <code class="text-rose-300 font-mono">XA ROLLBACK 'xid'</code>，由数据库底层 Undo 日志直接物理撤销并释放行锁。</p>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Java DataSource Config) vs Right Card (Seata XA vs Seata AT Comparison) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: DataSourceProxyXA Configuration -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-cyan-600"></i>
+                            <span>1. Seata XA 数据源代理配置 (`DataSourceProxyXA`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Spring Config</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-cyan-400 font-bold">// 1. 在 Spring 中开启 DataSourceProxyXA</div>
+                            <div><span class="text-indigo-400">@Configuration</span></div>
+                            <div><span class="text-indigo-400">public class</span> <span class="text-cyan-300">DataSourceConfig</span> {</div>
+                            
+                            <div class="pl-3 text-indigo-400">@Bean</div>
+                            <div class="pl-3"><span class="text-indigo-400">public</span> DataSource <span class="text-cyan-300">dataSource</span>(DruidDataSource druidDataSource) {</div>
+                            <div class="pl-6 text-slate-400">// 使用 DataSourceProxyXA 包装物理数据源</div>
+                            <div class="pl-6"><span class="text-indigo-400">return new</span> <span class="text-emerald-300">DataSourceProxyXA</span>(druidDataSource);</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+
+                        <div class="p-1.5 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <div class="font-bold text-cyan-950 font-mono">核心优势 (Zero Undo Log Table)</div>
+                            <p class="text-[8.5px] text-slate-600 leading-relaxed">
+                                业务分支数据库**完全不需要建 `undo_log` 表**！Seata 依托底层 MySQL/Oracle/PostgreSQL 驱动原生的 XA 规范，由数据库内核直接保障数据原子性。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>本质：无代码侵入，纯依靠底层关系型数据库引擎提供物理强一致保证</span>
+                    <i class="fa-solid fa-cube"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Seata XA vs. Seata AT Deep Comparison -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-compare text-purple-600"></i>
+                            <span>2. Seata XA 模式 vs. Seata AT 模式硬核对比</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">XA vs AT</span>
+                    </div>
+
+                    <div class="rounded-xl border border-purple-100 bg-white p-2 space-y-1 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-[9px]">
+                            <thead>
+                                <tr class="border-b border-purple-100 bg-slate-50 font-mono text-[8.5px] text-slate-700">
+                                    <th class="py-1 px-1.5 font-bold">对比维度</th>
+                                    <th class="py-1 px-1.5 font-bold text-cyan-900">Seata XA 模式</th>
+                                    <th class="py-1 px-1.5 font-bold text-emerald-900">Seata AT 模式</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8.5px]">
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">数据一致性</td>
+                                    <td class="py-1 px-1.5 text-cyan-800 font-bold">物理强一致性 (Strong)</td>
+                                    <td class="py-1 px-1.5 text-emerald-800 font-medium">柔性最终一致性 (BASE)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">物理锁持有时长</td>
+                                    <td class="py-1 px-1.5 text-rose-700 font-bold">长 (从 1 阶段挂起到 2 阶段)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">短 (1 阶段直接提交本地 DB)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">脏写防御手段</td>
+                                    <td class="py-1 px-1.5 text-slate-700">数据库底层原生 XA 锁挂起</td>
+                                    <td class="py-1 px-1.5 text-slate-700">TC 内存全局锁 + `undo_log` CAS 校验</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-slate-800">数据库要求</td>
+                                    <td class="py-1 px-1.5 text-slate-700">必须支持 XA 驱动 (MySQL/Oracle)</td>
+                                    <td class="py-1 px-1.5 text-slate-700">普通关系型 DB 并建 `undo_log` 表</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 37 · Seata 四大模式选型矩阵与决策树</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启发 (Seata XA Mode Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Seata XA 模式将复杂的两阶段管线完全委托给数据库内核。对于**金融核心等对数据准确性有严格硬性要求，且希望零代码侵入、零表结构修改**的场景，Seata XA 模式提供了最优雅的强一致性安全保障。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 36 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">36</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[90.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (35.html <- 36.html -> 37.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="35.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Seata XA 模式：整合原生 DB 规范的强一致分布式事务</span>
+            <a href="37.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="35.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="37.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解 Seata XA 模式的物理内核：</span>
+                    “向学员做解构说明：我们在 Part 03 讲了 XA 规范。在 Seata 框架中，XA 被封装得非常简单！只需要使用 `DataSourceProxyXA` 包装数据源，Seata 就会自动拦截 JDBC 指令下发 `XA START`、`XA PREPARE` 和 `XA COMMIT`。业务表完全不需要像 AT 模式那样建 `undo_log` 表。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 剖析 Seata XA 与 Seata AT 的选型边界：</span>
+                    “请学员特别关注右侧卡片：XA 和 AT 最大的区别在于‘锁保持时间’和‘一致性等级’。XA 是物理强一致，但一阶段不会释放物理 DB 行锁；AT 是柔性最终一致，一阶段提交并归还 DB 锁。下一个 Slide 37 将整合 Seata 四大模式进行最终选型对比。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '37.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '35.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

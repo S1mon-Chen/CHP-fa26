@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - MQ 事务消息机制与最大努力通知模式 (Transactional Messages &amp; Best-Effort Notification)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1.5">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-paper-plane text-emerald-600"></i>
+                <span>Part 04 · 微服务最终一致性模式：TCC、Saga 与消息事务</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                MQ 事务消息机制与最大努力通知模式 (Transactional Messages &amp; Notification)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Apache RocketMQ Two-Phase Half Messages, Transaction Checkback Listener &amp; Best-Effort Notification
+            </p>
+        </div>
+
+        <!-- Transactional Message Pipeline Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-emerald-400"></i>
+                        <span>Apache RocketMQ 事务消息两阶段与反向回查管线 (Transaction Message Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Half Message + Local Transaction + Checkback Protocol</span>
+                </div>
+
+                <!-- 4 Step Transaction Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5 text-xs font-mono">
+                    
+                    <!-- Step 1: Half Message -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-paper-plane text-amber-400"></i>
+                                步骤 1：发送 Half 消息
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Half Msg</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• Producer 发送 Half Message 至 Broker</div>
+                            <div>• 消息暂存在系统的内部 Half Topic 中</div>
+                            <div class="text-amber-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 对 Consumer <strong>暂不可见</strong>，防未提交读
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Local Transaction -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-database text-indigo-400"></i>
+                                步骤 2：执行本地 DB 事务
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Local TX</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• Broker 返回 ACK 后，Producer 开始执行本地 DB 事务</div>
+                            <div>• <code class="text-indigo-300 font-mono">UPDATE order SET status = 'PAID';</code></div>
+                            <div class="text-indigo-300 font-bold border-t border-slate-800 pt-0.5">
+                                • 本地事务成功记 COMMIT，失败记 ROLLBACK
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Two-Phase Commit/Rollback -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                步骤 3：提交/回滚二阶段
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">2nd Phase</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• 收到 COMMIT 指令：Broker 还原原 Topic，消息<strong>对 Downstream Consumer 可见</strong></div>
+                            <div>• 收到 ROLLBACK 指令：Broker 直接物理丢弃 Half 消息</div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Transaction Checkback Listener -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-purple-700 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-rotate-left text-purple-400"></i>
+                                步骤 4：Broker 反向回查
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Checkback</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[8.5px] font-sans text-slate-300 space-y-1 leading-relaxed">
+                            <div>• 若步骤 3 二阶段 ACK 丢失或网络超时</div>
+                            <div>• Broker 主动发起 <code class="text-purple-300 font-mono">checkLocalTransaction()</code> 回查</div>
+                            <div class="text-purple-300 font-bold border-t border-slate-800 pt-0.5">
+                                ★ 彻底攻克网络丢包带来的悬挂硬伤
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (RocketMQ Code & Listener) vs Right Card (Best-Effort Notification) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: RocketMQ Transaction Listener Implementation -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-emerald-600"></i>
+                            <span>1. RocketMQ 事务监听器代码结构 (`RocketMQTransactionListener`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">TransactionListener</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-0.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-emerald-400 font-bold">// 生产级事务消息监听器规范</div>
+                            <div><span class="text-indigo-400">@RocketMQTransactionListener</span></div>
+                            <div><span class="text-indigo-400">public class</span> <span class="text-cyan-300">OrderTxListener</span> <span class="text-indigo-400">implements</span> RocketMQLocalTransactionListener {</div>
+                            
+                            <div class="pl-3 text-slate-400">// ① 执行本地 DB 事务</div>
+                            <div class="pl-3"><span class="text-indigo-400">public</span> RocketMQLocalTransactionState <span class="text-cyan-300">executeLocalTransaction</span>(Message msg, Object arg) {</div>
+                            <div class="pl-6 text-slate-300">boolean success = orderService.payOrder(msg.getPayload());</div>
+                            <div class="pl-6 text-emerald-300">return success ? COMMIT : ROLLBACK;</div>
+                            <div class="pl-3">}</div>
+
+                            <div class="pl-3 text-slate-400">// ② Broker 反向事务回查入口</div>
+                            <div class="pl-3"><span class="text-indigo-400">public</span> RocketMQLocalTransactionState <span class="text-cyan-300">checkLocalTransaction</span>(Message msg) {</div>
+                            <div class="pl-6 text-slate-300">boolean isPaid = orderService.checkPaidStatus(msg.getHeaders().get("ORDER_ID"));</div>
+                            <div class="pl-6 text-emerald-300">return isPaid ? COMMIT : ROLLBACK;</div>
+                            <div class="pl-3">}</div>
+                            <div>}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>本质：将消息中间件转化为带有“事务反向检查能力”的协调器</span>
+                    <i class="fa-solid fa-shield-cat"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Best-Effort Notification & Reconciliation Fallback -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bell text-amber-600"></i>
+                            <span>2. 最大努力通知模式与对账兜底 (Best-Effort Notification)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Best-Effort</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 space-y-1 text-[9.5px]">
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">适用场景 (Target Scenarios)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    适用于**跨企业、跨机构的 B2B 外部系统回调通知**（如支付宝/微信支付异步回调通知商户服务端）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950 font-mono">指数退避重试阶梯 (Exponential Backoff Retries)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    如果接收方未返回 `success`，通知系统将按递增时间间隔重复发起通知：<br/>
+                                    $$\text{Retry Intervals}: 15s \to 1m \to 5m \to 30m \to 1h \to 12h$$
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-emerald-50/50 border border-emerald-100">
+                                <span class="font-bold text-emerald-950 font-mono">对账与主动查询兜底 (Reconciliation &amp; Query API)</span>
+                                <p class="text-[8.5px] text-slate-600 mt-0.5">
+                                    若多次重试全数失败，通知服务停止发送。接收方可以通过**主动调用提供方提供的对账查询 API**，或依靠夜间对账 Job 兜底修复单边账。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 28 · 幂等性防护：去重表、状态机版本跃迁与分布式锁</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Transactional MQ Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        RocketMQ 事务消息通过巧妙的 **“Half Message（预备消息）+ 反向事务回查”** 机制，解耦了本地事务与消息发送。它不仅能保证 100% 的消息可靠投递，更避免了本地消息表轮询扫描数据库的物理开销。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 27 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">MQ 事务消息机制与最大努力通知模式</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解 RocketMQ 事务消息的两阶段与回查：</span>
+                    “向学员解构说明：RocketMQ 的事务消息是解决消息与本地事务同成败的最佳实践。Producer 先发 Half Message（消费者看不到），再执行本地事务。如果本地事务成功发送 COMMIT，如果失败发 ROLLBACK。若因为网络丢包导致 Broker 没收到二阶段命令，Broker 会主动反向调用 `checkLocalTransaction()` 查询 DB，完美解决网络抖动！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 剖析最大努力通知模式在支付回调中的应用：</span>
+                    “请学员特别关注右侧的‘最大努力通知’：最典型的例子就是微信/支付宝支付回调。通知服务采用阶梯重试（如 15s、1m、5m...），如果超过最大次数依然失败，接收方可以通过主动调用查询接口进行对账修复。下一个 Slide 28 将探讨消息消费端的**防重幂等性保障**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

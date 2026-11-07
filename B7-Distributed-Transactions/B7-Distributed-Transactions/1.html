@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 01 - 第 7 讲：分布式事务与微服务一致性控制 (Title &amp; Overview)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 7 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-10 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-3">
+                <i class="fa-solid fa-network-wired"></i>
+                <span>第 7 讲：分布式事务与微服务一致性控制 (Spring TX, XA 2PC/3PC, TCC, Saga &amp; Seata)</span>
+            </div>
+            
+            <h1 class="text-2xl md:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                第 7 讲：分布式事务与微服务一致性控制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-indigo-600 mb-3 font-semibold">
+                Distributed Transactions &amp; Microservice Consistency: From Local Spring Transactions to XA, TCC, Saga &amp; Seata
+            </p>
+            
+            <p class="text-sm sm:text-base md:text-lg font-medium text-slate-600 w-full max-w-full leading-relaxed">
+                深入解构企业级事务控制技术，从 <span class="text-indigo-700 font-semibold underline decoration-indigo-300 decoration-2 underline-offset-4">Spring 本地声明式事务与 AOP 代理切面</span>，扩展至 <span class="text-cyan-700 font-semibold underline decoration-cyan-300 decoration-2 underline-offset-4">分布式 CAP/BASE 理论</span>、<span class="text-purple-600 font-semibold underline decoration-purple-300 decoration-2 underline-offset-4">传统 2PC/3PC 协议物理链路</span>、<span class="text-emerald-600 font-semibold underline decoration-emerald-300 decoration-2 underline-offset-4">微服务柔性事务模式（TCC、Saga、本地消息表）</span>，以及企业级分布式事务中间件 <span class="text-amber-600 font-semibold underline decoration-amber-300 decoration-2 underline-offset-4">Apache Seata (AT/TCC/Saga/XA) 选型</span>。
+            </p>
+        </div>
+
+        <!-- Four Core Pillars Grid -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            
+            <!-- Pillar 1: Spring Local Transactions & Offline Locks -->
+            <div class="group relative rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 soft-shadow transition hover:border-indigo-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 text-base shrink-0">
+                            <i class="fa-solid fa-leaf"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-[10.5px] font-mono font-bold">支柱 1: Spring 本地事务</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">Spring 事务与离线锁</h3>
+                    <p class="text-[11px] text-indigo-800 font-mono mb-2">AOP Proxy &amp; Propagation</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span><code>PlatformTransactionManager</code> SPI</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>7 大传播行为与 AOP 代理切面陷阱</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-indigo-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>长事务乐观/悲观离线锁 (PoEAA)</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-indigo-200/60 text-[10.5px] text-indigo-800 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-book-open text-indigo-600"></i>
+                    <span>Part 01 (Slide 3 - 10)</span>
+                </div>
+            </div>
+
+            <!-- Pillar 2: Distributed Consistency Theory -->
+            <div class="group relative rounded-2xl border border-cyan-200 bg-cyan-50/30 p-4 soft-shadow transition hover:border-cyan-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="w-9 h-9 rounded-xl bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-700 text-base shrink-0">
+                            <i class="fa-solid fa-scale-balanced"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-cyan-100 border border-cyan-200 text-cyan-800 text-[10.5px] font-mono font-bold">支柱 2: 分布式一致性</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">CAP 定理与 BASE 理论</h3>
+                    <p class="text-[11px] text-cyan-800 font-mono mb-2">CP vs. AP &amp; Soft State</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>单机 ACID 到跨网络微服务的瓶颈</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>CAP 定理：CP 强一致 vs. AP 高可用</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-cyan-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>BASE 理论：基本可用、软状态与最终一致</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-cyan-200/60 text-[10.5px] text-cyan-800 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-globe text-cyan-600"></i>
+                    <span>Part 02 (Slide 11 - 15)</span>
+                </div>
+            </div>
+
+            <!-- Pillar 3: XA & 2PC/3PC Protocols -->
+            <div class="group relative rounded-2xl border border-purple-200 bg-purple-50/30 p-4 soft-shadow transition hover:border-purple-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="w-9 h-9 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-700 text-base shrink-0">
+                            <i class="fa-solid fa-diagram-project"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-[10.5px] font-mono font-bold">支柱 3: 强一致 2PC/3PC</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">XA 规范与 2PC/3PC</h3>
+                    <p class="text-[11px] text-purple-800 font-mono mb-2">Prepare/Commit &amp; Block Flaws</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>X/Open XA 架构 (AP, TM, RM)</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>2PC 两阶段提交与四大致命阻塞缺陷</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-purple-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>3PC 三阶段提交优化与网络分区壁垒</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-purple-200/60 text-[10.5px] text-purple-800 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-shield-cat text-purple-600"></i>
+                    <span>Part 03 (Slide 16 - 20)</span>
+                </div>
+            </div>
+
+            <!-- Pillar 4: Soft Transactions & Apache Seata -->
+            <div class="group relative rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 soft-shadow transition hover:border-emerald-300 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 text-base shrink-0">
+                            <i class="fa-solid fa-cubes"></i>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10.5px] font-mono font-bold">支柱 4: 柔性事务 &amp; Seata</span>
+                    </div>
+
+                    <h3 class="text-sm font-bold text-slate-900 mb-1">TCC, Saga 与 Apache Seata</h3>
+                    <p class="text-[11px] text-emerald-800 font-mono mb-2">TCC/Saga &amp; Seata AT/Global Lock</p>
+
+                    <ul class="space-y-1.5 text-xs text-slate-700">
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>TCC 模式 (空回滚/悬挂) &amp; Saga 补偿编排</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>本地消息表与 MQ 事务消息机制</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i class="fa-solid fa-check text-emerald-600 mt-0.5 shrink-0 text-[10px]"></i>
+                            <span>Seata TC/TM/RM 架构与 AT 模式镜像原理</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-emerald-200/60 text-[10.5px] text-emerald-800 font-mono flex items-center gap-1">
+                    <i class="fa-solid fa-gears text-emerald-600"></i>
+                    <span>Part 04 &amp; 05 (Slide 21 - 40)</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Distributed Transaction Consistency Pipeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-2xl border border-slate-200 bg-slate-900 text-white p-3.5 soft-shadow">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-indigo-300">分布式事务演进路线图 / Distributed Transaction Consistency Roadmap</h4>
+                </div>
+                <span class="text-[10px] font-mono text-slate-400">Spring Local TX $\rightarrow$ XA 2PC $\rightarrow$ TCC / Saga $\rightarrow$ Seata AT</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-around gap-2 py-2 px-3 bg-slate-950/80 rounded-xl font-mono text-xs text-center border border-slate-800">
+                <div class="px-2.5 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700 text-indigo-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-leaf mr-1 text-indigo-400"></i>1. Spring 本地事务</div>
+                    <div class="text-[9px] text-slate-400">@Transactional &amp; AOP 切面</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-purple-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-purple-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-purple-950 border border-purple-700 text-purple-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-diagram-project mr-1 text-purple-400"></i>2. 强一致 XA / 2PC</div>
+                    <div class="text-[9px] text-slate-400">Prepare / Commit 两阶段锁</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-cyan-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-cyan-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700 text-cyan-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-arrows-rotate mr-1 text-cyan-400"></i>3. 柔性最终一致</div>
+                    <div class="text-[9px] text-slate-400">TCC 预留 &amp; Saga 逆向补偿</div>
+                </div>
+
+                <i class="fa-solid fa-arrow-right text-emerald-400 hidden sm:inline"></i>
+                <i class="fa-solid fa-arrow-down text-emerald-400 sm:hidden"></i>
+
+                <div class="px-2.5 py-1.5 rounded-lg bg-emerald-950 border border-emerald-700 text-emerald-300 w-full sm:w-1/4">
+                    <div class="font-bold text-[11px]"><i class="fa-solid fa-cubes mr-1 text-emerald-400"></i>4. Apache Seata</div>
+                    <div class="text-[9px] text-slate-400">TC/TM/RM &amp; Undo Log 镜像</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lecturer Info Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 md:p-4 flex items-center justify-between gap-4 mt-2">
+            <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-indigo-700 text-white text-base shrink-0">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-indigo-900 font-semibold">Lecturer &amp; Course Info / 主讲信息</h4>
+                    <p class="text-xs md:text-sm font-medium text-slate-800">
+                        <strong>主讲人：Haopeng Chen</strong> · REINS Group, Shanghai Jiao Tong University (SJTU)
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:block text-right">
+                <span class="inline-block px-3 py-1 rounded-md bg-white border border-slate-200 text-xs font-semibold text-slate-700">
+                    SJTU Server-Side Development
+                </span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">01</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[2.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (unit2_overview.html <- 1.html -> 2.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="unit2_overview.html" title="返回第二单元全景路线图" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-sitemap text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">封面与概览 (Title &amp; Overview)</span>
+            <a href="2.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="unit2_overview.html" title="单元概览" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="2.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 课程导入与第 7 讲核心定位：</span>
+                    “欢迎来到第 7 讲《分布式事务与微服务一致性控制》。在前一讲（第 6 讲）中，我们拆解了单机关系型数据库的 ACID、WAL 与 MVCC；在本讲中，我们将跨越单机网络边界，探索当系统拆分为微服务分库分表后，如何通过 CAP/BASE 理论、2PC、TCC、Saga 以及中间件 Apache Seata 来掌控全局数据一致性。”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 40 页 Slide 结构安排：</span>
+                    “本讲同样精心规划为 40 页 Slides：Part 01 讲解 Spring 本地事务原理（传播行为/失效陷阱/离线锁）；Part 02 剖析分布式 CAP/BASE 一致性理论；Part 03 拆解传统 XA 2PC/3PC 协议与性能阻塞瓶颈；Part 04 详解 TCC、Saga 与事务消息等柔性模式；Part 05 深入实战企业级框架 Apache Seata (AT/TCC/Saga/XA) 选型。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '2.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = 'unit2_overview.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
