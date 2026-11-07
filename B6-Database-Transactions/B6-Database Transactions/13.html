@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 优先图与拓扑排序验证法 (Precedence Graph &amp; Verification)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-indigo-600"></i>
+                <span>Part 02 · 事务调度与可串行化理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                优先图与拓扑排序验证法 (Precedence Graph &amp; Verification)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Precedence Graph $G=(V, E)$, Conflict Edges, Acyclic Condition (DAG) &amp; Topological Serial Order
+            </p>
+        </div>
+
+        <!-- Visual Precedence Graph Comparison Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-nodes text-indigo-400"></i>
+                        <span>优先图 (Precedence Graph) 环路判定图解：无环 DAG (安全) vs. 有环 Cycle (冲突异常)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Theorem: Conflict Serializable $\iff G(S)$ is Acyclic</span>
+                </div>
+
+                <!-- 2 Precedence Graph Cases Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    
+                    <!-- Case A: Acyclic Graph (DAG) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                情形 A：有向无环图 (DAG) —— 冲突可串行化
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Conflict Serializable</span>
+                        </div>
+                        
+                        <!-- Visual DAG Nodes Layout -->
+                        <div class="p-2.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-around text-center text-[10px]">
+                            <div class="px-2.5 py-1 rounded-lg bg-indigo-950 border border-indigo-600 text-indigo-300 font-bold">
+                                $T_1$
+                            </div>
+                            <div class="text-indigo-400 font-mono text-[9px]">
+                                $\xrightarrow{r_1(A) \to w_2(A)}$
+                            </div>
+                            <div class="px-2.5 py-1 rounded-lg bg-purple-950 border border-purple-600 text-purple-300 font-bold">
+                                $T_2$
+                            </div>
+                            <div class="text-purple-400 font-mono text-[9px]">
+                                $\xrightarrow{w_2(B) \to r_3(B)}$
+                            </div>
+                            <div class="px-2.5 py-1 rounded-lg bg-emerald-950 border border-emerald-600 text-emerald-300 font-bold">
+                                $T_3$
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            • **拓扑排序**：通过入度为零节点逐步剥离，得到**唯一串行序列** $T_1 \rightarrow T_2 \rightarrow T_3$。<br/>
+                            • **结论**：调度 $S$ 冲突等价于串行调度 $T_1 \rightarrow T_2 \rightarrow T_3$，**绝对并发安全**！
+                        </div>
+                    </div>
+
+                    <!-- Case B: Cyclic Graph (Cycle Detected) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                                情形 B：包含有向环路 (Cycle) —— 非冲突可串行化
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Unsafe Schedule</span>
+                        </div>
+
+                        <!-- Visual Cycle Nodes Layout -->
+                        <div class="p-2.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-around text-center text-[10px]">
+                            <div class="px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-600 text-rose-300 font-bold">
+                                $T_1$
+                            </div>
+                            <div class="flex flex-col text-rose-400 font-mono text-[8.5px]">
+                                <span>$\xrightarrow{r_1(A) \to w_2(A)}$</span>
+                                <span>$\xleftarrow[w_1(B) \leftarrow r_2(B)]{}$</span>
+                            </div>
+                            <div class="px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-600 text-rose-300 font-bold">
+                                $T_2$
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            • **冲突矛盾**：$T_1 \rightarrow T_2$ 要求 $T_1$ 先于 $T_2$ 执行；而 $T_2 \rightarrow T_1$ 要求 $T_2$ 先于 $T_1$ 执行！<br/>
+                            • **结论**：产生不可调和的逻辑矛盾（死锁/脏读/不可重复读），**引发数据不一致**！
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Precedence Graph Construction Rules) vs Right Card (Theorem & Topological Sort) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Precedence Graph Construction Rules -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-pen-ruler text-indigo-600"></i>
+                            <span>1. 优先图 $G=(V,E)$ 构建法则 (Construction Algorithm)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Formal Rules</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            给定并发调度 $S$，按以下规则画出有向图 $G = (V, E)$：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1 text-[10px]">
+                            <ul class="space-y-1 text-slate-600 leading-tight">
+                                <li class="flex items-start gap-1.5">
+                                    <i class="fa-solid fa-circle-dot text-indigo-500 mt-0.5 shrink-0"></i>
+                                    <span>**顶点集 $V$**：调度 $S$ 中出现的所有事务节点（$T_1, T_2, \dots, T_n$）。</span>
+                                </li>
+                                <li class="flex items-start gap-1.5">
+                                    <i class="fa-solid fa-arrow-right text-indigo-500 mt-0.5 shrink-0"></i>
+                                    <span>**有向边 $E$ ($T_i \rightarrow T_j$)**：当 $T_i$ 的操作 $op_i(X)$ 与 $T_j$ 的操作 $op_j(X)$ **发生读写冲突**，且 $op_i(X)$ 在时间轴上**先于** $op_j(X)$ 执行时，绘制一条由 $T_i$ 指向 $T_j$ 的有向边。</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-indigo-50/50 border border-indigo-100 font-mono text-[9px] text-indigo-950 space-y-0.5">
+                            <div>边构建触发三要素：</div>
+                            <div>• $r_i(X) \dots w_j(X) \implies T_i \rightarrow T_j \quad (RW \text{ 冲突})$</div>
+                            <div>• $w_i(X) \dots r_j(X) \implies T_i \rightarrow T_j \quad (WR \text{ 冲突})$</div>
+                            <div>• $w_i(X) \dots w_j(X) \implies T_i \rightarrow T_j \quad (WW \text{ 冲突})$</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：有向边的方向严格代表了物理冲突操作的执行先后顺序</span>
+                    <i class="fa-solid fa-arrow-trend-up"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Theorem & Topological Sorting -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-award text-purple-600"></i>
+                            <span>2. 冲突可串行化定理与拓扑排序 (Theorem &amp; Sorting)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Core Theorem</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Theorem Box -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-purple-950">冲突可串行化判定定理 (Serializability Theorem)</span>
+                                <span class="font-mono text-purple-700 text-[9px]">Acyclic Condition</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                一个并发调度 $S$ 是冲突可串行化的，**当且仅当其优先图 $G(S)$ 是一个有向无环图（DAG）**。
+                            </p>
+                        </div>
+
+                        <!-- Topological Sorting Box -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-purple-950">拓扑排序输出等价串行序列</span>
+                                <span class="font-mono text-purple-700 text-[9px]">Topological Sort</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                对 DAG 图 $G(S)$ 进行拓扑排序，所得到的顶点序列即为**与 $S$ 冲突等价的纯串行调度顺序 $S_{\text{serial}}$**。如果图中存在多个拓扑排序序列，说明存在多个等价的串行执行顺序。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 14 · 视图可串行化与盲写 (Blind Writes) 特例分析</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心图论启发 (Precedence Graph Engineering Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        优先图将复杂的并发调度正确性证明化归为**成熟的图论拓扑无环判定（DAG Check）**。数据库锁管理器（Lock Manager，如两阶段锁 2PL）正是通过在运行时动态阻止锁等待图中产生环路，来从根本上保障并发调度的冲突可串行性。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 13 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">13</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[32.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (12.html <- 13.html -> 14.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">优先图与拓扑排序验证法 (Precedence Graph &amp; Verification)</span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="12.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="14.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解优先图 (DAG) 的构建与无环充要条件：</span>
+                    “向学员做解构说明：优先图是验证冲突可串行化最强大的数学工具。节点是事务，有向边代表物理冲突的相对先后顺序（$RW, WR, WW$）。核心定理：只要图无环（DAG），该调度就一定冲突可串行化，且其拓扑排序就是等价的串行执行顺序。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调环路与并发异常的物理对应关系：</span>
+                    “请学员关注右侧的环路示例：如果图出现环（如 $T_1 \rightarrow T_2 \rightarrow T_1$），意味着 $T_1$ 必须在 $T_2$ 之前执行，同时 $T_2$ 又必须在 $T_1$ 之前执行，这是物理上无法满足的冲突循环，必然导致脏读、不可重复读等异常发生。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

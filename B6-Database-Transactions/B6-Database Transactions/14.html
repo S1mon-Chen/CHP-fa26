@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 视图可串行化与盲写 (View Serializability &amp; Blind Writes)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-eye text-indigo-600"></i>
+                <span>Part 02 · 事务调度与可串行化理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                视图可串行化与盲写 (View Serializability &amp; Blind Writes)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                View Equivalence Conditions, Blind Writes ($w_i(X)$ without $r_i(X)$) &amp; NP-Completeness Trade-offs
+            </p>
+        </div>
+
+        <!-- View Serializability Hierarchy Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                        <span>可串行化调度层次包含关系 (Serializability Containment Hierarchy)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">VSR Inclusion: Conflict Serializable $\subset$ View Serializable $\subset$ All Schedules</span>
+                </div>
+
+                <!-- 3 Layers Relationship Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                    
+                    <!-- Layer 1: Conflict Serializable -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                1. 冲突可串行化 (Conflict)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">DAG Verifiable</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            • **特点**：保证无冲突操作可以通过多轮对调 (Swap) 转化为纯串行。<br/>
+                            • **验证复杂度**：$O(V + E)$ 拓扑无环判定（高效）。<br/>
+                            • **工程状态**：**商业数据库物理引擎标准**。
+                        </div>
+                    </div>
+
+                    <!-- Layer 2: View Serializable (With Blind Writes) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-eye text-amber-400"></i>
+                                2. 视图可串行化 (View)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Blind Write Special</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            • **特点**：包含冲突可串行化 + 带有**盲写（Blind Write）**的调度。<br/>
+                            • **验证复杂度**：**NP-Complete（指数级，极大开销）**。<br/>
+                            • **工程状态**：仅存于理论界，工业界弃用。
+                        </div>
+                    </div>
+
+                    <!-- Layer 3: Non-Serializable -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                                3. 非可串行化调度 (Unsafe)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Anomalies Risk</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            • **特点**：破坏逻辑一致性与数据状态平滑转移。<br/>
+                            • **可能异常**：脏读、脏写、不可重复读、更新丢失。<br/>
+                            • **处理方式**：由并发控制协议（2PL/MVCC）阻断。
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (View Equivalence Conditions) vs Right Card (Blind Writes Example & NP-Completeness) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: 3 View Equivalence Conditions -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-check-double text-indigo-600"></i>
+                            <span>1. 视图等价三大判定条件 (View Equivalence Rules)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Formal Rules</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            调度 $S$ 与串行调度 $S'$ **视图等价（$S \equiv_v S'$）**，当且仅当对每个数据项 $X$，满足以下三大条件：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-900">条件一 (初始读一致 / Initial Read)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    若 $T_i$ 在调度 $S$ 中读取了数据项 $X$ 的初始值，则 $T_i$ 在 $S'$ 中也必须读取 $X$ 的初始值。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-900">条件二 (写读依赖一致 / Read-From Dependency)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    若 $T_i$ 在调度 $S$ 中读取了由 $T_j$ 写入的数据项 $X$，则 $T_i$ 在 $S'$ 中也必须读取由 $T_j$ 写入的 $X$。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-900">条件三 (终态写一致 / Final Write)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    若 $T_i$ 在调度 $S$ 中最后对 $X$ 执行写入，则 $T_i$ 在 $S'$ 中也必须最后对 $X$ 执行写入。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：保证所有事务“读到的视角”与“最终落盘写视角”在串行逻辑上完全吻合</span>
+                    <i class="fa-solid fa-glasses"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Blind Writes Example & NP-Completeness -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bug text-purple-600"></i>
+                            <span>2. 盲写 (Blind Writes) 特例与 NP-Complete 判规阻碍</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">NP-Hard Complexity</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Blind Write Box -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-purple-900">什么是盲写 (Blind Write)？</span>
+                                <span class="font-mono text-purple-700 text-[9px]">$w_i(X)$ without $r_i(X)$</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                指事务 $T_i$ 在**没有事先读取数据项 $X$ 的情况下直接对 $X$ 进行覆盖写入**。
+                                例如调度 $S: r_1(A) \to w_2(A) \to w_1(A) \to w_3(A)$ 中包含环路 $T_1 \rightleftarrows T_2$（非冲突可串行化），但因为 $w_1(A)$ 是没有被读取的盲写并被 $w_3(A)$ 覆盖，其视图等价于纯串行 $T_1 \to T_2 \to T_3$！
+                            </p>
+                        </div>
+
+                        <!-- NP-Completeness Box -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-rose-800">工业界弃用视图可串行化的根源</span>
+                                <span class="font-mono text-rose-700 text-[9px]">NP-Complete</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                判定一个包含盲写的调度是否为视图可串行化是 **NP-Complete 问题**（计算复杂度随事务数呈指数级爆炸 $O(2^N)$）。因此，没有任何商业数据库引擎会在运行时去检验视图可串行性。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 15 · 可恢复调度与无级联回滚 (Cascadeless) 理论</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心理论启发 (View Serializability &amp; RDBMS Design)</h4>
+                    <p class="text-xs text-slate-700">
+                        视图可串行化展示了数据库可串行性理论的极致边界，但其 NP-Complete 的证明复杂度决定了它只能停留在学术层面。工业界数据库引擎（MySQL InnoDB, Oracle, PostgreSQL）全数退守到**冲突可串行化（2PL 锁 / DAG 检查）** 或 **快照隔离级别（MVCC）**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 14 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">14</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[35.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (13.html <- 14.html -> 15.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">视图可串行化与盲写 (View Serializability &amp; Blind Writes)</span>
+            <a href="15.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="13.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="15.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解视图可串行化与盲写的本质：</span>
+                    “向学员做解构说明：视图可串行化是比冲突可串行化范围更广的定义。为什么有些调度优先图有环，但依然能够达到与纯串行完全一致的执行效果？原因就在于‘盲写’（Blind Write）——即一个事务直接覆盖写入数据项而此前没有读取它，从而使其写入值未被后续事务读取。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调 NP-Complete 复杂度与工程取舍：</span>
+                    “请学员特别关注右侧卡片：判定视图可串行性是 NP-Complete 问题（复杂度呈现指数级增长 $O(2^N)$）。因此，数据库系统（如 MySQL InnoDB 或 PostgreSQL）在物理实现上完全放弃了视图可串行化，统一采用冲突可串行化（2PL 锁）或 Snapshot Isolation 快照隔离。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

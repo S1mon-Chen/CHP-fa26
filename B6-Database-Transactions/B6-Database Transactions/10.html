@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 并发读写冲突类型：RW、WW、WR (Read-Write Conflict Types)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-split-up-and-left text-indigo-600"></i>
+                <span>Part 02 · 事务调度与可串行化理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                并发读写冲突类型：RW、WW、WR (Read-Write Conflict Types)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Read-Write ($RW$), Write-Write ($WW$), Write-Read ($WR$) Conflicts &amp; Non-Conflicting Commutativity Rules
+            </p>
+        </div>
+
+        <!-- Visual Conflict Matrix Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-table-cells text-indigo-400"></i>
+                        <span>三大物理读写冲突分类矩阵 (Read/Write Conflict Taxonomy)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Targeting Same Item $X$ ($T_1 \neq T_2$)</span>
+                </div>
+
+                <!-- 3 Conflict Cards Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono">
+                    
+                    <!-- RW Conflict Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-arrows-rotate text-amber-400"></i>
+                                读写冲突 ($RW$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Unrepeatable Read</span>
+                        </div>
+                        <div class="text-[9.5px] space-y-1 font-sans">
+                            <div class="font-mono text-slate-300 bg-slate-900 p-1 rounded border border-slate-800 text-[9px]">
+                                <span class="text-amber-300 font-bold">Sequence:</span> $r_1(X) \dots w_2(X)$
+                            </div>
+                            <p class="text-slate-300 text-[9px] leading-relaxed">
+                                $T_1$ 先读取数据 $X$，在 $T_1$ 未结束前 $T_2$ 写入修改了 $X$。反向交换导致 $T_1$ 读到 $T_2$ 修改后的新值（不可重复读）。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- WW Conflict Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-pen-to-square text-rose-400"></i>
+                                写写冲突 ($WW$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Dirty Write / Lost Update</span>
+                        </div>
+                        <div class="text-[9.5px] space-y-1 font-sans">
+                            <div class="font-mono text-slate-300 bg-slate-900 p-1 rounded border border-slate-800 text-[9px]">
+                                <span class="text-rose-300 font-bold">Sequence:</span> $w_1(X) \dots w_2(X)$
+                            </div>
+                            <p class="text-slate-300 text-[9px] leading-relaxed">
+                                $T_1$ 写入 $X$ 后，未提交前 $T_2$ 再次覆盖写入 $X$。颠倒顺序会导致终态数据覆盖或回滚冲毁（脏写/更新丢失）。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- WR Conflict Box -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-eye-slash text-indigo-400"></i>
+                                写读冲突 ($WR$)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Dirty Read</span>
+                        </div>
+                        <div class="text-[9.5px] space-y-1 font-sans">
+                            <div class="font-mono text-slate-300 bg-slate-900 p-1 rounded border border-slate-800 text-[9px]">
+                                <span class="text-indigo-300 font-bold">Sequence:</span> $w_1(X) \dots r_2(X)$
+                            </div>
+                            <p class="text-slate-300 text-[9px] leading-relaxed">
+                                $T_1$ 修改数据项 $X$ 但尚未提交，$T_2$ 读取了该未提交的中间状态。若 $T_1$ 随后 Abort，则 $T_2$ 读到了“脏数据”。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Conflict Details & Non-commutative Operations) vs Right Card (Non-conflicting Operations & Commutativity Rule) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Conflict Operations Definition -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                            <span>1. 冲突操作的物理判别法则 (Non-commutative)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">Order-Sensitive</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            当调度 $S$ 中属于不同事务的两个指令满足以下三个条件时，称它们为**冲突操作（Conflicting Operations）**，颠倒其在时间轴上的先后顺序**必将改变数据库运行结果**：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1 text-[10px]">
+                            <ul class="space-y-1 text-slate-600 leading-tight">
+                                <li class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                                    <span>**条件一**：属于两个不同的并发事务（$T_i \neq T_j$）。</span>
+                                </li>
+                                <li class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                                    <span>**条件二**：作用于同一个物理数据项（同时操作 $X$）。</span>
+                                </li>
+                                <li class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-xmark text-rose-500 shrink-0"></i>
+                                    <span>**条件三**：两个操作中**至少有一个是写操作 $w(X)$**。</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>规则：冲突操作决不可在时间轴上自由对调位置！</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Non-Conflicting Commutativity Rules -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-left-right text-indigo-600"></i>
+                            <span>2. 不冲突操作与交换律 (Commutativity Rules)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Safe to Swap</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            如果不属于上述冲突情形，则这两个操作在调度时间轴上的相对顺序可以**安全对调（Swap）**，且完全不影响全局状态一致性：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px] font-mono">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-900">法则 A (并发并发读)</span>: $\{r_i(X), r_j(X)\}$
+                                <p class="font-sans text-[9px] text-slate-600 mt-0.5">多个事务同时读取同一数据项 $X$，无修改写入，顺序可任意交换。</p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-900">法则 B (不同数据项)</span>: $\{op_i(X), op_j(Y)\} \quad (X \neq Y)$
+                                <p class="font-sans text-[9px] text-slate-600 mt-0.5">作用于不同物理数据项的操作（即使均包含写），物理互不干扰，顺序可任意交换。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 11 · 冲突可串行化与非冲突操作对调推导</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心物理哲学 (Conflict Algebra Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        并发调度的证明本质是**对非冲突操作进行连续等价交换（Swapping）**。只要能够通过交换不冲突的操作，将交错调度 $S$ 转换为某个纯串行调度 $S_{\text{serial}}$，即证明了该并发执行绝对安全。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">并发读写冲突类型 (RW, WW, WR Conflicts)</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员区分三类物理冲突：</span>
+                    “向学员强调：冲突是导致并发异常的唯一根源。简单记忆：只要两个事务操作同一个物理数据项，且其中包含至少一个写操作，这俩操作的相对顺序就绝对不能交换。RW 引发不可重复读，WW 引发脏写或更新丢失，WR 引发脏读。”
+                </div>
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">💡 为 Slide 11 冲突可串行化埋下伏笔：</span>
+                    “请学员关注右侧的‘不冲突操作可交换’：如果两个指令不冲突（比如都是 Read，或者操作不同变量），我们就可以在时间轴上自由交换它们。接下来的 Slide 11 与 12，就是依靠交换不冲突指令来推导调度等价性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 冲突可串行化与等价交换 (Conflict Serializability &amp; Swapping)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-left-right text-indigo-600"></i>
+                <span>Part 02 · 事务调度与可串行化理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                冲突可串行化与等价交换 (Conflict Serializability &amp; Swapping)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Conflict Equivalence ($S \equiv_c S_{\text{serial}}$), Non-Conflicting Swapping Algebra &amp; Step-by-Step Derivation
+            </p>
+        </div>
+
+        <!-- Visual Swapping Pipeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-right-left text-indigo-400"></i>
+                        <span>非冲突操作连续等价对调推导管线 (Non-Conflicting Operations Swapping Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Rule: Swap Adjacent Non-Conflicting $op_i$ and $op_j$ ($i \neq j$)</span>
+                </div>
+
+                <!-- Step-by-Step Swapping Visual pipeline -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-mono items-center">
+                    
+                    <!-- Original Interleaved Schedule -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1 text-center">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-shuffle text-amber-400"></i>
+                                原始调度 $S_1$
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Interleaved</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 text-slate-300">
+                            <div>$r_1(A) \to w_1(A) \to \mathbf{r_2(A) \to r_1(B)} \to w_1(B) \to w_2(A)$</div>
+                            <div class="text-amber-400 text-[8.5px] font-sans">* 准备对调无冲突的 $r_2(A)$ 与 $r_1(B)$</div>
+                        </div>
+                    </div>
+
+                    <!-- Swapping Operation Arrow -->
+                    <div class="p-2 rounded-xl bg-slate-950 border border-purple-800 text-center space-y-1">
+                        <div class="text-purple-300 font-bold text-[11px] flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-repeat text-purple-400"></i>
+                            <span>连续无冲突对调 (Swapping)</span>
+                        </div>
+                        <p class="text-[9px] text-slate-300 font-sans leading-tight">
+                            由于 $r_2(A)$ 与 $r_1(B)$ / $w_1(B)$ 作用于不同变量/均不冲突，可在时间轴上自由前移对调！
+                        </p>
+                        <div class="text-emerald-400 font-mono text-xs font-bold">&rarr; $\equiv_c$ &rarr;</div>
+                    </div>
+
+                    <!-- Target Serial Schedule -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1 text-center">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-list-ol text-emerald-400"></i>
+                                目标纯串行调度 $S_{\text{serial}}$
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">$T_1 \to T_2$ Serial</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 text-slate-300">
+                            <div>$[r_1(A) \to w_1(A) \to w_1(B)] \to [r_2(A) \to w_2(A)]$</div>
+                            <div class="text-emerald-400 text-[8.5px] font-sans">* 属于 $T_1$ 的所有指令完全聚拢在 $T_2$ 之前</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Conflict Equivalence Definition) vs Right Card (Algebraic Swapping Rules) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Conflict Equivalence & Serializability Definition -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-equals text-indigo-600"></i>
+                            <span>1. 冲突等价与冲突可串行化定义</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Formal Rules</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Rule A: Conflict Equivalence -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-indigo-950">冲突等价 (Conflict Equivalence: $S_1 \equiv_c S_2$)</span>
+                                <span class="font-mono text-indigo-700 text-[9px]">Swap Sequence</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                如果调度 $S_1$ 可以通过**有限次连续交换相邻的非冲突操作**转换为调度 $S_2$，则称 $S_1$ 与 $S_2$ **冲突等价**。由于交换不涉及冲突操作，两者的执行终态必然完全相同。
+                            </p>
+                        </div>
+
+                        <!-- Rule B: Conflict Serializability -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-indigo-950">冲突可串行化调度 (Conflict Serializable)</span>
+                                <span class="font-mono text-indigo-700 text-[9px]">Sufficient Condition</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                如果一个交错调度 $S$ **冲突等价于某个纯串行调度 $S_{\text{serial}}$**，则称 $S$ 为**冲突可串行化调度**。这是工业界数据库保障并发安全的黄金充要判规。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：将复杂的并发安全性证明化归为“非冲突指令对调代数”</span>
+                    <i class="fa-solid fa-calculator"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Swapping Algebraic Derivation Example -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-purple-600"></i>
+                            <span>2. 逐步等价交换推导实战 (Step-by-Step Derivation)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Derivation Walkthrough</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            考虑包含事务 $T_1, T_2$ 的交错调度 $S$。通过以下两步无冲突对调，即可将 $S$ 转化为串行调度 $T_1 \rightarrow T_2$：
+                        </p>
+
+                        <!-- Code/Derivation Step Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-amber-300 font-bold">// 初始交错调度 S:</div>
+                            <div class="text-slate-300">S = r1(A) &rarr; w1(A) &rarr; <span class="text-rose-400 font-bold">r2(A)</span> &rarr; <span class="text-cyan-300 font-bold">r1(B)</span> &rarr; w1(B) &rarr; w2(A)</div>
+
+                            <div class="text-purple-300 font-bold mt-1.5">// Step 1: 对调无冲突的 r2(A) 与 r1(B) (作用于不同变量)</div>
+                            <div class="text-slate-300">S' = r1(A) &rarr; w1(A) &rarr; <span class="text-cyan-300 font-bold">r1(B)</span> &rarr; <span class="text-rose-400 font-bold">r2(A)</span> &rarr; w1(B) &rarr; w2(A)</div>
+
+                            <div class="text-purple-300 font-bold mt-1.5">// Step 2: 对调无冲突的 r2(A) 与 w1(B) (属于不同事务且变量不同)</div>
+                            <div class="text-slate-300">S'' = <span class="text-emerald-300 font-bold">[r1(A) &rarr; w1(A) &rarr; r1(B) &rarr; w1(B)]</span> &rarr; <span class="text-indigo-300 font-bold">[r2(A) &rarr; w2(A)]</span></div>
+                            <div class="text-emerald-400 font-bold mt-1">// 结论：S'' 严格等于串行调度 T1 之后再执行 T2，证明 S 绝对安全！</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 13 · 优先图 (Precedence Graph / DAG) 拓扑验证法</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心代数启发 (Swapping Algebra Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        等价交换的本质是**在不破坏任何冲突操作（$RW, WW, WR$）物理相对顺序的前提下**，将散落在时间轴上的非冲突指令不断“聚拢分组”，最终拼凑出某个纯串行事务序列。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 12 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">12</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[30.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (11.html <- 12.html -> 13.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">冲突可串行化与等价交换 (Conflict Serializability &amp; Swapping)</span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="11.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="13.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解等价交换对调推导：</span>
+                    “向学员做代数解构说明：怎么证明一个交错调度是安全的？最直接的方法就是‘玩对调游戏’。只要两个相邻操作不冲突（比如读写不同变量），我们就可以交换它们的执行先后顺序。如果连续交换后能拼出一个纯串行调度，就证明了这个交错调度是绝对安全的。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 为 Slide 13 优先图 (Precedence Graph) 埋下伏笔：</span>
+                    “请学员关注：虽然手写等价交换可以证明安全，但在程序中让数据库引擎去试对调非常低效。因此在下一个 Slide 13 中，我们将引入更加高效的图论工具——优先图（Precedence Graph / DAG）及其拓扑排序算法。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

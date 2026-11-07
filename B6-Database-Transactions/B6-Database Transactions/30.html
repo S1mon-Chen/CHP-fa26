@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 30 - Buffer Pool、脏页与刷脏策略 (Buffer Pool, Dirty Pages &amp; Flushing Strategies)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-amber-600"></i>
+                <span>Part 05 · WAL 预写日志与单机故障恢复</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Buffer Pool、脏页与刷脏策略 (Buffer Pool, Dirty Pages &amp; Flushing Strategies)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                DBMS Memory Architecture, Dirty Pages, Async Page Flushing &amp; Disk I/O Bottlenecks
+            </p>
+        </div>
+
+        <!-- Buffer Pool Memory Architecture Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-amber-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-memory text-amber-400"></i>
+                        <span>DBMS Buffer Pool 内存页与磁盘物理数据文件关系图 (Memory-Disk Architecture)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Memory Write (RAM) $\to$ Async Background Flush $\to$ Physical Disk (.ibd)</span>
+                </div>
+
+                <!-- Memory-Disk Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Buffer Pool (RAM) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-microchip text-indigo-400"></i>
+                                Buffer Pool 内存缓冲区 (DRAM)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">16KB Pages</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-1 font-sans">
+                            <div class="flex items-center justify-between">
+                                <span>• Page 1: <code class="text-emerald-300">Clean</code></span>
+                                <span class="text-[8px] text-slate-400">内存与磁盘一致</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>• Page 2: <strong class="text-amber-300">Dirty (脏页)</strong></span>
+                                <span class="text-[8px] text-amber-300">被修改尚未刷盘</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>• Page 3: <strong class="text-amber-300">Dirty (脏页)</strong></span>
+                                <span class="text-[8px] text-amber-300">被修改尚未刷盘</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Async Page Cleaner Engine -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5 text-center">
+                        <div class="text-amber-300 font-bold text-[11px] flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-arrows-rotate text-amber-400 animate-spin"></i>
+                            <span>后台异步刷脏 (Async Page Cleaner)</span>
+                        </div>
+                        <p class="text-[9px] text-slate-300 font-sans leading-tight">
+                            将写物理延迟从同步 SQL 响应路径中彻底解耦，由后台后台线程按 <code class="text-amber-300 font-mono">innodb_io_capacity</code> 速率平滑异步写回！
+                        </p>
+                        <div class="text-emerald-400 font-mono text-[10px] font-bold">&rarr; Async Random Page Write &rarr;</div>
+                    </div>
+
+                    <!-- Disk Data Files -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-hard-drive text-emerald-400"></i>
+                                磁盘数据文件 (Disk Files)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Non-Volatile</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-1 font-sans">
+                            <div>• <strong class="text-white">ibdata1 / .ibd</strong> 表空间文件</div>
+                            <div>• **物理页面 16KB** 离散存储</div>
+                            <div>• 断电绝对保存，但**随机写 I/O 开销极高**</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Dirty Pages Definition) vs Right Card (Flushing Triggers) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Buffer Pool & Dirty Pages Concepts -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-cube text-amber-600"></i>
+                            <span>1. Buffer Pool 内存页与脏页 (Dirty Pages) 物理定义</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Memory Concepts</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            为了解决物理磁盘随机 I/O 极慢的瓶颈，关系型数据库（如 MySQL InnoDB）在内存中开辟了巨大的 `Buffer Pool`：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">Buffer Pool 缓存池</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    以 **16KB 数据页 (Page)** 为单位在 DRAM 中缓存磁盘数据。所有的读写 SQL 操作一律先在 Buffer Pool 中查找或修改。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">脏页 (Dirty Page)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    在 Buffer Pool 中被 `UPDATE / INSERT / DELETE` 修改了内容，但**尚未写入同步回磁盘**的数据页。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">干净页 (Clean Page)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    内存中的数据与磁盘物理文件上的内容完全一致的数据页（未被修改过或已被平滑刷盘）。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>法则：写操作只需修改内存脏页即算成功，落盘延后异步解耦</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Four Page Flushing Triggers -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-indigo-600"></i>
+                            <span>2. 后台异步刷脏策略与四大触发时机 (Flushing Triggers)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">4 Triggers</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">1. 正常关机 (Normal Shutdown)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    数据库关闭时，触发全量脏页刷盘，将 Buffer Pool 中所有脏页彻底清空刷回磁盘。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">2. Buffer Pool 淘汰旧页 (LRU Eviction)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    内存不足淘汰最久未使用 (LRU) 数据页时，若该页为脏页，必须先将其强行刷盘后才能腾出内存。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">3. Redo Log 环形日志满 (Checkpoint Pressure)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    重做日志（Redo Log）空间达到安全阈值时，强制推进 Checkpoint，拉动脏页刷盘释放 Redo 空间。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">4. 后台定时线程平滑刷盘 (`page_cleaner`)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    后台独立线程按照 `innodb_io_capacity` 参数指定的速率，持续平滑将脏页刷盘，避免抖动。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 31 · 刷盘策略权衡：STEAL/FORCE 矩阵与 WAL 金律</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">Part 05 核心开篇哲学 (Buffer Pool &amp; Async Flushing Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Buffer Pool 实现了内存级极速写，但**异步刷脏使得磁盘数据在任意瞬间都落后于内存脏页**。这一物理时间差直接引出了一个致命风险：如果在脏页写回磁盘前突发断电宕机，数据该如何恢复？这就是接下来预写日志（WAL）与 Redo Log 要解决的核心问题。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-800 font-bold">Slide 30 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">30</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[75.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (29.html <- 30.html -> 31.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="29.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Buffer Pool、脏页与刷脏策略 (Buffer Pool &amp; Flushing)</span>
+            <a href="31.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="29.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="31.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 开启 Part 05 引导学员透视故障恢复基础：</span>
+                    “向学员做开篇引入：这是 Part 05 WAL 预写日志与单机故障恢复的开篇。首先要理解数据库写操作的物理过程——写不是直接写入磁盘文件，而是先修改 Buffer Pool 内存页。被修改但还没写磁盘的页叫‘脏页’（Dirty Page）。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析异步刷脏与故障恢复的直接关联：</span>
+                    “请学员思考：如果写 SQL 操作执行完后脏页还没来得及刷盘，系统就在此时发生了断电故障，内存里的脏页就会瞬间挥发丢失。数据库如何保障已提交的事务不丢？接下来 Slide 31 我们将拆解著名的预写日志（WAL）与 STEAL/NO-FORCE 策略。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '31.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '29.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

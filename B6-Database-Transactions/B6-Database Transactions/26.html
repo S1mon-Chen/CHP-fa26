@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 26 - MVCC 物理实现：隐藏列与 Undo 版本链 (MVCC Physical Implementation: Hidden Columns &amp; Undo Chains)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-sitemap text-cyan-600"></i>
+                <span>Part 04 · 快照隔离与多版本并发控制 (MVCC)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                MVCC 物理实现：隐藏列与 Undo 版本链 (Hidden Columns &amp; Undo Chains)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                InnoDB Hidden System Columns (`DB_TRX_ID`, `DB_ROLL_PTR`), Before-Images &amp; Undo Log Version Chain
+            </p>
+        </div>
+
+        <!-- Undo Log Version Chain Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-link text-cyan-400"></i>
+                        <span>InnoDB 聚簇索引行记录与 Undo Log 单向版本链 (Undo Log Version Chain Topology)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Pointer: `DB_ROLL_PTR` $\to$ Previous Undo Log Record</span>
+                </div>
+
+                <!-- Version Chain Diagram Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Current Row Record in Buffer Pool -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-database text-emerald-400"></i>
+                                当前最新行 (Buffer Pool 页)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Latest Version</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-0.5 font-sans">
+                            <div>• <strong class="text-white">User Data</strong>: <code class="text-emerald-300">age = 30, name = "Alice"</code></div>
+                            <div>• <strong class="text-cyan-300">DB_TRX_ID</strong>: <code class="text-cyan-300 font-mono">200</code> (最新改动事务)</div>
+                            <div>• <strong class="text-amber-300">DB_ROLL_PTR</strong>: <code class="text-amber-300 font-mono">0x123488</code> &rarr;</div>
+                        </div>
+                    </div>
+
+                    <!-- Undo Log Record 2 (Intermediate) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-clock-rotate-left text-amber-400"></i>
+                                Undo 记录 2 (0x123488)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">History V2</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-0.5 font-sans">
+                            <div>• <strong class="text-white">Before-Image</strong>: <code class="text-amber-300">age = 25, name = "Alice"</code></div>
+                            <div>• <strong class="text-cyan-300">DB_TRX_ID</strong>: <code class="text-cyan-300 font-mono">150</code></div>
+                            <div>• <strong class="text-amber-300">DB_ROLL_PTR</strong>: <code class="text-amber-300 font-mono">0x009900</code> &rarr;</div>
+                        </div>
+                    </div>
+
+                    <!-- Undo Log Record 1 (Initial) -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-file-invoice text-indigo-400"></i>
+                                Undo 记录 1 (0x009900)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">History V1</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-0.5 font-sans">
+                            <div>• <strong class="text-white">Before-Image</strong>: <code class="text-indigo-300">age = 20, name = "Alice"</code></div>
+                            <div>• <strong class="text-cyan-300">DB_TRX_ID</strong>: <code class="text-cyan-300 font-mono">100</code> (插入事务)</div>
+                            <div>• <strong class="text-slate-400">DB_ROLL_PTR</strong>: <code class="text-slate-500 font-mono">null</code></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Hidden System Columns) vs Right Card (Undo Chain Construction) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: InnoDB Hidden System Columns -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-columns text-cyan-600"></i>
+                            <span>1. InnoDB 行记录三大隐藏系统列 (Hidden System Columns)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Hidden Fields</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            InnoDB 在聚簇索引的每一行物理记录中，除了用户定义的字段外，都会隐式自动添加 2~3 个系统级隐藏列：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-cyan-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">DB_TRX_ID (6 Bytes)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    最近一次对该行进行 `INSERT` 或 `UPDATE` 的**事务 ID**。若是 `DELETE`，也会在内部当作 `UPDATE` 将删除标记位置位，并更新 `DB_TRX_ID`。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">DB_ROLL_PTR (7 Bytes)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    **回滚指针**。指向写在 Undo Segment 中该行上一个历史版本的镜像地址（Before-Image），以此串联起版本链。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">DB_ROW_ID (6 Bytes)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    隐藏自增主键。如果数据表既没有显式主键，也没有非空唯一索引，InnoDB 会自动生成此列作为聚簇索引键。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>法则：DB_TRX_ID 与 DB_ROLL_PTR 是 MVCC 实现版本推演的物理基石</span>
+                    <i class="fa-solid fa-key"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Undo Log Version Chain Construction -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-timeline text-indigo-600"></i>
+                            <span>2. Undo 版本链的动态构建与物理回溯 (Version Chain)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Chain Mechanics</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            当不同的事务先后修改同一行记录时，Undo 版本链按以下物理步骤动态增长：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">步骤 A：写入 Undo Log (Before-Image)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    写事务在修改数据页前，先把当前页中的旧版本镜像完整拷贝写进 Undo Log 页面。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">步骤 B：更新数据页与回滚指针</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    修改 Buffer Pool 中最新行记录，更新 `DB_TRX_ID` 为当前事务 ID，并将 `DB_ROLL_PTR` 指向刚才生成的 Undo Log 记录地址。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">步骤 C：版本链物理形态</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    头节点（最新行）在聚簇索引页中，历史节点在 Undo 段中。回溯方向为**从最新版本一路向前指向最旧版本**。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 27 · ReadView 结构与一致性快照可见性算法</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心物理哲学 (Undo Version Chain Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Undo Log 不仅服务于事务 `ROLLBACK` 原子性撤销，更通过 `DB_ROLL_PTR` 将分散的历史镜像串联成**单向版本链**。这使得读事务能够沿着版本链向过去追溯，精准还原出属于自己的历史快照镜像。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 26 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">26</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[65.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (25.html <- 26.html -> 27.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="25.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">MVCC 物理实现：隐藏列与 Undo 版本链 (Undo Chains)</span>
+            <a href="27.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="25.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="27.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解隐藏列与 Undo 链物理数据结构：</span>
+                    “向学员做解构说明：每一个数据行内部都有 `DB_TRX_ID` 和 `DB_ROLL_PTR`。写操作不是原地毁灭旧值，而是先把旧值写入 Undo Log，然后把聚簇索引页里的最新行通过 `DB_ROLL_PTR` 指向该 Undo 记录，从而拼出一条从最新到最旧的单向链表。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Slide 27 的 ReadView 算法：</span>
+                    “请学员注意：既然 Undo Log 里保存了整条历史版本链，那么当某个 SELECT 查询执行时，它怎么知道版本链上的哪一个版本是属于自己有权看到的呢？答案就是接下来 Slide 27 要讲解的 **ReadView 可见性算法**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '27.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '25.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

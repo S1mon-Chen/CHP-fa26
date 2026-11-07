@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - 隔离性与并发执行的妥协 (Isolation &amp; Concurrent Execution)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-lock text-indigo-600"></i>
+                <span>Part 01 · 事务概述与 ACID 特性原理</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                隔离性与并发执行的妥协 (Isolation &amp; Concurrent Execution)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Serial Execution Illusion, Interleaved Transactions &amp; Isolation Strictness vs. Throughput Balance
+            </p>
+        </div>
+
+        <!-- Isolation Spectrum Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders text-indigo-400"></i>
+                        <span>并发吞吐量与隔离级别严苛度权衡坐标轴 (Concurrency Performance vs. Isolation Strictness)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Strictness $\uparrow \implies$ Throughput $\downarrow$</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+                    <!-- RU -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-rose-300 font-bold text-[11px]">Read Uncommitted</span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Lowest Isolation</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            无锁无视图，允许读未提交数据（脏读），吞吐量极高，数据极不安全。
+                        </div>
+                    </div>
+
+                    <!-- RC -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-amber-300 font-bold text-[11px]">Read Committed</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Every Query MVCC</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            语句级 MVCC 快照，消除了脏读，但允许不可重复读与幻读。
+                        </div>
+                    </div>
+
+                    <!-- RR -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-cyan-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-cyan-300 font-bold text-[11px]">Repeatable Read</span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">Trx Level MVCC</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            事务级 MVCC 快照 + 间隙锁（Next-Key Lock），消除不可重复读与多数幻读。
+                        </div>
+                    </div>
+
+                    <!-- Serializable -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-indigo-300 font-bold text-[11px]">Serializable</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Highest Isolation</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            读写全面加锁（2PL 读写锁 / 谓词锁），彻底排斥并发读写冲突，吞吐低。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Pure Serial) vs Right Card (Concurrent Interleaving) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Pure Serial Execution -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-ol text-rose-600"></i>
+                            <span>1. 纯串行执行 (Pure Serial Execution)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">100% Safe, Zero TPS</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            在纯串行模式下，事务按顺序排队执行，$T_1$ 完全提交后再启动 $T_2$。这种方式不存在任何并发读写冲突。
+                        </p>
+
+                        <div class="grid grid-cols-2 gap-2 text-[10px]">
+                            <div class="p-2.5 rounded-xl bg-white border border-emerald-100 space-y-1">
+                                <div class="font-bold text-emerald-800 flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                    <span>核心优势</span>
+                                </div>
+                                <ul class="text-[9.5px] text-slate-600 space-y-0.5">
+                                    <li>• 逻辑绝对安全简单</li>
+                                    <li>• 彻底杜绝任何并发异常</li>
+                                    <li>• 一致性与隔离性天然成立</li>
+                                </ul>
+                            </div>
+
+                            <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                                <div class="font-bold text-rose-800 flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-xmark text-rose-600"></i>
+                                    <span>物理瓶颈</span>
+                                </div>
+                                <ul class="text-[9.5px] text-slate-600 space-y-0.5">
+                                    <li>• 遇到磁盘/网络 I/O 时 CPU 空转</li>
+                                    <li>• 无法利用现代 CPU 多核算力</li>
+                                    <li>• TPS 吞吐量遭遇断崖式下跌</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>代价：安全但吞吐量极低，无法支撑互联网高并发场景</span>
+                    <i class="fa-solid fa-gauge-simple text-rose-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Concurrent Interleaving -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-split-up-and-left text-indigo-600"></i>
+                            <span>2. 并发交叉执行 (Concurrent Interleaving)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">High TPS, Conflict Risk</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            现代数据库允许多个事务的操作按时间重叠交叉执行（Interleaved Schedule），在 $T_1$ 发生磁盘 I/O 时调度 $T_2$ 运算。
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span>并发交叉引发的三大读写冲突 (Read/Write Conflicts)</span>
+                                <span class="font-mono text-indigo-700 text-[9px]">Anomalies Risk</span>
+                            </div>
+                            <ul class="space-y-0.5 text-[9.5px] text-slate-600 leading-tight">
+                                <li>• **读写冲突 ($RW$)**：$T_1$ 读完后 $T_2$ 修改，引发不可重复读。</li>
+                                <li>• **写写冲突 ($WW$)**：$T_1$ 未提交时 $T_2$ 覆盖写入，引发脏写/更新丢失。</li>
+                                <li>• **写读冲突 ($WR$)**：$T_2$ 读取了 $T_1$ 未提交的临时脏数据，引发脏读。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：隔离性的核心是依靠并发控制技术消除 $RW/WW/WR$ 异常</span>
+                    <i class="fa-solid fa-users-slash text-indigo-600"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心物理哲学 (Isolation Engineering Compromise)</h4>
+                    <p class="text-xs text-slate-700">
+                        隔离性绝不是死板的硬性铁板一块，而是**性能吞吐与数据一致性之间的物理妥协**。数据库引擎通过提供多个隔离级别，允许开发者根据业务承受能力，在“绝对串行化”与“极高并发吞吐”之间灵活寻找平衡点。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 7 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">隔离性与并发执行的妥协 (Isolation &amp; Interleaving)</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解隔离性的工程妥协：</span>
+                    “向学员强调：隔离性的理想状态是‘如同所有事务纯串行执行’。但纯串行会导致 TPS 极低。为了利用 CPU 多核和磁盘 I/O 并行度，数据库允许事务交叉执行，因而引出了读写冲突与隔离级别的妥协选择。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Part 02 与 Part 03 的理论展开：</span>
+                    “请学员关注：在接下来的 Part 02 中，我们将通过优先图（DAG）数学证明冲突可串行化；在 Part 03 中，我们将详细剖析 2PL 两阶段锁与 Next-Key Lock 如何消除这些冲突异常。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 39 - ARIES 三阶段恢复流程 (ARIES Three-Phase Recovery Process)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-rotate-left text-emerald-600"></i>
+                <span>Part 06 · 检查点与 ARIES 恢复算法精要</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                ARIES 三阶段恢复流程 (ARIES Three-Phase Recovery Process)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Phase 1: Analysis, Phase 2: Redo (Repeating History), Phase 3: Undo (Rolling Back Losers) &amp; CLR
+            </p>
+        </div>
+
+        <!-- ARIES Three Phase Recovery Visual Timeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-emerald-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-timeline text-emerald-400"></i>
+                        <span>ARIES 崩溃恢复三大阶段在日志时间轴上的扫描演进图 (Recovery Phase Timeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Philosophy: "Repeat History Before Rolling Back Losers"</span>
+                </div>
+
+                <!-- 3 Phase Pipeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Phase 1: Analysis -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-magnifying-glass text-indigo-400"></i>
+                                阶段 1：分析阶段 (Analysis)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Forward Scan</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-1 font-sans">
+                            <div>• <strong>方向</strong>：正向扫描 (Checkpoint $\to$ Log End)</div>
+                            <div>• <strong>目标</strong>：重建崩溃瞬间的 DPT 与 ATT 表</div>
+                            <div class="text-indigo-300 font-bold text-[8.5px]">
+                                ★ 锁定未提交的 Losers 事务与 $\min(\text{RecLSN})$
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 2: Redo -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-cyan-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-cyan-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-bolt text-cyan-400"></i>
+                                阶段 2：重做阶段 (Redo)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">Repeating History</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-1 font-sans">
+                            <div>• <strong>方向</strong>：正向重放 ($\min(\text{RecLSN}) \to$ Log End)</div>
+                            <div>• <strong>准则</strong>：仅重放 $\text{Log LSN} > \text{PageLSN}$ 的更新</div>
+                            <div class="text-cyan-300 font-bold text-[8.5px]">
+                                ★ 重放所有修改（含 Losers），完美重现崩溃现场
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Phase 3: Undo -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-rotate-left text-rose-400"></i>
+                                阶段 3：撤销阶段 (Undo)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Backward Scan</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 space-y-1 font-sans">
+                            <div>• <strong>方向</strong>：逆向撤销 ($LastLSN \to$ Earliest)</div>
+                            <div>• <strong>目标</strong>：逆向回滚 ATT 中所有失败事务</div>
+                            <div class="text-rose-300 font-bold text-[8.5px]">
+                                ★ 写入 CLR 补偿日志，防二次崩溃死循环
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Phase 1 & Phase 2) vs Right Card (Phase 3 & Repeating History Philosophy) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Phase 1 & Phase 2 Detail -->
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-emerald-600"></i>
+                            <span>1. 阶段 1 (分析) 与 阶段 2 (正向重做历史)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Analysis &amp; Redo</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-emerald-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">阶段 1：分析阶段 (Analysis Phase)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    从上次成功记录的模糊检查点 (`CHECKPOINT_BEGIN`) 正向扫描日志到末尾。重新构建崩溃前瞬间的**脏页表 (DPT)** 与**活跃事务表 (ATT)**，并确定那些未完成提交的“失败事务集合 (Losers)”。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">阶段 2：重做阶段 (Redo Phase - Repeating History)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    从 DPT 表中最小的 $\text{Redo Start LSN} = \min(\text{RecLSN})$ 开始，正向扫描重放**所有物理日志**（包括未提交 Losers 事务的修改）。利用 $\text{Log LSN} > \text{PageLSN}$ 幂等法则跳过已刷盘数据，将物理页精确恢复到崩溃发生前瞬间的状态！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>法则：重放历史 (Repeating History) 确保了物理页面状态与日志彻底对齐</span>
+                    <i class="fa-solid fa-check"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Phase 3 Detail & CLR Protection -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate-left text-indigo-600"></i>
+                            <span>2. 阶段 3 (逆向撤销) 与 CLR 幂等防线</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Undo Phase &amp; CLR</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950 font-mono">阶段 3：撤销阶段 (Undo Phase - Rolling Back Losers)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    从 ATT 活跃事务表中最大 `LastLSN` 开始，沿着 `PrevLSN` 链表逆向扫描日志。对所有 Loser 事务的未提交修改施加 `Before-Image` 物理撤销，恢复数据真实一致性。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950 font-mono">CLR 补偿日志防二次崩溃 (UndoNextLSN Jump)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    在撤销每条日志时，强行向磁盘追加写一条 **CLR (Compensation Log Record)** 日志，记录 `UndoNextLSN`。即便撤销中途再次突然断电崩溃，重启后遇到 CLR 直接按指针跳跃，绝不重复撤销已处理部分！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 40 · 第 6 讲课程总结与核心架构心法</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心物理哲学 (ARIES Three-Phase Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        ARIES 算法最具开创性的理念在于**“重放历史 (Repeating History)”**：它先不急着撤销失败事务，而是先把包括失败事务在内的所有历史改动原封不动重做一遍，将物理页带回崩溃前一刻的真实现场；随后再沿着 Undo 链单向优雅撤销，配合 CLR 指针彻底解决了多崩溃并发恢复的工程绝症。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 39 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">39</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[97.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (38.html <- 39.html -> 40.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="38.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ARIES 三阶段恢复流程 (ARIES Three-Phase Recovery)</span>
+            <a href="40.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="38.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="40.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解 ARIES 的三阶段流程：</span>
+                    “向学员做解构说明：ARIES 算法包含三大阶段：1. 分析阶段（正向扫描，重建崩溃瞬间的 DPT 脏页表和 ATT 活跃事务表）；2. 重做阶段（正向扫描，重放所有 Redo 日志，即‘Repeating History’）；3. 撤销阶段（逆向扫描，回滚所有未提交的 Loser 事务）。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析‘Repeating History’（重放历史）的伟大意义：</span>
+                    “请学员思考：为什么重做阶段要把包含失败事务（Losers）在内的所有日志全部重放一遍？因为这样可以让物理数据页恢复到崩溃那一刻完全对齐的状态！接着在 Undo 阶段撤销失败事务时，写入 CLR 补偿日志，从而保证了撤销动作的有界性与幂等性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '40.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '38.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

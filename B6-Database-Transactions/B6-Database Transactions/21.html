@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 21 - 封锁粒度与表锁、行锁 (Lock Granularity: Table vs. Record Locks)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-layer-group text-purple-600"></i>
+                <span>Part 03 · 隔离级别与数据库封锁协议</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                封锁粒度与表锁、行锁 (Lock Granularity: Table vs. Record Locks)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Locking Hierarchy, Table vs. Page vs. Row Granularity &amp; Index Record Locking Constraints
+            </p>
+        </div>
+
+        <!-- Granularity Spectrum Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders text-purple-400"></i>
+                        <span>封锁粒度光谱：并发吞吐量 vs. 锁管理开销权衡 (Granularity Spectrum)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Coarse Granularity $\longleftrightarrow$ Fine Granularity</span>
+                </div>
+
+                <!-- Granularity Spectrum Cards Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                    
+                    <!-- Table Lock -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-table text-rose-400"></i>
+                                表级锁 (Table Lock)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Coarsest</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight space-y-1">
+                            <div>• **并发度**：极低（直接锁定整个表数据）</div>
+                            <div>• **锁开销**：极小（无需维护逐行锁状态）</div>
+                            <div>• **死锁风险**：极低（一次性锁定整个表）</div>
+                        </div>
+                    </div>
+
+                    <!-- Page Lock -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-file text-amber-400"></i>
+                                页级锁 (Page Lock)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Medium</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight space-y-1">
+                            <div>• **并发度**：中等（锁定 16KB 物理数据页）</div>
+                            <div>• **锁开销**：中等（BDB / B-Tree 页面锁定）</div>
+                            <div>• **死锁风险**：中等（相邻并发页冲突）</div>
+                        </div>
+                    </div>
+
+                    <!-- Record Lock -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-grip-lines text-emerald-400"></i>
+                                行级锁 / 索引锁 (Record Lock)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Finest</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight space-y-1">
+                            <div>• **并发度**：最高（仅锁定索引行记录）</div>
+                            <div>• **锁开销**：较高（需维护大量的锁结构）</div>
+                            <div>• **死锁风险**：存在（交叉锁竞争导致循环等待）</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (InnoDB Index Record Locking) vs Right Card (Current Read Syntax & Degradation) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: InnoDB Record Locking Mechanics -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap text-purple-600"></i>
+                            <span>1. InnoDB 行锁本质：对索引记录 (Index Record) 加锁</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Index-Based Locking</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            InnoDB 的行锁在物理实现上**并不是直接加在物理行数据上，而是加在聚簇索引或二级索引项 (Index Record) 上**。
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">二级索引加锁链 (Secondary to Primary Index)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    当通过二级索引更新数据时，InnoDB 会先对**二级索引记录**加锁，随后回表找到对应的**主键聚簇索引记录**并再次加锁。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">无索引情况下的退化黑洞 (Index Failure Hazard)</span>
+                                <p class="text-[9px] text-rose-600 mt-0.5 font-bold">
+                                    重要警告：如果 SQL 的 `WHERE` 条件没有命中索引（导致全表扫描），InnoDB 只能把表里所有的索引记录及间隙全部锁住，相当于退化为表锁！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>法则：无索引不行锁，优化查询索引是提升锁并发度的前提</span>
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Explicit Current Read Syntax & Usage -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-600"></i>
+                            <span>2. 显式当前读 (Current Read) 加锁 SQL 语法</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Current Read SQL</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            普通 `SELECT` 是快照读（不加锁）。如果需要在查询时强行加行级 S 锁或 X 锁，必须使用**当前读语法**：
+                        </p>
+
+                        <!-- Code Examples -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div>
+                                <span class="text-cyan-300 font-bold">// 1. 显式加共享锁 (S 锁 / 读锁)</span>
+                                <div class="text-slate-300">SELECT * FROM account WHERE id = 1 <span class="text-amber-300 font-bold">LOCK IN SHARE MODE</span>;</div>
+                                <div class="text-slate-400 text-[8px]">// MySQL 8.0+ 推荐新语法: FOR SHARE</div>
+                            </div>
+
+                            <div>
+                                <span class="text-rose-300 font-bold">// 2. 显式加排他锁 (X 锁 / 写锁)</span>
+                                <div class="text-slate-300">SELECT * FROM account WHERE id = 1 <span class="text-rose-400 font-bold">FOR UPDATE</span>;</div>
+                                <div class="text-slate-400 text-[8px]">// 阻塞其他事务的 LOCK IN SHARE MODE 和 FOR UPDATE</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 22 · 间隙锁 (Gap Lock) 与临键锁 (Next-Key Lock) 机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心物理哲学 (Lock Granularity Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        行锁虽然带来了极高的并发吞吐量，但前提是**查询必须精准走索引**。一旦缺少索引导致全表扫描，InnoDB 行锁将瞬间退化并锁住整张表的所有记录与间隙，造成严重的并发性能灾难。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 21 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">21</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[52.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (20.html <- 21.html -> 22.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="20.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">封锁粒度与表锁、行锁 (Lock Granularity)</span>
+            <a href="22.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="20.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="22.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员理解封锁粒度与索引的关系：</span>
+                    “向学员做架构提醒：很多开发者以为对表执行 `UPDATE` 就一定会加行锁。但必须强调：InnoDB 的行锁是加在索引记录（Index Record）上的！如果 `WHERE` 条件字段没有索引，InnoDB 只能做全表扫描，从而将所有记录和间隙全锁住，直接退化为全表锁。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析当前读语法与排他写锁：</span>
+                    “请学员关注右侧的显式当前读语法：`FOR UPDATE` 显式加排他 $X$ 锁，`LOCK IN SHARE MODE` 显式加共享 $S$ 锁。在接下来 Slide 22 中，我们将进一步探讨针对区间锁定的间隙锁 (Gap Lock) 与临键锁 (Next-Key Lock)。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '22.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '20.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 24 - 死锁检测、超时与预防机制 (Deadlock Detection &amp; Prevention)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                <span>Part 03 · 隔离级别与数据库封锁协议</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                死锁检测、超时与预防机制 (Deadlock Detection &amp; Prevention)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Circular Wait Conditions, Waits-For Graph Cycle Detection, Lock Wait Timeout &amp; Rollback Victim Selection
+            </p>
+        </div>
+
+        <!-- Deadlock Cycle Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-spin text-rose-400"></i>
+                        <span>死锁循环等待图 (Waits-For Graph) 与牺牲者 (Victim) 选拔中断</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Deadlock Condition: Cycle Exists in Waits-For Graph</span>
+                </div>
+
+                <!-- Deadlock Cycle Step Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                    
+                    <!-- Transaction T1 -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-purple-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-purple-300 font-bold text-[11px]">事务 $T_1$</span>
+                            <span class="px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 text-[8px] border border-purple-700">Holds Lock(A)</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 font-sans leading-relaxed">
+                            • **持有**：数据项 $A$ 的排他锁 ($X$-Lock)<br/>
+                            • **等待**：数据项 $B$ 的排他锁（已被 $T_2$ 锁定）<br/>
+                            • <span class="text-amber-300 font-mono">指向边：$T_1 \xrightarrow{\text{Waits-For}} T_2$</span>
+                        </div>
+                    </div>
+
+                    <!-- Deadlock Engine Resolution -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5 text-center">
+                        <div class="text-rose-300 font-bold text-[11px] flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                            <span>死锁检测器 (Deadlock Detector)</span>
+                        </div>
+                        <p class="text-[9px] text-slate-300 font-sans leading-tight">
+                            发现图中存在死锁环路 $T_1 \rightleftarrows T_2$！必须挑选一个代价最小的事务作为**牺牲者 (Victim)** 强行回滚！
+                        </p>
+                        <div class="text-rose-400 font-mono text-[10px] font-bold">&rarr; Rollback $T_1$ (Smallest Undo Log) &rarr;</div>
+                    </div>
+
+                    <!-- Transaction T2 -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[11px]">事务 $T_2$</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Holds Lock(B)</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 font-sans leading-relaxed">
+                            • **持有**：数据项 $B$ 的排他锁 ($X$-Lock)<br/>
+                            • **等待**：数据项 $A$ 的排他锁（已被 $T_1$ 锁定）<br/>
+                            • <span class="text-indigo-300 font-mono">指向边：$T_2 \xrightarrow{\text{Waits-For}} T_1$</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Deadlock Detection & Victim Selection) vs Right Card (Timeout & Prevention Rules) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Deadlock Detection via Waits-For Graph -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                            <span>1. 等待图 (Waits-For Graph) 与死锁牺牲者选择</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Waits-For Graph</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">等待图构建算法 (Waits-For Graph)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    节点 $V$ 代表并发事务，有向边 $E$ 代表锁等待关系（$T_1 \to T_2$ 表示 $T_1$ 在等待 $T_2$ 释放锁）。死锁检测线程定期运行深度优先搜索（DFS）检测图中是否存在**环 (Cycle)**。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">牺牲者选择规则 (Rollback Victim Selection)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    检测到死锁环后，数据库引擎挑选**修改数据量最小（Undo Log 尺寸最小）**的事务作为 Victim 进行中止和回滚（如抛出 `1213 - Deadlock found` 异常），以最低系统代价解开死锁。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>法则：主动死锁检测能在毫秒级发现并解开锁等待环路</span>
+                    <i class="fa-solid fa-shield-cat"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Lock Timeout & Prevention Rules -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-indigo-600"></i>
+                            <span>2. 锁超时 (Timeout) 与应用层死锁预防最佳实践</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Timeout &amp; Guidelines</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">锁超时机制 (`innodb_lock_wait_timeout`)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    当死锁检测被禁用或高并发卡超时，等待超过阈值（默认 50 秒）的事务被强行回滚并抛出 `Lock wait timeout exceeded` 异常。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">应用层死锁预防三金律</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    • **固定访问顺序**：业务代码中批量更新数据时，严格按照统一顺序（如按主键 `id` 升序）依次加锁。<br/>
+                                    • **缩短锁持有时间**：精简事务范围，避免在事务内部发起耗时的 RPC 或 HTTP 网络调用。<br/>
+                                    • **降低隔离级别**：在允许的场景下使用 Read Committed (RC) 隔离级别，减少间隙锁 (Gap Lock) 的产生。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Part 04 · 快照隔离与多版本并发控制 (MVCC - Slide 25)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">Part 03 总结 (Locking &amp; Isolation Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        死锁是并发锁机制物理特性的副产物。数据库引擎通过 **Waits-For Graph 自动检测并解开锁环路**，而应用层通过 **按主键升序加锁与精简事务** 可以在源头将死锁发生率降低 90% 以上。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 24 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">24</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[60.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (23.html <- 24.html -> 25.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="23.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">死锁检测、超时与预防机制 (Deadlock Detection)</span>
+            <a href="25.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="23.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="25.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员理解 Waits-For Graph 选拔 Victim 逻辑：</span>
+                    “向学员做解构说明：这是 Part 03 的收官 Slide。当数据库运行过程中出现死锁时，等待图（Waits-For Graph）中会出现闭环。死锁检测器会选择修改行数最小（Undo 日志量最少）的事务作为牺牲者进行回滚，以最小物理开销解开锁死。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告 Part 04 MVCC 快照隔离：</span>
+                    “提示学员：从 Slide 25 开始，我们将进入 Part 04，探究如何在不加排他写锁的前提下，依靠多版本并发控制（MVCC）实现‘读不阻塞写，写不阻塞读’的快照隔离模式。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '25.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '23.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

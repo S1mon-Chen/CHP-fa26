@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 并发异常 2：不可重复读与更新丢失 (Non-Repeatable Read &amp; Lost Update)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring page header bar and navigation links... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering main layout container and decorative background elements... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                <span>Part 03 · 隔离级别与数据库封锁协议</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                并发异常 2：不可重复读与更新丢失 (Non-Repeatable Read &amp; Lost Update)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Non-Repeatable Read ($RW$ Conflict), First/Second Class Lost Updates &amp; Defensive Solutions
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Constructing anomalies comparison timeline banner... -->
+        <!-- Anomalies Comparison Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-amber-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-bug text-amber-400"></i>
+                        <span>并发读写冲突图解：不可重复读 ($RW$ 读后写) vs. 第二类更新丢失 (提交覆盖)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Hazard: In-Transaction State Drift &amp; Overwrite</span>
+                </div>
+
+                <!-- 2 Anomalies Timeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    
+                    <!-- Case A: Non-Repeatable Read -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-arrows-rotate text-amber-400"></i>
+                                异常 A：不可重复读 (Non-Repeatable Read / $RW$ 冲突)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">RC Level Risk</span>
+                        </div>
+                        
+                        <!-- Timeline Sequence -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 leading-relaxed">
+                            <div class="text-slate-400">// $T_1$ 首次读取数据 $A=100$；$T_2$ 随后修改 $A=200$ 并提交；$T_1$ 再次读取 $A$</div>
+                            <div><span class="text-amber-300 font-bold">Sequence:</span> $r_1(A \Rightarrow 100) \to w_2(A=200) \to \mathbf{c_2} \to \mathbf{r_1(A \Rightarrow 200)}$</div>
+                            <div class="text-amber-400 font-sans text-[8.5px] mt-1">
+                                * 灾难性后果：$T_1$ 在同一个事务内部两次读取同一行数据，得到了不一致的结果（$100 \neq 200$），导致账单报表计算崩溃。
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans">
+                            • **解法**：开启 **Repeatable Read (RR)** 级别，依靠事务级 **MVCC ReadView** 或 S 锁消除。
+                        </div>
+                    </div>
+
+                    <!-- Case B: Lost Update -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-pen-slash text-rose-400"></i>
+                                异常 B：更新丢失 (Lost Update / 提交覆盖)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Silent Overwrite</span>
+                        </div>
+
+                        <!-- Timeline Sequence -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 leading-relaxed">
+                            <div class="text-slate-400">// $T_1$ 与 $T_2$ 同时读到 $A=100$；$T_1$ 加 50 提交 $150$；$T_2$ 基于旧值加 100 提交 $200$</div>
+                            <div><span class="text-rose-300 font-bold">Sequence:</span> $r_1(A=100), r_2(A=100) \to w_1(A=150) \to c_1 \to \mathbf{w_2(A=200) \to c_2}$</div>
+                            <div class="text-rose-400 font-sans text-[8.5px] mt-1">
+                                * 灾难性后果：$T_2$ 的提交直接覆盖了已经完成的 $T_1$ 的加款操作！$T_1$ 增加的 $50$ 元被静默蒸发。
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans">
+                            • **解法**：使用 **排他写锁 ($X$-Lock)**、**乐观锁版本号 (`version`)** 或 **原子 SQL 语句**。
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring detailed explanation cards for both anomalies... -->
+        <!-- Content Grid: Left Card (Non-Repeatable Read Solutions) vs Right Card (Lost Update Defensive Solutions) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Non-Repeatable Read Mechanics -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate text-amber-600"></i>
+                            <span>1. 不可重复读 (Non-Repeatable Read) 物理防御</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">ReadView &amp; S-Locks</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            不可重复读源于 **读写冲突 ($RW$)**。现代数据库提供以下物理手段消除不可重复读：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">解法 A：事务级 MVCC 快照读 (InnoDB / Postgres RR)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    仅在事务首次执行 `SELECT` 时生成一个 **ReadView**，并贯穿整个事务复用。后续任何 `SELECT` 均读取同一份历史快照，其他事务后续对该行的 `UPDATE/DELETE` 统统不可见。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">解法 B：共享锁保持至事务结束 (Strict 2PL)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    读操作对数据项 $X$ 加 **共享锁 (S 锁)**，且该 S 锁一直保持到事务 `COMMIT` 才释放。任何想要修改 $X$ 的写事务（需要 X 锁）都会被强行阻塞。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>规则：Repeatable Read (RR) 级别保证同一事务内多次读取结果绝对一致</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Lost Update Solutions -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-rose-600"></i>
+                            <span>2. 更新丢失 (Lost Update) 三重防御模式</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">Defensive Design</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            第二类更新丢失是高并发扣款与库存扣减场景的头号杀手。工程上采用三层防御手段：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1 text-[10px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950">1. 当前读悲观排他锁 (`SELECT ... FOR UPDATE`)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    读取时强制获取 **排他锁 (X 锁)**，阻塞其他事务读取与修改，直至当前事务处理完毕。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950">2. 数据库层面原子 UPDATE 替换</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    避免应用层“先 Read 再在内存中 Compute 最后 Write”。改用原子 SQL：<code class="font-mono text-rose-800 font-bold">UPDATE account SET balance = balance + 50 WHERE id = 1</code>。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-950">3. 业务层乐观锁 (`version` 字段)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    更新时带上读取时的版本号：<code class="font-mono text-rose-800 font-bold">UPDATE account SET balance=150, version=version+1 WHERE id=1 AND version=1</code>。受影响行数为 0 则重试。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 19 · 并发读写异常 3：幻读 (Phantom Read) 概念与间隙锁防御</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Rendering bottom callout banner and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心物理哲学 (Non-Repeatable Read &amp; Lost Update Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        不可重复读是由于在同一个事务内两次读取之间插入了其他事务的 `UPDATE`；而更新丢失则是并发“先读后写”覆盖了彼此的修改。在生产环境中，**原子 UPDATE** 与 **乐观锁版本号 (`version`)** 是解决高并发扣款更新丢失的最轻量级武器。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-800 font-bold">Slide 18 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">18</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[45.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (17.html <- 18.html -> 19.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">并发异常 2：不可重复读与更新丢失 (Non-Repeatable Read)</span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="17.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="19.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-amber-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer and event listeners... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学员区分不可重复读与更新丢失：</span>
+                    “向学员做解构说明：不可重复读是读写冲突（$RW$），同一个事务内部两次读取同一行得到了不同结果；而更新丢失是写写/读写冲突，一个事务的提交静默覆盖了另一个事务已提交的修改。在 Repeatable Read (RR) 隔离级别下，MVCC 能完美消除不可重复读。”
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">💡 强调更新丢失的工程防范手段：</span>
+                    “请学员特别关注右侧的更新丢失防范手段：不要在应用层把数值读出来算出新结果再写回去，因为这极易导致第二类更新丢失。使用原子 SQL `UPDATE account SET balance = balance + 50` 或带 `version` 的乐观锁，是解决高并发余额/库存扣减最可靠的做法。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

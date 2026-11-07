@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - 可恢复调度与无级联回滚 (Recoverable &amp; Cascadeless Schedules)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                <span>Part 02 · 事务调度与可串行化理论</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                可恢复调度与无级联回滚 (Recoverable &amp; Cascadeless Schedules)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Commit Order Constraint ($c_i < c_j$), Cascading Aborts Elimination &amp; Schedule Safety Hierarchy
+            </p>
+        </div>
+
+        <!-- Schedule Hierarchy Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-indigo-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                        <span>事务调度安全层次包含图 (Schedule Safety Containment Spectrum)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Hierarchy: Serial $\subset$ Strict $\subset$ Cascadeless $\subset$ Recoverable $\subset$ All</span>
+                </div>
+
+                <!-- 4 Containment Layers Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs font-mono">
+                    
+                    <!-- Layer 1: Serial -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-lock text-emerald-400"></i>
+                                1. 纯串行 (Serial)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">100% Isolated</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans leading-tight">
+                            • **特点**：无交叉执行。<br/>
+                            • **安全级别**：最高。<br/>
+                            • **并发度**：吞吐量为零。
+                        </div>
+                    </div>
+
+                    <!-- Layer 2: Strict -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-teal-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-teal-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-shield-cat text-teal-400"></i>
+                                2. 严格 (Strict 2PL)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-950 text-teal-300 text-[8px] border border-teal-700">RDBMS Standard</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans leading-tight">
+                            • **特点**：未提交写的修改不可被读取也不可被覆盖。<br/>
+                            • **安全级别**：杜绝脏写与脏读。
+                        </div>
+                    </div>
+
+                    <!-- Layer 3: Cascadeless -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-ban text-amber-400"></i>
+                                3. 无级联 (Cascadeless)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">No Chain Abort</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans leading-tight">
+                            • **特点**：仅允许读取已提交数据。<br/>
+                            • **优点**：彻底消除级联回滚风暴。
+                        </div>
+                    </div>
+
+                    <!-- Layer 4: Recoverable -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-indigo-300 font-bold text-[10.5px] flex items-center gap-1">
+                                <i class="fa-solid fa-rotate-left text-indigo-400"></i>
+                                4. 可恢复 (Recoverable)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Commit Order</span>
+                        </div>
+                        <div class="text-[8.5px] text-slate-300 font-sans leading-tight">
+                            • **特点**：依赖事务延后提交 ($c_i < c_j$)。<br/>
+                            • **最低底线**：防止提交数据泄漏。
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Recoverable Schedule) vs Right Card (Cascadeless Schedule) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Recoverable Schedule -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-check-double text-indigo-600"></i>
+                            <span>1. 可恢复调度 (Recoverable Schedule)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Commit Order Rule</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Definition -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-indigo-950">可恢复调度的形式化定义</span>
+                                <span class="font-mono text-indigo-700 text-[9px]">$c_i < c_j$ Order</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                若调度 $S$ 中事务 $T_j$ 读取了由事务 $T_i$ 写入的数据项 $X$，则 **$T_i$ 的提交操作 $c_i$ 必须先于 $T_j$ 的提交操作 $c_j$ 发生**。
+                            </p>
+                        </div>
+
+                        <!-- Unrecoverable Hazard Example -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                            <div class="font-bold text-rose-900 text-[10.5px] flex items-center justify-between">
+                                <span>不可恢复陷阱示例 (Unrecoverable Hazard)</span>
+                                <span class="font-mono text-rose-700 text-[9px]">Forbidden</span>
+                            </div>
+                            <div class="p-1.5 rounded bg-slate-900 text-slate-200 font-mono text-[8.5px] space-y-0.5">
+                                <div>$S_{\text{bad}}: w_1(A) \to r_2(A) \to \mathbf{c_2} \to a_1$</div>
+                                <div class="text-rose-400 font-sans text-[8px] mt-0.5">
+                                    * 灾难原因：$T_2$ 读了 $T_1$ 的脏数据后先提交 ($c_2$)。根据持久性，$T_2$ 提交结果不可撤销；随后 $T_1$ 发生回滚 ($a_1$)，但已提交的 $T_2$ 无法撤销，脏数据永久泄漏！
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>法则：读脏事务提交的顺序约束是数据恢复的绝对底线</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Cascadeless Schedule -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-ban-smoke text-purple-600"></i>
+                            <span>2. 无级联回滚调度 (Cascadeless Schedule)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Avoid Cascading Aborts</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Definition -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-purple-950">无级联调度的形式化定义</span>
+                                <span class="font-mono text-purple-700 text-[9px]">Read Committed Data Only</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                调度 $S$ 中，事务 $T_j$ **仅被允许读取已被提交事务写入的数据**（即 $T_j$ 读取 $X$ 之前，$T_i$ 必须已经完成 $c_i$）。
+                            </p>
+                        </div>
+
+                        <!-- Cascading Rollback Hazard -->
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-amber-900">消除级联回滚风暴 (Cascading Aborts)</span>
+                                <span class="font-mono text-amber-700 text-[9px]">Chain Abort Risk</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                在允许读取未提交数据的可恢复调度中，若 $T_1$ 发生回滚 ($a_1$)，会导致依赖 $T_1$ 的 $T_2, T_3, \dots, T_k$ 全部被迫产生连锁级联回滚，引发系统 CPU 与 I/O 资源风暴。**无级联调度通过只读已提交数据，彻底扑灭级联风暴**。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Part 03 · 隔离级别与数据库封锁协议 (Slide 16)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">Part 02 总结 (Recoverable &amp; Cascadeless Engineering Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        可恢复性与无级联性是数据库系统实现**安全可靠故障回滚 (Abort/Rollback)** 的理论基石。现代化 RDBMS 引擎（如 MySQL InnoDB）通过实施 **严格两阶段锁 (Strict 2PL)**，天然保证了所有调度既是冲突可串行化的，又是无级联、可恢复的。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 15 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">15</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[37.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (14.html <- 15.html -> 16.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">可恢复调度与无级联回滚 (Recoverable &amp; Cascadeless)</span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="14.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="16.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 总结 Part 02 并引入可恢复调度要求：</span>
+                    “向学员做解构说明：这是 Part 02 事务调度与可串行化理论的收官页。前几页我们关注的是并发执行结果是否与串行一致；这一页我们关注的是**当出现异常需要回滚时，数据库能否正确清理数据**。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 强调不可恢复陷阱与无级联回滚优势：</span>
+                    “请学员关注左侧的不可恢复陷阱：如果 $T_2$ 读取了 $T_1$ 修改的数据并抢先提交，由于持久性法则，$T_2$ 无法被强行撤销。随后 $T_1$ 发生 Abort，系统将陷于两难境地。而无级联调度通过‘仅允许读取已提交数据’，彻底杜绝了级联回滚风暴。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '16.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '14.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

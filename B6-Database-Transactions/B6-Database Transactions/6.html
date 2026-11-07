@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 06 - 持久性与非易失存储保障 (Durability &amp; Non-Volatile Storage)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-hard-drive text-amber-600"></i>
+                <span>Part 01 · 事务概述与 ACID 特性原理</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                持久性与非易失存储保障 (Durability &amp; Non-Volatile Storage)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Volatile Memory vs. Non-Volatile Storage Gap, Force vs. No-Force Page Flush &amp; WAL Redo Persistence
+            </p>
+        </div>
+
+        <!-- Durability Persistence Pipeline Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-amber-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-diagram-project text-amber-400"></i>
+                        <span>事务提交与持久性落盘链路 (Commit Persistence &amp; WAL Pipeline)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Memory Write $\rightarrow$ Redo Log Flush (`fsync`) $\rightarrow$ Async Dirty Page Flush</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs font-mono">
+                    <!-- Step 1 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-indigo-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-indigo-300 font-bold text-[11px]">1. 内存脏页修改</span>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[8px] border border-indigo-700">Buffer Pool</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            更新 Buffer Pool 内存页（高吞吐），数据处于易失（Volatile）状态。
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-amber-300 font-bold text-[11px]">2. 顺序刷入 Redo Log</span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">Sequential I/O</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            将本次改动的重做日志（Redo Log）顺序写入日志缓冲区并准备调用 `fsync`。
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-emerald-300 font-bold text-[11px]">3. 强制刷盘 (`fsync`)</span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">Commit Point</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            将 Redo Log 强行写回物理磁盘。一旦 `fsync` 返回成功，向客户端响应 `COMMIT OK`。
+                        </div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-cyan-800/80 space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-cyan-300 font-bold text-[11px]">4. 延迟异步刷脏页</span>
+                            <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 text-[8px] border border-cyan-700">No-Force Policy</span>
+                        </div>
+                        <div class="text-[9px] text-slate-300 font-sans leading-tight">
+                            离散的数据脏页延迟写回物理数据文件，途中断电可依靠 Redo Log 重放恢复。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Memory-Disk Gap) vs Right Card (Force/No-Force Policy) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: The Memory-Disk Memory Gap -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-microchip text-amber-600"></i>
+                            <span>1. 内存与磁盘的物理鸿沟 (Memory vs. Disk Gap)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Physical Paradox</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            数据库引擎面临着严重的物理矛盾：**内存速度快但易失，磁盘非易失但随机写极其昂贵**。
+                        </p>
+
+                        <!-- Comparison Grid -->
+                        <div class="grid grid-cols-2 gap-2 text-[10px]">
+                            <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1">
+                                <div class="font-bold text-rose-800 flex items-center justify-between">
+                                    <span>内存 (Buffer Pool)</span>
+                                    <span class="font-mono text-[8.5px]">Volatile</span>
+                                </div>
+                                <ul class="text-[9.5px] text-slate-600 space-y-0.5">
+                                    <li>• 纳秒级（ns）访问速度</li>
+                                    <li>• 支撑极高并发读写</li>
+                                    <li class="text-rose-600 font-bold">• 突发断电/崩溃即彻底丢失</li>
+                                </ul>
+                            </div>
+
+                            <div class="p-2.5 rounded-xl bg-white border border-emerald-100 space-y-1">
+                                <div class="font-bold text-emerald-800 flex items-center justify-between">
+                                    <span>非易失磁盘/SSD</span>
+                                    <span class="font-mono text-[8.5px]">Non-Volatile</span>
+                                </div>
+                                <ul class="text-[9.5px] text-slate-600 space-y-0.5">
+                                    <li>• 永久保存，断电不丢失</li>
+                                    <li>• 毫秒/微秒级访问速度</li>
+                                    <li class="text-amber-700 font-bold">• 离散数据页随机 I/O 极慢</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>核心矛盾：如何用最低的物理 I/O 成本换取最高的持久性保障？</span>
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Force vs. No-Force Policy -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-cyan-600"></i>
+                            <span>2. 提交刷盘策略权衡：Force vs. No-Force</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Policy Trade-off</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Force Policy -->
+                        <div class="p-2.5 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-rose-800">FORCE 策略 (提交时强制刷脏页)</span>
+                                <span class="font-mono text-rose-700 text-[9px]">High Latency</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                事务提交时，系统强行将该事务修改的所有内存脏页写回磁盘。无需 Redo 日志即可保障持久性，但**会导致大量的磁盘离散随机 I/O，吞吐量断崖式下跌**。
+                            </p>
+                        </div>
+
+                        <!-- No-Force Policy -->
+                        <div class="p-2.5 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-cyan-800">NO-FORCE 策略 + WAL (工业标准解法)</span>
+                                <span class="font-mono text-cyan-700 text-[9px]">Sequential Log Flush</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                事务提交时**不强制写回离散数据脏页**，仅将修改记录写入 **Redo Log 重做日志并调用 `fsync` 刷盘**。将离散随机 I/O 转化为高效的顺序追加写（Sequential Write）。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>法则：NO-FORCE + WAL 顺序写是现代化数据库系统的绝对主流</span>
+                    <i class="fa-solid fa-floppy-disk"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心物理哲学 (Durability &amp; WAL Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        持久性的核心工程智慧在于：**绝不直接向磁盘写离散的数据页，而是先向物理磁盘顺序追加写 Redo Log**。利用预写日志（WAL）以微秒级顺序 `fsync` 开销保证持久性，同时将高昂的数据页刷盘延迟卸载（Offload）到后台。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-800 font-bold">Slide 6 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">06</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[15.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (5.html <- 6.html -> 7.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">持久性与非易失存储保障 (Durability &amp; Storage)</span>
+            <a href="7.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="5.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="7.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员透视持久性的物理瓶颈：</span>
+                    “向学员做解构说明：持久性要求事务 `COMMIT` 后数据绝不丢失。但在物理世界中，数据页刷盘是随机 I/O，极其缓慢。如果在事务提交时强行把所有脏数据页写回磁盘（FORCE 策略），系统的 TPS 会下降上百倍。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调 NO-FORCE 与 WAL Redo Log 结合的绝妙：</span>
+                    “请学员注意：工业界统一使用 NO-FORCE + Redo Log（WAL）。事务提交时不强刷离散的数据页，只顺序写写 Redo Log 并调用 `fsync`。即使内存脏页还没刷盘就发生断电，重启后也能重放 Redo Log 恢复持久性。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '7.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

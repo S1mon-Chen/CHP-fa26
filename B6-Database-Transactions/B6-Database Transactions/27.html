@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - ReadView 结构与一致性快照可见性算法 (ReadView Structure &amp; Visibility Algorithm)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-eye text-cyan-600"></i>
+                <span>Part 04 · 快照隔离与多版本并发控制 (MVCC)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                ReadView 结构与一致性快照可见性算法 (ReadView &amp; Visibility)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                ReadView 4 Core Fields (`m_ids`, `min_trx_id`, `max_trx_id`, `creator_trx_id`) &amp; Version Chain Traversing Algorithm
+            </p>
+        </div>
+
+        <!-- ReadView Spectrum Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders text-cyan-400"></i>
+                        <span>ReadView 事务 ID 轴划分与物理可见性区间 (ReadView Spectrum Mapping)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Decision Target: Does `DB_TRX_ID` fall into visible historical window?</span>
+                </div>
+
+                <!-- 3 Spectrum Zones Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono items-center">
+                    
+                    <!-- Zone 1: Committed Zone -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-emerald-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                                已提交绝对可见区
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[8px] border border-emerald-700">TRX_ID &lt; min_trx_id</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 font-sans leading-relaxed">
+                            修改该版本的事务在当前 ReadView 生成之前已经**彻底提交**。<br/>
+                            &rarr; <strong class="text-emerald-300 font-mono">100% 物理可见！</strong>
+                        </div>
+                    </div>
+
+                    <!-- Zone 2: Active Uncommitted Zone -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-1.5">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-spinner text-amber-400"></i>
+                                活跃/判定区
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">min_trx_id &le; TRX_ID &lt; max_trx_id</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 font-sans leading-relaxed">
+                            若 <code class="text-amber-300 font-mono">TRX_ID &in; m_ids</code>：活跃未提交，**不可见**（自身改动除外）；若不在 `m_ids` 中，说明已提交，**可见**。
+                        </div>
+                    </div>
+
+                    <!-- Zone 3: Future Transaction Zone -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-1.5">
+                        <div class="p-1 flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-ban text-rose-400"></i>
+                                未期未来事务区
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">TRX_ID &ge; max_trx_id</span>
+                        </div>
+                        <div class="p-1.5 rounded bg-slate-900 border border-slate-800 text-[9px] text-slate-300 font-sans leading-relaxed">
+                            修改该版本的事务在当前 ReadView **生成之后才开启**。<br/>
+                            &rarr; <strong class="text-rose-400 font-mono">100% 物理不可见！</strong>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (ReadView 4 Fields) vs Right Card (Visibility Decision Algorithm) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: ReadView 4 Core Fields Structure -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-cyan-600"></i>
+                            <span>1. ReadView 快照结构 4 大核心字段</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">4 Key Fields</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            当事务执行快照读时，内存中会瞬间捕获并生成一个 `ReadView` 结构，包含以下四大核心成员：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-cyan-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">m_ids</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    生成 ReadView 瞬间，当前数据库中**所有活跃且未提交的事务 ID 列表**。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">min_trx_id</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    `m_ids` 列表中最小的事务 ID（即当前活跃事务中的最小编号）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">max_trx_id</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    系统准备分配给**下一个新事务的 ID**（即当前已分配最大 `TRX_ID + 1`，非 `m_ids` 的最大值）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-cyan-50/50 border border-cyan-100">
+                                <span class="font-bold text-cyan-950 font-mono">creator_trx_id</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    创建该 ReadView 的当前事务自身的 `TRX_ID`。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>法则：ReadView 是快照读判定历史版本是否“合法可见”的衡量刻度尺</span>
+                    <i class="fa-solid fa-ruler-combined"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Visibility Decision Algorithm Walkthrough -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code-compare text-indigo-600"></i>
+                            <span>2. Undo 版本链遍历与可见性判定算法</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Traversal Rules</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            当事务沿 Undo 版本链从头节点（最新行）向后遍历时，针对每个版本的 `DB_TRX_ID` 依序校验：
+                        </p>
+
+                        <!-- Algorithm Execution Steps Box -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800 overflow-x-auto leading-relaxed">
+                            <div class="text-cyan-300 font-bold">// 可见性算法判定步骤 (bool is_visible(trx_id))</div>
+                            
+                            <div class="p-1 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-amber-300 font-bold">规则 1: 自身改动特例</span>
+                                <div class="text-slate-300">if (trx_id == creator_trx_id) <span class="text-emerald-400 font-bold">return true;</span> <span class="text-slate-500">// 始终能看见自己修改的数据</span></div>
+                            </div>
+
+                            <div class="p-1 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-amber-300 font-bold">规则 2: 早期已提交版本</span>
+                                <div class="text-slate-300">if (trx_id &lt; min_trx_id) <span class="text-emerald-400 font-bold">return true;</span> <span class="text-slate-500">// ReadView 生成前已提交</span></div>
+                            </div>
+
+                            <div class="p-1 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-amber-300 font-bold">规则 3: 未期未来事务</span>
+                                <div class="text-slate-300">if (trx_id &ge; max_trx_id) <span class="text-rose-400 font-bold">return false;</span> <span class="text-slate-500">// ReadView 生成后才开启</span></div>
+                            </div>
+
+                            <div class="p-1 rounded bg-slate-950 border border-slate-800">
+                                <span class="text-amber-300 font-bold">规则 4: 活跃列表判定</span>
+                                <div class="text-slate-300">if (trx_id in m_ids) <span class="text-rose-400 font-bold">return false;</span> <span class="text-slate-500">// 活跃未提交</span></div>
+                                <div class="text-slate-300">else <span class="text-emerald-400 font-bold">return true;</span> <span class="text-slate-500">// ReadView 生成前已完成提交</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 28 · ReadView 生成时机差异（RC 每次生成 vs. RR 首次生成）</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心物理哲学 (ReadView Visibility Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        ReadView 算法的本质是**给物理时间轴上重叠交错的并发事务划定一条属于自己的“历史记忆割裂线”**。通过对比 `DB_TRX_ID` 与 `ReadView` 成员，读事务可以沿着 Undo 链准确追溯到那个物理上合法且一致的快照版本。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 27 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">ReadView 结构与可见性算法 (ReadView Algorithm)</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员透视 ReadView 的四大字段：</span>
+                    “向学员解构说明：ReadView 的本质是快照读生成时的一张‘活跃事务快照表’。记住 4 个字段：`m_ids` 是活跃未提交的事务列表，`min_trx_id` 是其中的最小值，`max_trx_id` 是系统准备分配给下一个新事务的编号，`creator_trx_id` 是当前事务自己。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析可见性判定 4 步走逻辑：</span>
+                    “请学员关注右侧的算法逻辑：当读事务沿着 Undo 链遍历历史版本时，`DB_TRX_ID` 如果小于 `min_trx_id`，说明在快照前早已提交，可见；如果大于等于 `max_trx_id`，说明是未来开启的事务，不可见；如果在区间内，就查 `m_ids` 列表，在里面就说明未提交（不可见），不在里面说明已提交（可见）。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

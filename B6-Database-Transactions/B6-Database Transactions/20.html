@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 20 - 锁机制体系：S/X 锁与意向锁 (Database Lock Hierarchy: S, X &amp; Intent Locks)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Configuring header navigation and controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Rendering main container and background elements... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-lock text-purple-600"></i>
+                <span>Part 03 · 隔离级别与数据库封锁协议</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                数据库锁机制体系：S、X 锁与意向锁 (Lock Hierarchy: S, X &amp; Intent Locks)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Shared Locks ($S$), Exclusive Locks ($X$), Intent Locks ($IS$/$IX$) &amp; Lock Compatibility Matrix
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Building lock compatibility matrix table... -->
+        <!-- Lock Compatibility Matrix Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-purple-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-table-cells text-purple-400"></i>
+                        <span>数据库锁兼容性矩阵 (Lock Compatibility Matrix)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Multi-granularity Conflict Table ($IS, IX, S, X$)</span>
+                </div>
+
+                <!-- Matrix Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-center font-mono text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 text-[10.5px]">
+                                <th class="py-2 px-3 text-left font-bold w-1/5">请求锁 \ 已持锁</th>
+                                <th class="py-2 px-3 font-bold w-1/5">意向共享锁 ($IS$)</th>
+                                <th class="py-2 px-3 font-bold w-1/5">意向排他锁 ($IX$)</th>
+                                <th class="py-2 px-3 font-bold w-1/5">共享锁 ($S$)</th>
+                                <th class="py-2 px-3 font-bold w-1/5">排他锁 ($X$)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/80 text-[10.5px]">
+                            <!-- Row 1: IS -->
+                            <tr class="hover:bg-slate-800/40 transition">
+                                <td class="py-2 px-3 text-left font-bold text-indigo-300">意向共享锁 ($IS$)</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                            </tr>
+                            <!-- Row 2: IX -->
+                            <tr class="hover:bg-slate-800/40 transition">
+                                <td class="py-2 px-3 text-left font-bold text-purple-300">意向排他锁 ($IX$)</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                            </tr>
+                            <!-- Row 3: S -->
+                            <tr class="hover:bg-slate-800/40 transition">
+                                <td class="py-2 px-3 text-left font-bold text-cyan-300">共享锁 ($S$)</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                                <td class="py-2 px-3 text-emerald-400 font-bold bg-emerald-950/30"><i class="fa-solid fa-check mr-1"></i>兼容</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                            </tr>
+                            <!-- Row 4: X -->
+                            <tr class="hover:bg-slate-800/40 transition">
+                                <td class="py-2 px-3 text-left font-bold text-rose-300">排他锁 ($X$)</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                                <td class="py-2 px-3 text-rose-400 font-bold bg-rose-950/30"><i class="fa-solid fa-xmark mr-1"></i>冲突</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring detailed explanation cards for basic and intent locks... -->
+        <!-- Content Grid: Left Card (Basic S/X Locks) vs Right Card (Multi-granularity & Intent Locks) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Basic Lock Modes (S & X Locks) -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-lock text-purple-600"></i>
+                            <span>1. 共享锁 ($S$) 与排他锁 ($X$) 核心语义</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Basic Locks</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <div class="p-2.5 rounded-xl bg-white border border-purple-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">共享锁 (Shared Lock / $S$ 锁 / 读锁)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    允许事务读取某数据项。多个事务可以同时对同一记录加 $S$ 锁（读读并发），但不允许任何事务加 $X$ 锁。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">排他锁 (Exclusive Lock / $X$ 锁 / 写锁)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    允许事务更新或删除某数据项。加有 $X$ 锁的记录禁止其他任何事务施加 $S$ 锁或 $X$ 锁（独占排他）。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-purple-50/50 border border-purple-100">
+                                <span class="font-bold text-purple-950">锁升级与死锁风险</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    若两个事务同时持有一行的 $S$ 锁并尝试升级为 $X$ 锁，双方将无限等待对方释放 $S$ 锁，直接触发死锁！
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>法则：读读不互斥，读写与写写绝对互斥</span>
+                    <i class="fa-solid fa-key"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Intent Locks & Multi-granularity Locking -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap text-indigo-600"></i>
+                            <span>2. 多粒度封锁与意向锁 ($IS$ / $IX$) 必要性</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Intent Locks</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Why Intent Locks -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1">
+                            <div class="font-bold text-slate-900 text-[10.5px] flex items-center justify-between">
+                                <span class="text-indigo-950">为何引入意向锁？(Why Intent Locks?)</span>
+                                <span class="font-mono text-indigo-700 text-[9px]">$O(1)$ Table Lock Check</span>
+                            </div>
+                            <p class="text-slate-600 text-[9.5px] leading-relaxed">
+                                当事务要对全表加表级 $X$ 锁时，必须确认表中**没有任何一行被加了行级 $X$ 或 $S$ 锁**。如果逐行扫描判断，开销为 $O(N)$（极慢）。引入表级**意向锁 ($IS/IX$)** 标志后，检查开销瞬间降为 $O(1)$！
+                            </p>
+                        </div>
+
+                        <!-- IS and IX Definition -->
+                        <div class="p-2.5 rounded-xl bg-white border border-indigo-100 space-y-1 text-[10px]">
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">意向共享锁 (Intent Shared / $IS$)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    事务准备在表的某些数据行上加 $S$ 锁，加行锁前必须先获取表级 $IS$ 锁。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-indigo-50/50 border border-indigo-100">
+                                <span class="font-bold text-indigo-950">意向排他锁 (Intent Exclusive / $IX$)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    事务准备在表的某些数据行上加 $X$ 锁，加行锁前必须先获取表级 $IX$ 锁。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 21 · 封锁粒度与表锁、行锁 (Lock Granularity)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">核心物理哲学 (Lock Hierarchy Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        意向锁 ($IS/IX$) 是表级锁，它的存在**绝不是为了锁住数据，而是为了表达“内部某行已被锁定”的意向**。通过表级意向标志，避免了表级锁申请时 $O(N)$ 遍历底层行锁的昂贵开销。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 20 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- STREAMING_CHUNK:Rendering footer controls and speaker notes drawer... -->
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">20</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-600 h-full w-[50.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (19.html <- 20.html -> 21.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="19.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">锁机制体系：S/X 锁与意向锁 (Lock Hierarchy)</span>
+            <a href="21.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="19.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="21.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-purple-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-purple-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导学员理解锁机制与多粒度意向锁：</span>
+                    “向学员强调：$S$ 锁（读锁）与 $X$ 锁（写锁）是最基本的读写互斥锁。而意向锁（$IS/IX$）是表级别的锁，用于解决‘加表锁时如何高效得知表内是否有数据行被锁定’的问题。有了意向锁，检查冲突的时间复杂度从 $O(N)$ 降低到 $O(1)$。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析锁兼容性矩阵的使用方法：</span>
+                    “请学员观察上方的兼容性矩阵：$IS$ 锁和 $IX$ 锁互不冲突，因为不同的事务可以同时意向修改表中的不同数据行；但是表级 $X$ 锁会与所有意向锁冲突，从而阻止表结构修改与全局全表排他操作。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '21.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '19.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

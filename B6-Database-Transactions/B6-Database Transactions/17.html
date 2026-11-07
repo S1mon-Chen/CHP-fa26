@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 并发异常 1：脏读与脏写 (Dirty Read &amp; Dirty Write)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 6 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-rose-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                <span>Part 03 · 隔离级别与数据库封锁协议</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                并发异常 1：脏读与脏写 (Dirty Read &amp; Dirty Write)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Dirty Write ($WW$ Conflict), Dirty Read ($WR$ Conflict) Timelines, Rollback Cascades &amp; Physical Safeguards
+            </p>
+        </div>
+
+        <!-- Anomalies Comparison Visual Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-rose-200 bg-slate-900 text-slate-100 p-3.5 soft-shadow">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+                    <span class="text-xs font-mono font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-bug text-rose-400"></i>
+                        <span>并发读写冲突异常图解：脏写 ($WW$ 覆盖未提交) vs. 脏读 ($WR$ 读未提交)</span>
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-400">Hazard: Uncommitted Intermediate State Leakage</span>
+                </div>
+
+                <!-- 2 Anomalies Timeline Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+                    
+                    <!-- Case A: Dirty Write -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-rose-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-pen-to-square text-rose-400"></i>
+                                异常 A：脏写 (Dirty Write / $WW$ 冲突)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 text-[8px] border border-rose-700">Strictly Forbidden</span>
+                        </div>
+                        
+                        <!-- Timeline Sequence -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 leading-relaxed">
+                            <div class="text-slate-400">// $T_1$ 修改数据项 $A$ 后未提交，$T_2$ 强行覆盖修改 $A$</div>
+                            <div><span class="text-rose-300 font-bold">Sequence:</span> $w_1(A=200) \to w_2(A=300) \to \mathbf{a_1 \text{ (Abort!)}}$</div>
+                            <div class="text-rose-400 font-sans text-[8.5px] mt-1">
+                                * 灾难性后果：$T_1$ 发生回滚 ($a_1$)，将 $A$ 恢复为旧值 $100$，直接冲毁了已提交或并发的 $T_2$ 的修改 ($300$)！数据库发生物理破损。
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans">
+                            • **铁律**：所有 SQL 隔离级别（包含 Read Uncommitted）必须**绝对禁止脏写**。
+                        </div>
+                    </div>
+
+                    <!-- Case B: Dirty Read -->
+                    <div class="p-3 rounded-xl bg-slate-950 border border-amber-800/80 space-y-2">
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-1">
+                            <span class="text-amber-300 font-bold text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-eye-slash text-amber-400"></i>
+                                异常 B：脏读 (Dirty Read / $WR$ 冲突)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 text-[8px] border border-amber-700">RU Level Risk</span>
+                        </div>
+
+                        <!-- Timeline Sequence -->
+                        <div class="p-2 rounded bg-slate-900 border border-slate-800 text-[9px] space-y-1 leading-relaxed">
+                            <div class="text-slate-400">// $T_1$ 修改数据项 $A$ 但未提交，$T_2$ 读取了 $A$ 的中间值</div>
+                            <div><span class="text-amber-300 font-bold">Sequence:</span> $w_1(A=200) \to \mathbf{r_2(A \Rightarrow 200)} \to \mathbf{a_1 \text{ (Abort!)}}$</div>
+                            <div class="text-amber-400 font-sans text-[8.5px] mt-1">
+                                * 灾难性后果：$T_2$ 读到了 $200$ 并以此为依据计算账单；随后 $T_1$ 被回滚，$T_2$ 读到的 $200$ 成为物理上**从未存在过**的脏数据。
+                            </div>
+                        </div>
+
+                        <div class="text-[9px] text-slate-300 font-sans">
+                            • **解法**：在 RC 及以上级别，通过 **MVCC 快照读** 或 **排他写锁** 消除脏读。
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Grid: Left Card (Dirty Write Physical Safeguards) vs Right Card (Dirty Read MVCC/Locking Solutions) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Left Card: Dirty Write Safeguards -->
+            <div class="rounded-2xl border border-rose-200 bg-rose-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-rose-200">
+                        <h3 class="text-xs font-mono font-bold text-rose-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-lock text-rose-600"></i>
+                            <span>1. 脏写 (Dirty Write) 物理防线机制</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono text-[9px] font-bold">Exclusive Lock Mandate</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            脏写是最严重的并发灾难，因为它会导致数据库的状态一致性与 Undo 回滚机制全面崩溃。数据库通过以下物理手段禁止脏写：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-900">写操作强行加 X 锁 (Exclusive Lock)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    任何事务在修改数据项 $X$ 之前，必须先获取 $X$ 的**排他锁 (X 锁)**。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-rose-50/50 border border-rose-100">
+                                <span class="font-bold text-rose-900">X 锁保持至事务提交 (Strict 2PL)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    $T_1$ 持有的 X 锁必须保持到 $T_1$ 彻底 `COMMIT` 或 `ABORT` 后才释放，强行阻断 $T_2$ 在未提交数据上再次覆盖写入。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-rose-200 text-[9.5px] font-mono text-rose-800 flex items-center justify-between">
+                    <span>规则：没有任何隔离级别允许脏写发生，排他锁是维护写一致性的底线</span>
+                    <i class="fa-solid fa-shield-cat"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Dirty Read Solutions -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-4 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-eye text-amber-600"></i>
+                            <span>2. 脏读 (Dirty Read) 消除与读写解耦解法</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">MVCC &amp; S-Locks</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10.5px] leading-relaxed">
+                            要消除脏读（防止读取到未提交事务的修改），主流数据库引擎采用了两种完全不同的物理实现路径：
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-amber-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">解法 A：MVCC 多版本快照读 (主流引擎如 InnoDB / Postgres)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    写事务修改数据时生成 Undo 历史版本。读事务不加锁，直接根据 **ReadView** 读取事务启动时已提交的旧版本数据（Before-Image），实现“读不阻塞写，写不阻塞读”。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-amber-50/50 border border-amber-100">
+                                <span class="font-bold text-amber-950">解法 B：读加 S 锁，写加 X 锁 (传统 2PL 封锁引擎)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    读操作需要获取 **共享锁 (S 锁)**。由于写事务持有 X 锁，读事务会被强行阻塞，直到写事务提交释放 X 锁后才允许读取。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1.5 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 18 · 并发读写异常 2：不可重复读 (Non-Repeatable Read) 与更新丢失</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-rose-200 bg-rose-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-rose-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-rose-900">核心物理哲学 (Dirty Read &amp; Write Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        脏写冲毁数据库存储基石，因此被所有数据库严格杜绝；脏读暴露中间临时数据，现代 RDBMS 通过 **MVCC 快照读** 优雅消除脏读，既保障了 Read Committed 隔离安全性，又避免了读写相互加锁等待。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-800 font-bold">Slide 17 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-rose-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">并发异常 1：脏读与脏写 (Dirty Read &amp; Dirty Write)</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-rose-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-rose-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 引导学员区分脏写与脏读的本质差异：</span>
+                    “向学员做解构说明：脏写是写写冲突（$WW$），即一个事务覆盖了另一个未提交事务的修改。这会导致回滚时发生数据冲毁或逻辑破损，因此没有任何隔离级别允许脏写。脏写是由写操作强制加 X 锁防范的。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调脏读的物理危害与 MVCC 优雅解法：</span>
+                    “请学员关注右侧的脏读解法：脏读是写读冲突（$WR$），即读事务看到了写事务尚未提交的临态数据。如果在 Read Committed 级别下使用 MVCC，读事务直接根据 ReadView 去读取已提交的历史版本（Undo Log），完美避免了脏读同时无需等待写锁。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
