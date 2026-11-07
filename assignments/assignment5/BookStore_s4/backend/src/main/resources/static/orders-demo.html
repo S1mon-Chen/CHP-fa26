@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>作业 5 · Kafka 异步订单与 SSE 推送</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,-apple-system,"PingFang SC",sans-serif;color:#203044;background:#f1f5f9}*{box-sizing:border-box}body{margin:0;padding:32px}main{max-width:1320px;margin:auto}header{background:#102c46;color:white;padding:30px 36px;border-radius:18px}h1{font-size:29px;margin:8px 0 12px}p{line-height:1.6;margin:8px 0}.eyebrow{color:#91d8ff;letter-spacing:2px;font-size:13px}.flow{display:flex;gap:12px;margin-top:22px;flex-wrap:wrap}.flow span{background:#21435f;border-radius:7px;padding:9px 13px;font-size:14px}.controls{display:flex;align-items:center;gap:18px;margin:22px 0;flex-wrap:wrap}.controls p{margin:0;color:#52657a;font-size:14px}button{border:0;border-radius:8px;background:#126c9c;color:white;padding:11px 19px;cursor:pointer;font:inherit;font-weight:600}button:disabled{opacity:.55;cursor:wait}.secondary{background:white;border:1px solid #bfccda;color:#294861}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{background:white;border:1px solid #d7e1e9;border-radius:13px;padding:24px;min-width:0}h2{font-size:21px;margin:0 0 8px}.muted{font-size:14px;color:#607389}.metric{display:flex;gap:14px;margin:18px 0}.metric div{background:#f2f6fa;padding:12px 16px;border-radius:9px;flex:1}.metric b{font-size:25px;display:block;color:#163b59}.metric small{font-size:12px;color:#64758b}.status{padding:10px 12px;border-radius:7px;background:#edf2f7;font-size:14px;min-height:42px}.status.QUEUED{background:#fff4d6;color:#7e5800}.status.SUCCEEDED{background:#e3f5ed;color:#1a6846}.status.FAILED{background:#feeceb;color:#9d3030}h3{font-size:13px;margin:19px 0 7px;letter-spacing:.5px}pre{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:13px;border:1px solid #e4eaf0;border-radius:8px;margin:0;min-height:65px}.result{min-height:190px}footer{margin:20px 2px;font-size:12px;color:#607389}#connection{font-size:13px} @media(max-width:850px){body{padding:16px}.grid{grid-template-columns:1fr}}
+</style></head>
+<body><main>
+<header><div class="eyebrow">SE3353 · ASSIGNMENT 05</div><h1>Kafka 异步下单与 SSE 实时推送</h1><p>请求先返回排队号，消费者模拟 3 秒库存操作，处理结果通过同一条 SSE 连接到达页面。</p><div class="flow"><span>① POST /api/orders</span><span>② HTTP 202 + 排队 ID</span><span>③ Kafka · order-events</span><span>④ SseEmitter 推送结果</span></div></header>
+<div class="controls"><button id="interact" class="secondary">页面仍可交互 · <span id="clicks">0</span></button><p>排队时可点击按钮，验证页面保持响应。</p><span id="connection">演示账号 student · JWT 仅保存在页面内存</span></div>
+<div class="grid">
+<section class="card" id="success"><h2>正常下单</h2><p class="muted">购买 1 本图书，消费者提交订单并扣减库存。</p><button id="run-success">提交成功示例</button><div class="metric"><div><b class="accepted-ms">—</b><small>POST 响应耗时 / ms</small></div><div><b class="finished-ms">—</b><small>收到最终推送 / ms</small></div></div><div class="status">等待提交</div><h3>请求与 HTTP 响应</h3><pre class="request">尚未发起请求</pre><h3>GET /api/orders/{queueId}/stream</h3><pre class="result">等待 SSE 事件</pre></section>
+<section class="card" id="failure"><h2>库存不足</h2><p class="muted">购买数量超过库存，异步返回失败，事务不扣库存。</p><button id="run-failure">提交失败示例</button><div class="metric"><div><b class="accepted-ms">—</b><small>POST 响应耗时 / ms</small></div><div><b class="finished-ms">—</b><small>收到最终推送 / ms</small></div></div><div class="status">等待提交</div><h3>请求与 HTTP 响应</h3><pre class="request">尚未发起请求</pre><h3>GET /api/orders/{queueId}/stream</h3><pre class="result">等待 SSE 事件</pre></section>
+</div><footer>页面显示真实 HTTP 响应及 SSE 数据。完整工程还支持购物车异步下单。后端为单实例，Kafka 为单节点 KRaft。</footer>
+</main><script>
+let token; let clicks=0; window.demoRuns={};
+document.querySelector('#interact').onclick=()=>{document.querySelector('#clicks').textContent=++clicks;};
+async function authenticate(){
+ if(token)return;
+ const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'student',password:'bookstore-demo-2026'})});
+ if(!r.ok)throw Error('演示登录失败 '+r.status); token=(await r.json()).accessToken;
+ document.querySelector('#connection').textContent='已登录 student · Authorization: Bearer [已隐藏]';
+}
+async function run(kind){
+ const card=document.getElementById(kind), button=card.querySelector('button'), label=card.querySelector('.status');
+ button.disabled=true; window.demoRuns[kind]=null;
+ let reader;
+ try{
+  await authenticate();
+  const request={items:[{bookId:1,quantity:kind==='success'?1:1000000}]};
+  const start=performance.now();
+  const response=await fetch('/api/orders',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(request)});
+  const accepted=await response.json(), acceptedMs=Math.round(performance.now()-start);
+  card.querySelector('.accepted-ms').textContent=acceptedMs;
+  card.querySelector('.finished-ms').textContent='—';
+  card.querySelector('.request').textContent='POST /api/orders\n'+JSON.stringify(request)+'\n\nHTTP '+response.status+(response.status===202?' Accepted':'')+'\n'+JSON.stringify(accepted,null,2);
+  if(response.status!==202)throw Error(accepted.message||'下单失败');
+  label.className='status QUEUED';label.textContent='已受理，后台正在处理库存';
+  const url='/api/orders/'+accepted.queueId+'/stream';
+  const stream=await fetch(url,{headers:{Authorization:'Bearer '+token,Accept:'text/event-stream'}});
+  if(!stream.ok)throw Error('SSE HTTP '+stream.status);
+  const log=card.querySelector('.result');log.textContent='HTTP '+stream.status+' · '+stream.headers.get('content-type')+'\n';
+  reader=stream.body.getReader();const decoder=new TextDecoder();let buffer='', events=[];
+  while(true){
+   const {value,done}=await reader.read();if(done)throw Error('推送在最终结果前中断');
+   buffer+=decoder.decode(value,{stream:true});buffer=buffer.replace(/\r\n/g,'\n');let end;
+   while((end=buffer.indexOf('\n\n'))>=0){
+    const block=buffer.slice(0,end);buffer=buffer.slice(end+2);
+    const data=block.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trim()).join('\n');
+    if(!data)continue;const event=JSON.parse(data);events.push(event);
+    log.textContent+='\nevent: order-status\ndata: '+JSON.stringify(event,null,2)+'\n';
+    label.className='status '+event.status;label.textContent=event.status+' · '+event.message;
+    if(event.status==='SUCCEEDED'||event.status==='FAILED'){
+     const finishedMs=Math.round(performance.now()-start);card.querySelector('.finished-ms').textContent=finishedMs;
+     window.demoRuns[kind]={request,httpStatus:response.status,accepted,acceptedMs,finishedMs,events};return;
+    }
+   }
+  }
+ }catch(error){label.className='status FAILED';label.textContent=error.message;window.demoRuns[kind]={error:error.message};}
+ finally{await reader?.cancel().catch(()=>{});button.disabled=false;}
+}
+document.querySelector('#run-success').onclick=()=>run('success');document.querySelector('#run-failure').onclick=()=>run('failure');
+</script></body></html>
