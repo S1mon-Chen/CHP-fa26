@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>书店分布式下单实验</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"PingFang SC",sans-serif;color:#152b38;background:#f3f5f5}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1120px;margin:46px auto;padding:0 24px}
+    .eyebrow{color:#52716f;font-size:12px;letter-spacing:2px}h1{font-size:32px;margin:12px 0}p{line-height:1.7;color:#546572}
+    .flow{display:flex;gap:14px;align-items:center;margin:26px 0}.flow span{background:#fff;border:1px solid #dce4e4;padding:15px 22px;border-radius:8px;flex:1}.flow small{display:block;margin-top:6px;color:#627784}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:white;border:1px solid #dce4e4;border-radius:10px;padding:24px}h2{font-size:18px;margin:0 0 16px}
+    .stock{font-size:42px;font-weight:650;margin:12px 0}.stock small{font-size:14px;font-weight:400;color:#627784}button{cursor:pointer;border:0;border-radius:6px;padding:12px 18px;background:#17655c;color:white;font-size:14px;margin:6px 8px 6px 0}
+    button.fail{background:#96492d}button:disabled{opacity:.5;cursor:wait}.muted{font-size:13px;color:#647681}.status{font-size:16px;font-weight:600}.ok{color:#17655c}.error{color:#96492d}
+    pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,monospace;background:#f5f7f8;padding:14px;border-radius:6px;max-height:320px;overflow:auto}.wide{margin-top:18px}#history{display:grid;gap:14px}.entry{border-top:1px solid #e5e9e9;padding-top:14px}.entry:first-child{border:0;padding:0}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}.flow{flex-direction:column;align-items:stretch}.flow b{display:none}main{margin-top:24px}h1{font-size:27px}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">应用系统体系架构 · 作业 6</div>
+  <h1>书店分布式下单实验</h1>
+  <p>订单与库存分别存储，通过 OpenFeign 调用。Seata AT 在下单成功时提交，在订单写入异常时自动恢复库存。</p>
+  <div class="flow"><span>统一下单入口<small>Checkout · 18080</small></span><b>→</b><span>扣减库存<small>Inventory · inventory_db</small></span><b>→</b><span>生成订单<small>Orders · order_db</small></span></div>
+  <div class="grid">
+    <section class="panel"><h2>深入理解计算机系统</h2><div class="stock"><span id="stock">—</span> <small>本可用</small></div>
+      <p class="muted">每次购买 2 本。点击后会短暂停留，便于观察已经提交的库存扣减；最终状态取自服务实际查询。</p>
+      <button id="success">正常下单</button><button id="failure" class="fail">模拟订单入库异常</button>
+    </section>
+    <section class="panel"><h2>当前实验</h2><p class="status" id="status">等待发起下单</p><p id="phase">库存服务和订单服务使用各自的本地事务。</p><p class="muted">故障模式在订单 INSERT 之后抛出 RuntimeException。库存恢复由 Seata undo_log 完成。</p></section>
+  </div>
+  <section class="panel wide"><h2>请求与验证结果</h2><div id="history"><p class="muted" id="empty">运行正常与异常场景，查看 HTTP 响应、XID 和库存前后对比。</p></div></section>
+  <p class="muted">学号 524031910668 · 陈熹朗 · 本地教学实验</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let busy=false;
+async function stock(){const res=await fetch('/api/books');if(!res.ok)throw new Error('库存查询失败');const books=await res.json();const value=books.find(b=>b.bookId===1).stock;$('stock').textContent=value;return value;}
+async function run(failOrder){
+  if(busy)return;busy=true;$('success').disabled=$('failure').disabled=true;
+  let timer;
+  try{
+    const before=await stock();let middle=before;
+    const request={requestId:'ui-'+crypto.randomUUID(),bookId:1,quantity:2,failOrder,pauseAfterInventoryMs:2000};
+    $('status').className='status';$('status').textContent='下单处理中';$('phase').textContent='正在调用库存服务，随后写入订单。';
+    timer=setInterval(async()=>{try{const v=await stock();middle=Math.min(middle,v);if(v<before)$('phase').textContent=`库存已提交扣减：${before} → ${v}；等待订单步骤完成。`;}catch(e){$('phase').textContent=e.message;}},200);
+    const response=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
+    const body=await response.json();clearInterval(timer);const after=await stock();
+    const lookup=await (await fetch('/api/orders/'+request.requestId)).json();
+    const restored=!response.ok&&after===before&&!lookup.found;
+    $('status').className='status '+(response.ok?'ok':'error');
+    $('status').textContent=response.ok?'下单成功 · 全局事务已提交':restored?'下单失败 · 库存已回滚':'下单失败 · 请检查事务结果';
+    $('phase').textContent=`库存 ${before} → ${middle} → ${after}；订单${lookup.found?'已创建':'未生成'}。`;
+    $('empty')?.remove();const entry=document.createElement('div');entry.className='entry';
+    const heading=document.createElement('div');heading.className='status '+(response.ok?'ok':'error');heading.textContent=(failOrder?'异常场景':'正常场景')+` · HTTP ${response.status}`;
+    const desc=document.createElement('p');desc.textContent=`库存：${before} → ${middle} → ${after}　订单：${lookup.found?'已创建':'未生成'}`;
+    const pre=document.createElement('pre');pre.textContent=JSON.stringify({request,response:body,orderExists:lookup.found},null,2);
+    entry.append(heading,desc,pre);$('history').prepend(entry);
+  }catch(e){$('status').className='status error';$('status').textContent='连接失败';$('phase').textContent=e.message;}
+  finally{clearInterval(timer);busy=false;$('success').disabled=$('failure').disabled=false;}
+}
+$('success').onclick=()=>run(false);$('failure').onclick=()=>run(true);stock().catch(e=>$('status').textContent=e.message);
+</script>
+</body></html>

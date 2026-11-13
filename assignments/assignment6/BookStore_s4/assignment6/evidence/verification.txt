@@ -1,0 +1,139 @@
+checkout 独立进程可访问: PASS
+inventory 独立进程可访问: PASS
+orders 独立进程可访问: PASS
+两套独立业务数据库: PASS
+库存与订单分别授权: PASS
+正常下单返回成功和 XID: PASS
+正常下单库存与订单同时提交: PASS
+订单服务收到同一个 XID: PASS
+成功后两个库的 Undo 最终清理: PASS
+异常前库存分支已独立提交: PASS
+已提交库存存在 Seata Undo 记录: PASS
+订单入库 RuntimeException 传播至入口: PASS
+失败响应 XID 等于库存 Undo XID: PASS
+Seata 自动恢复已提交库存: PASS
+失败订单没有残留: PASS
+回滚后 Undo 清理完成: PASS
+相同请求重试返回原订单: PASS
+重试不重复扣减库存: PASS
+同一请求号禁止更改商品数量: PASS
+非法数量在入口拒绝: PASS
+不存在的图书返回 404: PASS
+库存不足返回 409: PASS
+校验失败未改变库存或生成订单: PASS
+18081 拒绝未携带 XID 的分支写入: PASS
+18082 拒绝未携带 XID 的分支写入: PASS
+最后一本并发请求仅一笔成功: PASS
+并发竞争无超卖且订单仅一笔: PASS
+测试结束无遗留 Undo 分支: PASS
+
+{
+  "success": {
+    "request": {
+      "requestId": "test-14ce2ee318804eb9bf5b74ff17ab96e6",
+      "bookId": 1,
+      "quantity": 2,
+      "failOrder": false,
+      "pauseAfterInventoryMs": 0
+    },
+    "httpStatus": 200,
+    "response": {
+      "orderId": 1,
+      "requestId": "test-14ce2ee318804eb9bf5b74ff17ab96e6",
+      "bookId": 1,
+      "quantity": 2,
+      "xid": "172.19.0.2:18091:5585305768673312769",
+      "replayed": false
+    },
+    "before": {
+      "stock": 100,
+      "orders": 0,
+      "inventoryUndoLogs": 0,
+      "orderUndoLogs": 0
+    },
+    "after": {
+      "stock": 98,
+      "orders": 1,
+      "inventoryUndoLogs": 1,
+      "orderUndoLogs": 1
+    }
+  },
+  "rollback": {
+    "request": {
+      "requestId": "test-8b16c914d8da45a696c2099eadbb34f7",
+      "bookId": 1,
+      "quantity": 3,
+      "failOrder": true,
+      "pauseAfterInventoryMs": 3000
+    },
+    "httpStatus": 500,
+    "response": {
+      "code": "SIMULATED_ORDER_FAILURE",
+      "message": "模拟订单入库 RuntimeException",
+      "xid": "172.19.0.2:18091:5585305768673312772",
+      "requestId": "test-8b16c914d8da45a696c2099eadbb34f7"
+    },
+    "before": {
+      "stock": 98,
+      "orders": 0,
+      "inventoryUndoLogs": 0,
+      "orderUndoLogs": 0
+    },
+    "intermediate": {
+      "stock": 95,
+      "orders": 0,
+      "inventoryUndoLogs": 1,
+      "orderUndoLogs": 0
+    },
+    "undoDuringTransaction": "172.19.0.2:18091:5585305768673312772\t5585305768673312773\t0",
+    "after": {
+      "stock": 98,
+      "orders": 0,
+      "inventoryUndoLogs": 0,
+      "orderUndoLogs": 0
+    }
+  },
+  "concurrency": {
+    "bookId": 2794058037,
+    "requests": [
+      {
+        "requestId": "test-b768aa4d291e42ee8d3a26cac8a4c033",
+        "bookId": 2794058037,
+        "quantity": 1,
+        "failOrder": false,
+        "pauseAfterInventoryMs": 0
+      },
+      {
+        "requestId": "test-dfe5c12c2d1440c9b9920de7050931e8",
+        "bookId": 2794058037,
+        "quantity": 1,
+        "failOrder": false,
+        "pauseAfterInventoryMs": 0
+      }
+    ],
+    "responses": [
+      [
+        200,
+        {
+          "orderId": 3,
+          "requestId": "test-b768aa4d291e42ee8d3a26cac8a4c033",
+          "bookId": 2794058037,
+          "quantity": 1,
+          "xid": "172.19.0.2:18091:5585305768673312778",
+          "replayed": false
+        }
+      ],
+      [
+        409,
+        {
+          "code": "INSUFFICIENT_STOCK",
+          "message": "库存不足",
+          "xid": "172.19.0.2:18091:5585305768673312779",
+          "requestId": "test-dfe5c12c2d1440c9b9920de7050931e8"
+        }
+      ]
+    ],
+    "stock": 0,
+    "orders": 1
+  }
+}

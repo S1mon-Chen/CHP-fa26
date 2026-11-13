@@ -1,0 +1,32 @@
+name: bookstore-assignment6
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: assignment6-local-root
+    ports:
+      - "127.0.0.1:13306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infra/mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysql -uroot -e 'SELECT 1 FROM inventory_db.inventory LIMIT 1' >/dev/null 2>&1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  seata:
+    image: apache/seata-server:2.5.0
+    environment:
+      SEATA_IP: 127.0.0.1
+      SEATA_PORT: 18091
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+      JVM_XMN: 128m
+    ports:
+      - "127.0.0.1:18091:18091"
+    volumes:
+      - ./infra/seata/application.yml:/seata-server/resources/application.yml:ro
+      - seata-data:/seata-server/sessionStore
+volumes:
+  mysql-data:
+  seata-data:
