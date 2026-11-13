@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 7 - 模式一：Router Pattern（智能分流路由模式）与智能客服总分发网关实操</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .step-box { transition: all 0.3s ease; }
+        .step-box:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+<style>.lms-source-label {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: #e0e0e0;
+    color: #333;
+    border-radius: 10px;
+    padding: 4px 4px;
+    font-family: sans-serif;
+    font-size: 10px;
+    pointer-events: none;
+    font-weight: 500;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+</style></head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 5大经典设计模式与实操 —— 模式一：Router 模式
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadRouterPracticalGuide()" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-bold text-purple-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-purple-600"></i>
+                <span>下载 Vibe Coding 实操指南 (.md)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-route text-purple-600"></i>
+                <span>Design Pattern 01 · 智能分流路由模式 (Router Pattern) 落地指南</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                模式一：Vibe Coding 下 Router 网关的生成、沙箱运行与提示词闭环
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在 Vibe Coding 时代，您<strong>无需手动编写或拷贝代码</strong>！只需点击下方按钮复制完整提示词并发送给 WorkBuddy，AI 即可在内置沙箱中自动创建文件、启动终端并动态运行验证。
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-purple-400 font-bold">
+                        <span><i class="fa-solid fa-terminal mr-2"></i>Vibe Coding 实践执行四步法</span>
+                        <span class="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">WORKFLOW</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300">
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-purple-300 font-bold block mb-0.5">1. 在 WorkBuddy 聊天框发送提示词：</span>
+                            <div class="text-[10px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-700 mt-1 flex items-center justify-between gap-2">
+                                <span id="promptText">"请帮我创建一个智能客服总分发网关 router_gateway.py，包含意图分类器，能把财务,技术,通用咨询分别路由到不同 Agent。"</span>
+                                <button onclick="copyPromptText()" class="copy-btn bg-purple-600 hover:bg-purple-500 text-white text-[10px] px-2.5 py-1 rounded font-bold shrink-0">
+                                    <i class="fa-solid fa-copy mr-1"></i> 复制提示词
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-purple-300 font-bold block mb-0.5">2. AI 自动生成代码与文件：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                WorkBuddy 在后台自动在工作区创建文件并写入完整的 Python 逻辑，无需你手动敲一行代码。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-purple-300 font-bold block mb-0.5">3. 自动调起沙箱终端 (Sandbox)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                AI 自动在内置的安全隔离沙箱终端中执行命令：<code class="text-emerald-300">python router_gateway.py</code>。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-purple-300 font-bold block mb-0.5">4. 检验分流结果 (Verification)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                终端输出分类判定日志（如识别“退款”并精准命中财务 Agent），沙箱验证成功！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-wand-magic-sparkles text-purple-400 mr-1"></i> 告别手动敲代码：对话即代码，沙箱即验证！</span>
+                    <button onclick="copyPromptText()" class="copy-btn bg-purple-600 hover:bg-purple-500 text-white text-[10px] px-2.5 py-1 rounded font-bold">一键复制完整提示词</button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span><i class="fa-solid fa-play text-purple-600 mr-2"></i>模拟沙箱实时验证 (Live Sandbox Demo)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">ONLINE</span>
+                    </div>
+
+                    <!-- Sandbox Input & Trigger -->
+                    <div class="space-y-2 mb-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">输入测试咨询内容 (模拟真实用户输入)：</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="userQueryInput" value="我的账号充值后扣款了但没到账，怎么退款？" class="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-purple-500">
+                            <button onclick="runRouterSandbox()" class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded font-bold transition flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-play text-[10px]"></i> 运行沙箱
+                            </button>
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button onclick="setQuery('我的账号充值后扣款了但没到账，怎么退款？')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-purple-700 px-2 py-0.5 rounded border border-slate-200">财务类咨询</button>
+                            <button onclick="setQuery('系统突然报错 500 崩溃了，网页打不开怎么办？')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-indigo-700 px-2 py-0.5 rounded border border-slate-200">技术类咨询</button>
+                            <button onclick="setQuery('你们公司周末正常上班吗？')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-cyan-700 px-2 py-0.5 rounded border border-slate-200">通用类咨询</button>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Output Console -->
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <div class="text-slate-400 text-[10px] font-mono"># 终端沙箱实时执行输出 (Sandbox Output)：</div>
+                        <div id="routerOutput" class="text-emerald-300 font-mono text-[11px] bg-slate-950 p-2.5 rounded border border-slate-800 min-h-[60px] flex items-center">
+                            [Finance Agent] Handling financial request: 识别到关键词“退款/扣款”，已精准分发至财务退款专家 Agent，预计处理耗时 0.3s。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-purple-600 mr-1"></i> 沙箱自动校验：确保 Router 网关在真实环境运行无误。</span>
+                    <button onclick="downloadRouterPracticalGuide()" class="copy-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2.5 py-1 rounded font-bold">下载实操手册</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 8 - Slide <span class="text-purple-600 font-bold">07</span> / 20
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[35%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-purple-500"></i>第八单元：架构设计模式
+            </span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 第七页实操要点讲解：</span>
+                    “各位同学，在 Vibe Coding 模式下，我们一键复制左侧的提示词发送给 WorkBuddy 即可！AI 会自动在后台创建 `router_gateway.py` 文件并自动在沙箱终端中执行验证。点击右上角即可下载详细的实操指南 Markdown 手册！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function setQuery(text) {
+            document.getElementById('userQueryInput').value = text;
+            runRouterSandbox();
+        }
+        function runRouterSandbox() {
+            const q = document.getElementById('userQueryInput').value;
+            const out = document.getElementById('routerOutput');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-purple-400 mr-2"></i> 正在沙箱中运行意图分类器与路由分发...';
+            setTimeout(function() {
+                if (q.includes('退款') || q.includes('扣款') || q.includes('充值')) {
+                    out.innerHTML = '[Finance Agent] 处理中：识别到关键词“退款/扣款”，已秒级分发至<strong>财务退款专家 Agent</strong>，挂载专属财务知识库。';
+                } else if (q.includes('报错') || q.includes('崩溃') || q.includes('500') || q.includes('打不开')) {
+                    out.innerHTML = '[Tech Support Agent] 处理中：识别到系统故障，已秒级分发至<strong>技术售后专家 Agent</strong>，自动联动日志诊断工具。';
+                } else {
+                    out.innerHTML = '[General Agent] 处理中：未命中垂直领域专项意图，已交由<strong>通用客服 Agent</strong> 进行标准对话响应。';
+                }
+                showToast("Router 智能分流沙箱验证成功！");
+            }, 400);
+        }
+        function copyPromptText() {
+            const text = document.getElementById('promptText').innerText.replace(/^"|"$/g, '');
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("完整 Vibe 提示词已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+        function downloadRouterPracticalGuide() {
+            const guideMd = `# 第八单元实战演练：Router Pattern（智能分流路由模式）与 WorkBuddy Vibe Coding 完整操作指南\n\n本指南将带你使用 **Vibe Coding**（对话即编程，沙箱即验证）模式，亲手在本地 WorkBuddy 环境中落地 **Slide 7** 的“智能客服总分发网关 (\`router_gateway.py\`)”。\n\n无需手动敲一行代码或从网页复制代码片段！我们将通过与 AI 的对话，让 WorkBuddy 在后台自动创建文件、写入 Python 逻辑、启动沙箱终端并实时验证分流结果。\n\n---\n\n## 一、 前置准备工作\n1. 打开你的 **WorkBuddy** 客户端或 IDE 插件。\n2. 新建或打开一个空的本地工作区文件夹（例如命名为 \`workbuddy_router_lab\`）。\n\n---\n\n## 二、 Vibe Coding 实践执行四步法（对照实操）\n\n### 步骤一：在 WorkBuddy 聊天框发送提示词\n将下方我们在 Slide 7 中精心设计的提示词复制并发送给 WorkBuddy：\n\n> *"请帮我创建一个智能客服总分发网关 router_gateway.py，包含意图分类器，能把财务、技术、通用咨询分别路由到不同 Agent。*"\n\n**背后的 AI 机制**：\n* WorkBuddy 接收到自然语言后，会理解这是一个需要创建独立 Python 脚本的架构任务。\n* 它不会让你去手敲代码，而是直接调用工作区写入工具。\n\n---\n\n### 步骤二：AI 自动生成代码与文件\n在 WorkBuddy 的回复中，你会看到它在后台自动执行了以下动作：\n1. **自动创建文件**：在你的项目根目录下自动新建了 \`router_gateway.py\`。\n2. **自动写入源码**：将包含意图分类函数 (\`classify_intent\`)、财务专家 Agent (\`run_finance_agent\`)、技术售后专家 Agent (\`run_tech_agent\`) 以及总分发网关 (\`intent_router\`) 的完整 Python 逻辑写入文件中。\n\n---\n\n### 步骤三：自动调起沙箱终端 (Sandbox)\n文件写入完成后，WorkBuddy 会自动在内置的安全隔离沙箱终端（Sandbox Terminal）中执行运行命令：\n\`\`\`bash\npython router_gateway.py\n\`\`\`\n* **为什么不需要你手动敲命令？**\n  在 Vibe Coding 模式下，AI 拥有沙箱终端的执行权限。它写完代码后会主动进行“单元自测与冒烟验证”，确保代码没有语法错误或拼写缺陷。\n\n---\n\n### 步骤四：检验分流结果 (Verification)\n你可以在终端输出或后续的测试中看到分流判定日志。`;
+
+            try {
+                const blob = new Blob([guideMd], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'unit8_router_pattern_vibe_coding_guide.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("Vibe Coding 实操指南下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '8.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '6.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

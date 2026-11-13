@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 20 - 智能体定义与 Persona 编写：如何用 agent.json 赋予 WorkBuddy 垂直领域专业性</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 5: 进阶拓展 —— 智能体定义与 Persona 编写
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadJsonSnippet()" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-bold text-purple-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-code text-purple-600"></i>
+                <span>复制 agent.json 核心片段</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-id-card-clip text-purple-600"></i>
+                    <span>Persona & Configuration · 智能体定义与行为约束</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    智能体定义与 Persona 编写：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">用 agent.json 赋予垂直领域专业性</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    通过结构化配置文件设定专属角色边界，将通用大模型转换为具备审计风控或运维巡检能力的资深专员。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: agent.json Code Preview Window -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                    <div>
+                        <div class="flex items-center justify-between mb-2 border-b border-slate-800 pb-2 text-purple-400 font-bold">
+                            <span><i class="fa-solid fa-file-code mr-2"></i>agent.json (Auditor Persona)</span>
+                            <span class="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">CONFIG</span>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-700 text-[11px] text-slate-300 space-y-1 overflow-x-auto">
+                            <span class="text-slate-400">{</span>
+                            <div class="pl-4">"agent_name": <span class="text-emerald-300">"Risk_Auditor"</span>,</div>
+                            <div class="pl-4">"role": <span class="text-emerald-300">"Compliance Auditor"</span>,</div>
+                            <div class="pl-4">"system_prompt": <span class="text-amber-300">"You are an expert auditor. Scan workspace metrics, cross-reference targets, output markdown reports."</span>,</div>
+                            <div class="pl-4">"constraints": [<span class="text-emerald-300">"Never disclose salary data"</span>, <span class="text-emerald-300">"Verify data source via checksum"</span>]</div>
+                            <span class="text-slate-400">}</span>
+                        </div>
+                    </div>
+                    <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans">
+                        <i class="fa-solid fa-circle-check text-purple-400 mr-1"></i> 行为约束：通过 System Prompt 划定明确的边界，确保智能体输出专业严谨。
+                    </div>
+                </div>
+
+                <!-- Right: Action Cards -->
+                <div class="lg:col-span-6 flex flex-col justify-between space-y-3">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">结构化配置 (agent.json)</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">采用标准 JSON 格式集中管理智能体的身份标识、版本号、关联工具与基础策略。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0 font-bold">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">System Prompt 行为约束</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">通过严格的边界限定（如禁止输出敏感薪酬、必须交叉校验数据），防止 AI 产生幻觉或越权输出。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center text-sm shrink-0 font-bold">3</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">垂直领域专业性赋能</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">让同一个大模型在不同配置文件下摇身一变，成为审计、运维或法务专属的“数字员工”。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Advanced Slide <span class="text-purple-600 font-bold">20</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[91%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="19.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-robot mr-1 text-purple-500"></i>进阶拓展：智能体 Persona
+            </span>
+            <a href="21.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 第二十页讲解要点：</span>
+                    “各位同学，如何让 WorkBuddy 具备垂直领域的专业性？我们通过编写结构化的 `agent.json` 配置文件来定义 Persona！通过 System Prompt 明确限定行动边界与行为约束，例如禁止披露薪酬、必须交叉校验数据源，从而把通用 AI 变成专业的审计风控专员！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>agent.json 片段已复制到剪贴板！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function downloadJsonSnippet() {
+            const snippet = `{\n  "agent_name": "Risk_Auditor",\n  "role": "Compliance Auditor",\n  "system_prompt": "You are an expert auditor. Scan workspace metrics, cross-reference targets, output markdown reports.",\n  "constraints": [\n    "Never disclose salary data",\n    "Verify data source via checksum"\n  ]\n}`;
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = snippet;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("agent.json 核心片段已成功复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '21.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '19.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

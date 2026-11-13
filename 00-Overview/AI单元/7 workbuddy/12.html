@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 自动生成单元测试：利用 WorkBuddy 瞬时为核心业务函数编写 Pytest 测试用例</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .test-card { transition: all 0.3s ease; }
+        .test-card:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 深度实战 —— 自动生成 Pytest 单元测试
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-vial-circle-check text-purple-600"></i>
+                    <span>Automated Testing · 自动生成单元测试用例</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    自动生成单元测试：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">利用 WorkBuddy 瞬时编写 Pytest</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    重构完成后，切忌盲目上线。通过自然语言指令引导 WorkBuddy 针对 <code class="text-purple-700 bg-purple-50 px-1 rounded font-mono">scraper.py</code> 的核心重构函数生成全覆盖的 Pytest 测试用例。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Card 1 -->
+                <div class="test-card bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-base font-bold mb-3">1</div>
+                        <h3 class="font-bold text-slate-800 text-sm mb-1">指定核心目标函数</h3>
+                        <p class="text-xs text-slate-500 leading-relaxed mb-3">明确要求 WorkBuddy 针对重构后的 <code class="text-slate-700 font-mono text-[11px]">fetch_page</code> 与重试逻辑编写测试，覆盖正常响应及网络超时异常。</p>
+                    </div>
+                    <div>
+                        <div class="bg-slate-50 p-2 rounded border border-slate-200 text-[10px] font-mono text-slate-700 mb-2 relative group">
+                            <span id="promptTest1">"请为重构后的 scraper.py 编写完整的 pytest 单元测试文件 test_scraper.py。"</span>
+                        </div>
+                        <button onclick="copyPrompt('promptTest1')" class="copy-btn w-full bg-purple-600 hover:bg-purple-500 text-white text-[11px] py-1.5 rounded font-bold flex items-center justify-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-copy text-[10px]"></i> 复制生成测试指令
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="test-card bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-base font-bold mb-3">2</div>
+                        <h3 class="font-bold text-slate-800 text-sm mb-1">Mock 模拟网络环境</h3>
+                        <p class="text-xs text-slate-500 leading-relaxed mb-3">指示 AI 在测试中使用 <code class="text-slate-700 font-mono text-[11px]">unittest.mock</code> 模拟网络断开与 HTTP 500 状态码，验证指数退避是否生效。</p>
+                    </div>
+                    <div>
+                        <div class="bg-slate-50 p-2 rounded border border-slate-200 text-[10px] font-mono text-slate-700 mb-2">
+                            <span id="promptTest2">"请在测试中加入 mock 机制，模拟网络闪断与重试计数验证。"</span>
+                        </div>
+                        <button onclick="copyPrompt('promptTest2')" class="copy-btn w-full bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] py-1.5 rounded font-bold flex items-center justify-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-copy text-[10px]"></i> 复制 Mock 测试指令
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="test-card bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <div class="w-10 h-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center text-base font-bold mb-3">3</div>
+                        <h3 class="font-bold text-slate-800 text-sm mb-1">一键沙箱执行测试</h3>
+                        <p class="text-xs text-slate-500 leading-relaxed mb-3">直接呼叫 WorkBuddy 在终端沙箱中运行 <code class="text-slate-700 font-mono text-[11px]">pytest</code>，并观察测试绿灯全部通过。</p>
+                    </div>
+                    <div>
+                        <div class="bg-slate-50 p-2 rounded border border-slate-200 text-[10px] font-mono text-slate-700 mb-2">
+                            <span id="promptTest3">"请在本地沙箱终端中运行 pytest 并向我报告测试结果。"</span>
+                        </div>
+                        <button onclick="copyPrompt('promptTest3')" class="copy-btn w-full bg-pink-600 hover:bg-pink-500 text-white text-[11px] py-1.5 rounded font-bold flex items-center justify-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-copy text-[10px]"></i> 复制沙箱运行指令
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Slide <span class="text-purple-600 font-bold">12</span> / 18
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[66%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-purple-500"></i>模块三：深度实战演练
+            </span>
+            <a href="13.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 第十二页讲解要点：</span>
+                    “代码重构完之后，怎么保证没有引入新 Bug？我们直接让 WorkBuddy 编写 Pytest 单元测试！我们可以要求它用 Mock 模拟网络异常，测试重试装饰器是否正常工作。一键复制指令，让 AI 把测试覆盖率拉满！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>指令已成功复制到剪贴板！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyPrompt(elementId) {
+            const text = document.getElementById(elementId).innerText.replace(/^"|"$/g, '');
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("指令已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '13.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '11.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

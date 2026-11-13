@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 运行演示：见证奇迹的诞生</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 1.5s; }
+        .delay-3 { animation-delay: 3.0s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tool-call-glow {
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0% { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.2); }
+            50% { border-color: rgba(168, 85, 247, 0.8); box-shadow: 0 0 15px 5px rgba(168, 85, 247, 0.4); }
+            100% { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.2); }
+        }
+
+        .stamp-success {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-10deg) scale(2);
+            color: rgba(16, 185, 129, 0.85);
+            border: 4px solid rgba(16, 185, 129, 0.85);
+            padding: 4px 16px;
+            border-radius: 8px;
+            font-size: 2rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            animation: stampIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards 4s;
+        }
+
+        @keyframes stampIn {
+            0% { opacity: 0; transform: translate(-50%, -50%) rotate(-10deg) scale(2); }
+            100% { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战演练一 —— 精准对答与消灭幻觉
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-sparkles text-emerald-600"></i>
+                    <span>Live Demonstration · 运行演示</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    运行演示：见证 <span class="text-emerald-600 border-b-4 border-emerald-300 mx-1 pb-1">100% 准确</span> 的诞生
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    当带上开卷指令后，AI 不再盲猜，而是自主调度工具去本地文件中获取真相。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Chat Simulation -->
+                <div class="lg:col-span-8 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full shadow-2xl relative">
+                        <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-messages text-slate-400"></i>
+                                <span class="text-sm font-bold text-slate-700">Trae RAG 实战对话界面</span>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 flex flex-col gap-4 flex-1 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-10">
+                            
+                            <!-- User Message -->
+                            <div class="flex items-start gap-3 justify-end chat-bubble delay-1">
+                                <div class="bg-purple-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[85%]">
+                                    请作为公司专属客服专家，查阅《超级充电宝V3说明书.md》，超级充电宝V3的防水等级具体是多少？
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 mt-1 font-bold">我</div>
+                            </div>
+
+                            <!-- AI Tool Call -->
+                            <div class="flex items-start gap-3 chat-bubble delay-2">
+                                <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-purple-300 tool-call-glow p-3 rounded-xl shadow-sm text-slate-700 w-72">
+                                    <div class="flex items-center gap-2 text-xs font-bold text-purple-700 mb-1">
+                                        <i class="fa-solid fa-book-open-reader fa-spin"></i>
+                                        <span>调用工具: read_file</span>
+                                    </div>
+                                    <div class="text-[10px] font-mono text-slate-500 bg-slate-50 p-1.5 rounded border border-slate-100">
+                                        path: Company_Docs/超级充电宝V3说明书.md
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- AI Accurate Response -->
+                            <div class="flex items-start gap-3 chat-bubble delay-3 relative pb-2">
+                                <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-emerald-300 p-4 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700 max-w-[90%] leading-relaxed border-l-4 border-l-emerald-500">
+                                    根据《超级充电宝V3说明书.md》第 3 节“防护与环境参数”中的明确记载：<br><br>
+                                    超级充电宝V3的防水等级为 <strong class="text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded font-bold">IP68</strong>（支持水下 2 米深度持续浸泡 30 分钟不进水）。请放心告知客户！
+                                </div>
+                                <!-- Success Stamp -->
+                                <div class="stamp-success">100% 准确</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Key Takeaway Cards -->
+                <div class="lg:col-span-4 flex flex-col justify-center space-y-4">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 soft-shadow">
+                        <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm mb-3">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-sm mb-1">零幻觉的底气</h4>
+                        <p class="text-xs text-slate-500 leading-relaxed">
+                            因为数据源直接来源于你本地的 Markdown 文件，AI 每次回答前都会进行“开卷查阅”，彻底杜绝了瞎编的可能性。
+                        </p>
+                    </div>
+
+                    <div class="bg-purple-50 border border-purple-200 rounded-xl p-5 soft-shadow">
+                        <div class="w-8 h-8 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center font-bold text-sm mb-3">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <h4 class="font-bold text-purple-900 text-sm mb-1">企业级应用的雏形</h4>
+                        <p class="text-xs text-purple-800 leading-relaxed">
+                            这就是目前各大企业搭建内部知识库问答机器人的核心底层架构——你只需要维护好本地文档，AI 永远是合格的业务专家。
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 3 - Slide <span class="text-purple-600 font-bold">13</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[59%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页：开卷考试指令" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-bullseye mr-1 text-purple-500"></i>模块三：精准对答实战
+            </span>
+            <a href="14.html" title="下一页：魔法揭秘" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎉 引导学员观察结果：</span>
+                    “大家看大屏幕！发完开卷指令后，AI 自动在后台调用了 `read_file` 工具去读那份 Markdown 说明书。紧接着，它给出了完美的答案：IP68，支持水下2米浸泡！这才是我们真正想要的业务助手！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “单文件检索太简单了。如果老板抛出的问题极其刁钻，需要同时结合多份文档（比如既要查参数，又要查售后政策）怎么办？下一页，我们进入模块四：高阶跨文档交叉比对！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

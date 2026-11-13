@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 终端执行与报错自修复 (Self-Correction)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .terminal-card { transition: all 0.3s ease; }
+        .terminal-card:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 深度实战 —— 终端沙箱执行与报错自修复 (Self-Correction)
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-terminal text-purple-600"></i>
+                    <span>Sandbox & Self-Correction · 终端沙箱与自主修复</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    终端执行与报错自修复：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">见证 AI 捕获报错并自动修正</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    测试运行出现红灯不要慌！WorkBuddy 具备强大的沙箱自循环机制，能自动捕获 pytest 报错栈并自主重构代码，直到绿灯全通过。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Terminal Sandbox Simulation Window -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5 border-b border-slate-800 pb-2 text-purple-400 font-bold">
+                            <span><i class="fa-solid fa-laptop-code mr-2"></i>Sandbox Terminal (pytest output)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">PASSED (2/2)</span>
+                        </div>
+                        <div class="space-y-2 text-[11px] text-slate-300 font-mono">
+                            <div class="text-slate-500">$ pytest test_scraper.py</div>
+                            <div class="text-rose-400 bg-slate-800 p-2 rounded border border-rose-900/50 text-[10px]">
+                                FAILED test_scraper.py::test_fetch_timeout - RetryError: Max retries exceeded...
+                            </div>
+                            <div class="text-purple-300">
+                                🤖 [WorkBuddy Self-Correction]: 捕获到网络超时测试未通过，正在自动注入指数退避重试装饰器...
+                            </div>
+                            <div class="text-emerald-400 bg-slate-800 p-2 rounded border border-emerald-900/50 text-[10px]">
+                                ======================== 2 passed in 0.42s ========================
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans">
+                        <i class="fa-solid fa-circle-check text-purple-400 mr-1"></i> 智能体闭环：从发现报错到自主修改、再到重新执行直到绿灯，全程零人工干预！
+                    </div>
+                </div>
+
+                <!-- Right: Action Cards -->
+                <div class="lg:col-span-6 flex flex-col justify-between space-y-3">
+                    
+                    <div class="terminal-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">沙箱内实时捕获错误栈</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">WorkBuddy 直接在安全隔离的终端沙箱中运行测试，准确解析报错行号与原因。</p>
+                        </div>
+                    </div>
+
+                    <div class="terminal-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0 font-bold">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">自主循环修正（Self-Correction）</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">无需人工反复粘贴报错信息，AI 自动根据测试失败原因微调代码实现细节。</p>
+                        </div>
+                    </div>
+
+                    <div class="terminal-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center text-sm shrink-0 font-bold">3</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">绿灯通过，完美交付</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">直到终端显示所有测试用例全部 PASSED，整个重构与修复闭环才算圆满大功告成。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Slide <span class="text-purple-600 font-bold">13</span> / 18
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[72%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-purple-500"></i>模块三：深度实战演练
+            </span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 第十三页讲解要点：</span>
+                    “各位同学，如果测试运行出现红灯，千万不要手动去改！WorkBuddy 最厉害的地方在于它的 Self-Correction（报错自修复）机制：它能在沙箱终端里直接捕获错误栈，自动分析原因并修改代码，直到再次运行全部显示绿灯通过！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '14.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '12.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

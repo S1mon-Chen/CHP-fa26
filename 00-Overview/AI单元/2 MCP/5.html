@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 5 - 实操演示：如何“安装”一个 MCP？</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            900: '#312e81',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        
+        .json-editor {
+            background-color: #1e1e1e;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: #d4d4d4;
+            overflow-x: auto;
+            white-space: pre; /* 核心修复：强制保留空格缩进和换行 */
+        }
+        .json-key { color: #9cdcfe; }
+        .json-string { color: #ce9178; }
+        .json-punctuation { color: #d4d4d4; }
+        .json-highlight {
+            background-color: rgba(234, 179, 8, 0.2);
+            border: 1px dashed #eab308;
+            padding: 2px 4px;
+            border-radius: 4px;
+            animation: pulse-yellow 2s infinite;
+        }
+        
+        @keyframes pulse-yellow {
+            0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(234, 179, 8, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+        }
+
+        .cursor-blink {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 零代码配置你的第一个 MCP
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-10 w-[400px] h-[400px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-10 w-[400px] h-[400px] bg-amber-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-screwdriver-wrench text-indigo-600"></i>
+                    <span>Installation · 实操演示</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    打破代码恐惧：安装 MCP 其实就是<span class="text-indigo-600 relative inline-block mx-1">“填空题”<svg class="absolute -bottom-2 w-full h-3 text-indigo-300/50" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,10 Q50,20 100,10" stroke="currentColor" stroke-width="4" fill="none"/></svg></span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    非技术人员看到 JSON 文件就会本能抗拒。<br>今天我们揭秘：在 Trae/Cursor 中安装插件，只需要你复制粘贴 <strong class="text-slate-700">1行字</strong>。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: The "Scary" Interface (JSON) -->
+                <div class="bg-slate-900 border border-slate-700 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative group">
+                    <div class="bg-slate-800 border-b border-slate-700 p-3 flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-file-code text-slate-400"></i>
+                                <span class="text-sm font-bold text-slate-200 font-mono">Trae MCP 设置界面</span>
+                            </div>
+                            <button onclick="copyJson()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] px-2.5 py-1 rounded border border-slate-600 transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-regular fa-copy"></i> 复制配置
+                            </button>
+                        </div>
+                        <div class="text-[10px] text-slate-400 bg-slate-900/50 px-2 py-1.5 rounded border border-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-location-arrow text-blue-400"></i>
+                            <span><strong>安装入口：</strong>点击 Trae 左侧边栏 <i class="fa-solid fa-plug text-slate-300 mx-0.5"></i> -> 展开 MCP Servers -> 点击 <kbd class="bg-slate-800 border border-slate-600 px-1 py-0.5 rounded text-slate-200 font-sans">+ Add</kbd></span>
+                        </div>
+                    </div>
+                    
+                    <div class="p-5 flex-1 flex flex-col justify-center">
+                        <div class="json-editor shadow-inner border border-slate-800" style="white-space: pre;">
+<span class="json-punctuation">{</span>
+  <span class="json-key">"mcpServers"</span><span class="json-punctuation">: {</span>
+    <span class="json-key">"sqlite-db"</span><span class="json-punctuation">: {</span>
+      <span class="json-key">"command"</span><span class="json-punctuation">: </span><span class="json-string">"npx"</span><span class="json-punctuation">,</span>
+      <span class="json-key">"args"</span><span class="json-punctuation">: [</span>
+        <span class="json-string">"-y"</span><span class="json-punctuation">,</span>
+        <span class="json-string">"mcp-sqlite-tools"</span>
+      <span class="json-punctuation">],</span>
+      <span class="json-key">"env"</span><span class="json-punctuation">: {</span>
+        <span class="json-highlight cursor-pointer" title="只需填写你存放数据库的文件夹路径"><span class="json-key">"SQLITE_DEFAULT_PATH"</span><span class="json-punctuation">: </span><span class="json-string">"C:/我的工作/数据文件夹"</span><span class="cursor-blink">|</span></span>
+      <span class="json-punctuation">}</span>
+    <span class="json-punctuation">}</span>
+  <span class="json-punctuation">}</span>
+<span class="json-punctuation">}</span>
+                        </div>
+                        <div class="mt-4 text-xs text-slate-400 flex items-start gap-2">
+                            <i class="fa-solid fa-circle-info mt-0.5 text-blue-400"></i>
+                            <p>程序员管这个叫 <code class="bg-slate-800 px-1 rounded">config.json</code>，很多业务人员打开这里就直接退出了。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: The "Friendly" Translation (Mental Model) -->
+                <div class="bg-white border border-indigo-200 rounded-2xl flex flex-col overflow-hidden soft-shadow relative">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+                    <div class="bg-indigo-50 border-b border-indigo-100 p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-language text-indigo-600"></i>
+                            <span class="text-sm font-bold text-slate-700">Vibe Coding 翻译视角</span>
+                        </div>
+                        <span class="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">极简填空</span>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col gap-5 h-full justify-center">
+                        
+                        <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <div class="w-8 h-8 rounded bg-blue-100 text-blue-600 flex items-center justify-center font-bold font-mono">1</div>
+                            <div>
+                                <div class="text-[10px] text-slate-500 mb-0.5">给你的插头起个名字 ("sqlite-db")</div>
+                                <div class="text-sm font-bold text-slate-800">🔌 插头名称：本地数据库</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <div class="w-8 h-8 rounded bg-purple-100 text-purple-600 flex items-center justify-center font-bold font-mono">2</div>
+                            <div>
+                                <div class="text-[10px] text-slate-500 mb-0.5">复制免编译的云端组件名 ("mcp-sqlite-tools")</div>
+                                <div class="text-sm font-bold text-slate-800">📦 买个转换器：用无依赖的现代 Node 版</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3 bg-amber-50 p-3 rounded-lg border border-amber-300 shadow-[0_0_15px_rgba(252,211,77,0.3)] relative">
+                            <div class="w-8 h-8 rounded bg-amber-200 text-amber-700 flex items-center justify-center font-bold font-mono">3</div>
+                            <div class="w-full">
+                                <div class="text-[10px] text-amber-700 font-bold mb-0.5">唯一需要你填写的地方（环境变量）！</div>
+                                <div class="text-sm font-bold text-slate-800 flex items-center justify-between">
+                                    <span>📍 授权哪个文件夹？</span>
+                                    <span class="bg-white border border-slate-300 text-[10px] px-2 py-1 rounded text-slate-500 truncate max-w-[150px]">C:/我的工作/数据文件夹</span>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-5 mt-8 max-w-4xl mx-auto flex items-center gap-4 soft-shadow">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 text-2xl">
+                    <i class="fa-solid fa-check-double"></i>
+                </div>
+                <div>
+                    <h4 class="text-indigo-900 font-bold text-sm md:text-base mb-1">这就是安装的全部！</h4>
+                    <p class="text-slate-600 text-xs md:text-sm leading-relaxed">
+                        不要被括号和引号吓到。别人已经把复杂的连接代码写好了（比如怎么连数据库），你只需要把这段配置复制过来，把最后那个<strong class="text-amber-600">“文件路径”</strong>改成你自己的即可。点击保存，你的 AI 就拥有了查库的能力。
+                    </p>
+                </div>
+            </div>
+
+            <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+                <i class="fa-solid fa-check text-emerald-400 mr-2"></i>配置已复制，请前往 Trae 粘贴！
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-indigo-600 font-bold">5</span> / 9
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- 5 / 9 = ~55.6% -->
+                <div class="bg-indigo-600 h-full w-[55.6%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页：极简运作机制" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-screwdriver-wrench mr-1 text-indigo-500"></i>模块二：零代码配置
+            </span>
+            <a href="6.html" title="下一页：准备工具箱" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎭 破除心理防线：</span>
+                    “向学员提问：大家看到左边这种大括号、引号套在一起的英文，是不是本能地想关掉页面？告诉他们，这叫 JSON 文件，是程序员用来做配置的。但今天，我们要用产品经理的视角来看它。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 聚焦核心变量：</span>
+                    “引导学员看左边闪烁的黄框和右边的第3步。告诉大家：‘其实前面那一大堆英文字母，官方早就写好了，你只要整段复制过来就行。唯一需要你动手改的，就是最后那行引号里的字——把路径换成你自己的数据库文件放在哪里。这就叫填空题！’”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一步：</span>
+                    “只要填对了这个路径，点击保存，你的 AI 就瞬间具备了查库能力。下一页，我们将进入真实的 Trae 界面，手把手带大家填一次表，装一个读取网页的 MCP！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function copyJson() {
+            const jsonText = `{
+  "mcpServers": {
+    "sqlite-db": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-sqlite-tools"
+      ],
+      "env": {
+        "SQLITE_DEFAULT_PATH": "C:/我的工作/数据文件夹"
+      }
+    }
+  }
+}`;
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = jsonText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                
+                const toast = document.getElementById('toast');
+                toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+                }, 2500);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

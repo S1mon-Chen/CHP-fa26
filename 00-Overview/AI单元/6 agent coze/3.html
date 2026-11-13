@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 3 - 核心组件辨析：Bots vs Workflow vs Multi-Agent</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-blue-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyConceptSummary()" class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-blue-600"></i>
+                <span class="hidden sm:inline">复制选型指南手册</span>
+                <span class="sm:hidden">复制指南</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-scale-balanced text-blue-600"></i>
+                <span>Module 1 · 核心组件能力辨析与边界</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                核心组件大辨析：<span class="text-blue-600">Bot vs Workflow vs Multi-Agent</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在 Coze 平台中搭建业务系统，最核心的架构决策就是“什么时候该用哪个组件？”。用错组件会导致系统极度不稳定或过度设计。掌握这三大基石的能力边界，是企业级 AI 架构师的第一课。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Definitions vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Three Components Definitions -->
+            <div class="lg:col-span-6 flex flex-col justify-between space-y-4">
+                
+                <!-- Component 1: Bot -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 soft-shadow card-hover relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                    <div class="flex items-center justify-between mb-2 pl-3">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-robot text-blue-600"></i>
+                            1. 单体智能体 (Bot / Agent)
+                        </h3>
+                        <span class="text-[10px] font-mono text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">灵活全能</span>
+                    </div>
+                    <div class="pl-3 space-y-1.5 text-xs text-slate-600 leading-relaxed">
+                        <p><strong>本质：</strong> 拥有人设面具和“自主决策权”的通识大脑。</p>
+                        <p><strong>特性：</strong> 高度灵活。你只需告诉它目标和可用工具（插件），它会自己决定什么时候调用什么工具。但在长链条任务中容易跑偏、遗忘或产生幻觉。</p>
+                        <p class="text-[11px] text-slate-500 mt-1"><i class="fa-solid fa-lightbulb text-amber-500"></i> <strong>适用：</strong> 自由问答客服、角色扮演、简单的单次查询。</p>
+                    </div>
+                </div>
+
+                <!-- Component 2: Workflow -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 soft-shadow card-hover relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
+                    <div class="flex items-center justify-between mb-2 pl-3">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-diagram-project text-indigo-600"></i>
+                            2. 确定性工作流 (Workflow)
+                        </h3>
+                        <span class="text-[10px] font-mono text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">绝对可控</span>
+                    </div>
+                    <div class="pl-3 space-y-1.5 text-xs text-slate-600 leading-relaxed">
+                        <p><strong>本质：</strong> 剥夺大模型自主权的“无情流水线”。</p>
+                        <p><strong>特性：</strong> 严格按照连线节点（提取 -> 搜索 -> 归纳 -> 存库）顺序执行。大模型在其中只作为特定节点（如翻译节点）工作，无法自主决定执行路线。</p>
+                        <p class="text-[11px] text-slate-500 mt-1"><i class="fa-solid fa-lightbulb text-amber-500"></i> <strong>适用：</strong> 金融研报生成、定时 RPA 抓取、强格式数据清洗。</p>
+                    </div>
+                </div>
+
+                <!-- Component 3: Multi-Agent -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 soft-shadow card-hover relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                    <div class="flex items-center justify-between mb-2 pl-3">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-network-wired text-emerald-600"></i>
+                            3. 多智能体系统 (Multi-Agent)
+                        </h3>
+                        <span class="text-[10px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">专业分工</span>
+                    </div>
+                    <div class="pl-3 space-y-1.5 text-xs text-slate-600 leading-relaxed">
+                        <p><strong>本质：</strong> 带有前台分诊台的“专科医院”。</p>
+                        <p><strong>特性：</strong> 包含一个 <strong>Router (路由主控)</strong> 和多个专业领域的 <strong>Workers (工蜂节点)</strong>。主控只负责意图识别和派单，专业问题交给专业 Bot（且自带不同知识库）解决。</p>
+                        <p class="text-[11px] text-slate-500 mt-1"><i class="fa-solid fa-lightbulb text-amber-500"></i> <strong>适用：</strong> 综合售后客服（财务退款 + 技术支持）、复杂项目综合调度。</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right 6 Cols: Interactive Architecture Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-laptop-code text-sm"></i>
+                            <span class="text-xs">业务场景智能选型与动态模拟沙箱</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">SIMULATOR READY</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击选择业务诉求，观察 Coze 底层会调度哪种核心组件：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateSelection('workflow')" class="py-2 px-3 rounded-lg border border-indigo-500/50 bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-file-invoice text-indigo-400 w-4"></i>
+                                <span>“提取这篇长文的 3 个核心论点，翻译成英文，并以表格形式输出。”</span>
+                            </button>
+                            <button onclick="simulateSelection('multi-agent')" class="py-2 px-3 rounded-lg border border-emerald-500/50 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-headset text-emerald-400 w-4"></i>
+                                <span>“我买的键盘按键不灵，想查一下能否保修？另外能不能重开发票？”</span>
+                            </button>
+                            <button onclick="simulateSelection('bot')" class="py-2 px-3 rounded-lg border border-blue-500/50 bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-mask text-blue-400 w-4"></i>
+                                <span>“扮演史蒂夫·乔布斯，用他的演讲风格点评一下今天刚发布的新款手机。”</span>
+                            </button>
+                        </div>
+
+                        <!-- Terminal Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">底层执行流调度监控 (Execution Trace):</span>
+                            </div>
+                            <div id="architectureConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[170px] leading-relaxed">
+                                <div class="text-slate-500"># 等待发起业务场景模拟...</div>
+                                <div class="text-slate-600">├── 意图解析：分析业务需求的确定性与复杂度</div>
+                                <div class="text-slate-600">├── 架构决策：选定最佳组件 (Bot / Workflow / Multi-Agent)</div>
+                                <div class="text-slate-600">└── 调度过程：实时追踪底层流转日志</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-blue-600 font-bold">Slide 3 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[15%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="2.html" title="上一页：Coze 核心哲学" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-blue-700">4. 架构选型指南</strong>
+            </span>
+            <a href="4.html" title="下一页：架构选型指南" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 为什么这节课很重要？</span>
+                    “各位同学，这是 Coze 编排实战中最重要的架构课！很多人觉得 AI 经常不听话、经常幻觉，其实是他们**选错了载体**。<br><br>
+                    如果你要求格式 100% 准确，就不应该只写长长的提示词给单体 Bot，而是应该画一个 Workflow，把大模型锁死在一个节点里。只有深刻理解这三者的区别，你才能做出企业级的稳定应用！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 演示技巧：</span>
+                    “点击右侧黑框里的三个典型业务场景，系统会动态模拟底层执行流。大家注意观察：在 Workflow 场景下，日志里是‘流水线节点 1, 2, 3’；而在 Multi-Agent 场景下，是‘主控节点意图派发’。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-blue-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function simulateSelection(type) {
+            const out = document.getElementById('architectureConsole');
+            const badge = document.getElementById('sandboxBadge');
+
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-400 mr-2"></i> 正在向底层引擎派发任务指令...';
+            
+            setTimeout(function() {
+                if (type === 'workflow') {
+                    badge.innerText = "WORKFLOW ENGINE";
+                    badge.className = "text-[10px] bg-indigo-900 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-indigo-400 font-bold">⚡ [判定为高格式约束任务] 启用 Workflow 工作流引擎</div>
+<div class="text-slate-300">├── [Node 1: Text Extract]: 成功提取长文，清洗多余字符。</div>
+<div class="text-slate-300">├── [Node 2: LLM Translate]: 调用大模型翻译，严禁加入额外问候语。</div>
+<div class="text-slate-300">└── [Node 3: Code Formatting]: 执行 Python 脚本强转 Markdown 表格。</div>
+<div class="text-indigo-300 font-bold mt-2">✅ 结论：大模型失去执行自主权，充当翻译组件，格式 100% 确定。</div>
+                    `;
+                    showToast("工作流流水线模拟执行完毕！");
+                } else if (type === 'multi-agent') {
+                    badge.innerText = "MULTI-AGENT ROUTER";
+                    badge.className = "text-[10px] bg-emerald-900 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-emerald-400 font-bold">🧭 [判定为跨领域复合诉求] 启用 Multi-Agent 路由分发</div>
+<div class="text-slate-300">├── Router: 拆解意图 1 -> [硬件故障] -> 派单给【售后技术 Bot】</div>
+<div class="text-slate-300">├── Router: 拆解意图 2 -> [重开发票] -> 派单给【财务客服 Bot】</div>
+<div class="text-slate-300">├── Worker (技术): "按键不灵请尝试重启..." (调取维修知识库)</div>
+<div class="text-slate-300">└── Worker (财务): "请提供新抬头..." (调取 ERP 插件)</div>
+<div class="text-emerald-300 font-bold mt-2">✅ 结论：各司其职，杜绝一个通用大脑引发的角色精神分裂。</div>
+                    `;
+                    showToast("多智能体路由分发模拟完成！");
+                } else if (type === 'bot') {
+                    badge.innerText = "SINGLE BOT ENGINE";
+                    badge.className = "text-[10px] bg-blue-900 text-blue-300 border border-blue-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-blue-400 font-bold">🎭 [判定为自由交互/角色扮演] 启用单体 Bot 引擎</div>
+<div class="text-slate-300">├── Persona Loading: 载入“史蒂夫·乔布斯”角色系统提示词。</div>
+<div class="text-slate-300">├── Memory Fetch: 拉取上下文聊天历史。</div>
+<div class="text-slate-300">└── Output Gen: "听着，这个新款手机显然缺乏灵魂，当年我们在做 iPhone 4 时..."</div>
+<div class="text-blue-300 font-bold mt-2">✅ 结论：充分释放 LLM 的涌现能力与发散性思维，灵活度最高。</div>
+                    `;
+                    showToast("单体智能体角色扮演模拟完成。");
+                }
+            }, 600);
+        }
+
+        function copyConceptSummary() {
+            const text = "Coze 核心组件选型指南：\n1. 单体智能体 (Bot)：适合自由问答、角色扮演。灵活度最高，但大任务容易跑偏。\n2. 确定性工作流 (Workflow)：适合格式化数据提取、定时抓取、RPA。死板但 100% 稳定可控，剥夺了大模型的自主决定权。\n3. 多智能体系统 (Multi-Agent)：适合复杂的综合业务（如大型客服中心）。通过 Router 派单给专业的底层 Worker 节点，各司其职。";
+            
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("选型指南核心观点已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '4.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '2.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

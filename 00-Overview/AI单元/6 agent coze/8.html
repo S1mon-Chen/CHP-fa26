@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 8 - 数据清洗与代码节点：强制确定性格式输出</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-blue-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyPythonCode()" class="px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-xs font-bold text-indigo-800 transition flex items-center gap-2">
+                <i class="fa-brands fa-python text-indigo-600"></i>
+                <span class="hidden sm:inline">复制 Python 清洗脚本</span>
+                <span class="sm:hidden">复制脚本</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-code text-blue-600"></i>
+                <span>Module 2 · 工作流 (Workflow) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                数据清洗与代码节点：<span class="text-indigo-600">强制约束 100% 的确定性输出格式</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                大模型是“概率模型”，即使提示词写得再严格，它也可能偶尔输出多余的寒暄语（如“好的，这是您要的 JSON：”）。在工作流中，这种不确定性会导致下游系统（如数据库入库、自动化群发）直接报错。利用 <strong>Code 节点（代码节点）</strong>，我们可以通过一小段 Python 或 JS 脚本，实现格式的物理级硬约束！
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Instructions vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-mouse-pointer text-indigo-600"></i>
+                            代码节点 (Code Node) 配置指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">UI GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                添加节点与参数映射
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                在大模型节点（LLM）之后，拖入一个 <strong>Code (代码)</strong> 节点。在输入参数中，定义一个变量接收 LLM 的原始文本。
+                            </p>
+                            <div class="flex items-center gap-2 bg-white p-2 rounded border border-slate-200 font-mono text-[10px] text-slate-700">
+                                <span class="text-slate-400">LLM.output_text</span> 
+                                <i class="fa-solid fa-arrow-right text-indigo-400"></i> 
+                                <span class="font-bold text-indigo-700">args.input.llm_text</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                注入极简 Python 清洗脚本
+                            </h4>
+                            <p class="text-indigo-700/80 leading-relaxed mb-2">
+                                在代码编辑器中，利用编程语言强大的字符串处理能力，强制生成 Markdown 表格。
+                            </p>
+                            <div class="bg-slate-900 p-2 rounded border border-slate-800 font-mono text-[10px] text-emerald-300 relative overflow-x-auto group">
+                                <button onclick="copyPythonCode()" class="absolute top-2 right-2 text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800/80 p-1.5 rounded" title="复制代码"><i class="fa-solid fa-copy"></i></button>
+<pre>def main(args):
+    raw_text = args.input.get("llm_text", "")
+    lines = raw_text.strip().split('\n')
+    md_table = "| 序号 | 竞品动态要点 |\n|---|---|\n"
+    for i, line in enumerate(lines):
+        if line.strip():
+            clean_line = line.replace('- ', '').strip()
+            md_table += f"| {i+1} | {clean_line} |\n"
+    return {"markdown_table": md_table}</pre>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                传递给终端输出节点
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                将 Code 节点清洗后绝对标准化的 <code class="bg-slate-200 px-1 rounded">markdown_table</code> 变量，连接到 End（结束）节点或推送到飞书/钉钉的节点。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-code-compare text-sm"></i>
+                            <span class="text-xs">确定性格式清洗对比沙箱</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">READY TO TEST</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击下方按钮，观察直接输出与经过 Code 节点处理的区别：</label>
+                        
+                        <div class="grid grid-cols-2 gap-2 font-sans">
+                            <button onclick="simulateExecution('without_code')" class="py-2.5 px-2 rounded-lg border border-amber-900/50 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-comment-dots"></i>
+                                <span>1. LLM 原生输出 (有废话)</span>
+                            </button>
+                            <button onclick="simulateExecution('with_code')" class="py-2.5 px-2 rounded-lg border border-indigo-500/50 bg-indigo-900/40 hover:bg-indigo-800/60 text-indigo-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-file-code"></i>
+                                <span>2. Code 节点清洗输出 (极简表格)</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">节点输出监控 (Data Stream):</span>
+                            </div>
+                            <div id="executionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[220px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待发起数据流转测试...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-blue-600 font-bold">Slide 8 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[40%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="7.html" title="上一页：挂载插件消除幻觉" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-blue-700">9. 运行演示与结果验证</strong>
+            </span>
+            <a href="9.html" title="下一页：运行演示与验证" class="px-3 py-1.5 md:py-2 rounded-lg border border-indigo-100 bg-indigo-600 text-white hover:bg-indigo-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是工作流在企业落地最容易踩坑的地方！很多人觉得写一句‘请严格返回 JSON，不要说废话’大模型就会听话。错！大模型是概率机器，偶尔它还是会加一句‘好的，为您生成如下：’。<br><br>
+                    一旦它加了废话，你的下游系统（比如自动化发帖程序、数据库）就会解析失败、直接宕机。**所以，防呆设计的核心：大模型只负责提取内容，最后的格式包装，必须交给 Code 节点用确定的 Python 代码去拼接！**”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-indigo-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        let simTimeout = null;
+
+        function simulateExecution(type) {
+            const out = document.getElementById('executionConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            if (simTimeout) clearTimeout(simTimeout);
+
+            if (type === 'without_code') {
+                out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-amber-500 mr-2"></i> 正在读取纯大模型输出流...';
+                badge.innerText = "LLM RAW OUTPUT (UNSTABLE)";
+                badge.className = "text-[10px] bg-amber-900/60 text-amber-300 border border-amber-600 px-2 py-0.5 rounded";
+
+                simTimeout = setTimeout(function() {
+                    out.innerHTML = `
+<div class="text-amber-400 font-bold mb-1">⚠️ [大模型原生输出] 存在解析风险</div>
+<div class="text-slate-400 italic">"好的，非常乐意为您效劳！以下是我为您整理的竞品最新动态：</div>
+<div class="text-slate-300 mt-2">- SU7 本月销量预计突破一万台。</div>
+<div class="text-slate-300">- 新增了城市辅助驾驶功能。</div>
+<div class="text-slate-300">- 正在加速自建充电桩网络。</div>
+<div class="text-slate-400 italic mt-2">希望这些信息对您有帮助！如果还需要什么，请随时告诉我哦。"</div>
+<div class="text-rose-400 font-bold mt-2">❌ 结论：前后包含非结构化闲聊，无法直接入库或完美作为钉钉卡片发送。</div>
+                    `;
+                    showToast("LLM 裸输出展示完毕，格式不稳定。");
+                }, 1000);
+
+            } else if (type === 'with_code') {
+                out.innerHTML = '<i class="fa-solid fa-gears fa-spin text-indigo-400 mr-2"></i> 数据正经过 Code 节点清洗过滤...';
+                badge.innerText = "CODE FORMATTED (DETERMINISTIC)";
+                badge.className = "text-[10px] bg-indigo-900/60 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+
+                simTimeout = setTimeout(function() {
+                    out.innerHTML = `
+<div class="text-indigo-400 font-bold mb-1">⚡ [经过 Code 节点处理] 100% 标准化 Markdown</div>
+<div class="text-slate-300">├── <span class="text-emerald-400">split() 拦截</span>: 剔除“好的，非常乐意...”等无用行</div>
+<div class="text-slate-300">├── <span class="text-emerald-400">replace() 过滤</span>: 移除模型习惯性带上的破折号前缀</div>
+<div class="text-slate-300">└── <span class="text-blue-400">Python F-String</span>: 重新包装进 Markdown 表格语法</div>
+<div class="mt-2 p-2 bg-slate-900 rounded border border-slate-700 text-emerald-300 font-mono text-[10px]">
+| 序号 | 竞品动态要点 |<br>
+|---|---|<br>
+| 1 | SU7 本月销量预计突破一万台。 |<br>
+| 2 | 新增了城市辅助驾驶功能。 |<br>
+| 3 | 正在加速自建充电桩网络。 |
+</div>
+<div class="text-indigo-300 font-bold mt-2">✅ 结论：输出格式如机械般精准，下游系统可无缝解析！</div>
+                    `;
+                    showToast("Code 节点清洗测试完成！");
+                }, 1200);
+            }
+        }
+
+        function copyPythonCode() {
+            const text = `def main(args):
+    raw_text = args.input.get("llm_text", "")
+    lines = raw_text.strip().split('\\n')
+    md_table = "| 序号 | 竞品动态要点 |\\n|---|---|\\n"
+    for i, line in enumerate(lines):
+        if line.strip():
+            clean_line = line.replace('- ', '').strip()
+            md_table += f"| {i+1} | {clean_line} |\\n"
+    return {"markdown_table": md_table}`;
+            
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Python 清洗代码已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

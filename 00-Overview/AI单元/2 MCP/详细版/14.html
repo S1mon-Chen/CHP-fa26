@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 魔法揭秘：一句“大白话”背后的黑盒运作</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        /* Timeline Animations */
+        .reveal-step {
+            opacity: 0;
+            transform: translateX(-20px);
+            animation: slideInRight 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 1.2s; }
+        .delay-3 { animation-delay: 2.1s; }
+        .delay-4 { animation-delay: 3.0s; }
+
+        @keyframes slideInRight {
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Connectors */
+        .connector-line {
+            position: absolute;
+            left: 24px;
+            top: 40px;
+            bottom: -20px;
+            width: 2px;
+            background: linear-gradient(to bottom, #cbd5e1 50%, transparent 50%);
+            background-size: 100% 10px;
+            z-index: 0;
+        }
+        
+        /* Code Block Styling */
+        .code-snippet {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战演练一 —— 无代码对话本地数据库
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8 md:mb-12">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-microscope text-slate-500"></i>
+                    <span>Under The Hood · 魔法揭秘</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    一句大白话背后的 <span class="text-blue-600 border-b-4 border-blue-300 mx-1 pb-1">黑盒运作机制</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    刚才那短短几秒钟，你的 AI 助理在后台完成了一个高级数据分析师的所有工作。<br>让我们慢动作回放，看看它到底有多聪明。
+                </p>
+            </div>
+
+            <div class="max-w-4xl mx-auto relative px-4 md:px-0 mb-8">
+                
+                <!-- Step 1: NLP Understanding -->
+                <div class="relative pl-14 md:pl-16 pb-8 reveal-step delay-1">
+                    <div class="connector-line hidden md:block"></div>
+                    <div class="absolute left-0 top-0 w-12 h-12 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center text-slate-600 z-10 shadow-sm text-xl">
+                        <i class="fa-solid fa-ear-listen"></i>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 soft-shadow">
+                        <h3 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
+                            <span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-mono">STEP 1</span>
+                            意图理解 (NLP 转换)
+                        </h3>
+                        <p class="text-xs text-slate-500 mb-2">AI 接收到你的大白话需求，提取出核心字段要素，并意识到自己需要调用外部工具来获取数据。</p>
+                        <div class="bg-slate-50 p-2 rounded text-[10px] border border-slate-100 text-slate-600 font-mono italic">
+                            "用户要查表 orders，过滤条件是 status='refunded'，目标是退款金额前三..."
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: SQL Generation -->
+                <div class="relative pl-14 md:pl-16 pb-8 reveal-step delay-2">
+                    <div class="connector-line hidden md:block"></div>
+                    <div class="absolute left-0 top-0 w-12 h-12 rounded-full bg-blue-100 border-2 border-blue-300 flex items-center justify-center text-blue-600 z-10 shadow-sm text-xl">
+                        <i class="fa-solid fa-code"></i>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 soft-shadow">
+                        <h3 class="font-bold text-white text-sm mb-2 flex items-center gap-2">
+                            <span class="bg-blue-900 text-blue-300 px-1.5 py-0.5 rounded text-[10px] font-mono">STEP 2</span>
+                            自动编写 SQL 代码
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-2">AI 将你的需求翻译成了专业的数据库查询语言 (SQL)，并准备通过 MCP 发送给数据库。</p>
+                        <div class="bg-[#0f172a] p-2.5 rounded border border-slate-700 code-snippet text-slate-300 overflow-x-auto">
+<span class="text-purple-400">SELECT</span> product_name, <span class="text-blue-300">SUM</span>(price) <span class="text-purple-400">AS</span> total_refund
+<span class="text-purple-400">FROM</span> orders
+<span class="text-purple-400">WHERE</span> status = <span class="text-emerald-400">'refunded'</span>
+<span class="text-purple-400">GROUP BY</span> product_name
+<span class="text-purple-400">ORDER BY</span> total_refund <span class="text-purple-400">DESC</span>
+<span class="text-purple-400">LIMIT</span> 3;
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: MCP Execution -->
+                <div class="relative pl-14 md:pl-16 pb-8 reveal-step delay-3">
+                    <div class="connector-line hidden md:block"></div>
+                    <div class="absolute left-0 top-0 w-12 h-12 rounded-full bg-emerald-100 border-2 border-emerald-300 flex items-center justify-center text-emerald-600 z-10 shadow-sm text-xl">
+                        <i class="fa-brands fa-usb"></i>
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 soft-shadow">
+                        <h3 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
+                            <span class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px] font-mono">STEP 3</span>
+                            MCP 提取原始数据
+                        </h3>
+                        <p class="text-xs text-slate-500 mb-2">插件执行了上面的 SQL，从你本地的 `.db` 文件中抓取出了冰冷的、机器看的数据格式 (JSON)。</p>
+                        <div class="bg-slate-50 p-2.5 rounded border border-slate-200 code-snippet text-emerald-700">
+[
+  { "product_name": "Standing Desk", "total_refund": 3198.0 },
+  { "product_name": "Mechanical Keyboard", "total_refund": 1377.0 },
+  { "product_name": "Ergonomic Office Chair", "total_refund": 899.0 }
+]
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Formatting -->
+                <div class="relative pl-14 md:pl-16 reveal-step delay-4">
+                    <div class="absolute left-0 top-0 w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center text-amber-600 z-10 shadow-sm text-xl">
+                        <i class="fa-solid fa-pen-nib"></i>
+                    </div>
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-4 soft-shadow">
+                        <h3 class="font-bold text-blue-900 text-sm mb-2 flex items-center gap-2">
+                            <span class="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded text-[10px] font-mono">STEP 4</span>
+                            组织汇报文案
+                        </h3>
+                        <p class="text-xs text-slate-600 mb-2">AI 大脑拿到 JSON 数据后，按照你的要求（“大白话输出”），将其润色成了老板爱看的分析报告。</p>
+                        <div class="text-[11px] text-slate-700 font-medium">
+                            <i class="fa-solid fa-check text-blue-500 mr-1"></i> “第一名是站立办公桌，高达3198元...”
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-indigo-900 text-white rounded-xl p-5 md:p-6 soft-shadow max-w-4xl mx-auto flex items-center gap-5 shadow-2xl relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 text-indigo-800 text-8xl opacity-50 pointer-events-none">
+                    <i class="fa-solid fa-brain"></i>
+                </div>
+                <div class="w-12 h-12 rounded-full bg-indigo-800 text-amber-400 flex items-center justify-center text-2xl shrink-0 z-10 border border-indigo-700">
+                    <i class="fa-solid fa-crown"></i>
+                </div>
+                <div class="z-10">
+                    <h4 class="text-amber-400 font-bold text-sm md:text-base mb-1.5">Vibe Coding 核心心法：你负责把关，它负责干活</h4>
+                    <p class="text-indigo-100 text-xs md:text-sm leading-relaxed">
+                        作为业务人员，你完全不需要记住 STEP 2 里的 <code>SELECT</code>、<code>WHERE</code> 怎么拼写。你只需要在它弹出请求 (Allow) 的时候，大概扫一眼。如果是查报表，直接点允许；如果数据很重要，你可以让 AI 把它查出来的逻辑用大白话给你解释一遍，**你做业务逻辑的审核者即可**。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-blue-600 font-bold">14</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 14 of 22 is ~63.6% -->
+                <div class="bg-blue-500 h-full w-[64%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页：发号施令" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-database mr-1 text-blue-500"></i>模块三：实战演练一
+            </span>
+            <a href="15.html" title="下一页：实战二场景" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🧠 拆解黑盒，消除畏惧：</span>
+                    “刚才大家点了一下 Allow，结果马上就出来了。但为了让大家真正驾驭这个工具，我们必须拆解中间的黑盒。请看屏幕，短短两秒钟，AI 在后台完成了四个步骤的切换。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调角色的转变：</span>
+                    “引导大家看第二步。传统的程序员要花几个月学习这些大写字母（SQL）。但在 Vibe Coding 中，这段极其繁琐的代码，是大模型自己生成、自己执行的。你看得懂就看，看不懂也完全没关系！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下半场高潮（模块四）：</span>
+                    “恭喜大家，我们已经成功攻克了本地数据库。但实际工作中，有些规则和数据在别人的网页上。下一页，我们将进入模块四：配置一个更强大的 MCP，让 AI 去网上抓别人的规章制度，然后用来审核你本地的 Excel 报销单！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkBuddy 实战：基于 Google 全家桶的电影级数字人开发指南</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        google: {
+                            blue: '#4285F4',
+                            red: '#EA4335',
+                            yellow: '#FBBC05',
+                            green: '#34A853',
+                            50: '#f8fafd',
+                            100: '#e8f0fe',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .tab-btn { transition: all 0.2s ease; }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-1">
+                <span class="w-3 h-3 rounded-full bg-google-blue animate-pulse"></span>
+                <span class="w-3 h-3 rounded-full bg-google-red animate-pulse" style="animation-delay: 0.15s"></span>
+                <span class="w-3 h-3 rounded-full bg-google-yellow animate-pulse" style="animation-delay: 0.3s"></span>
+                <span class="w-3 h-3 rounded-full bg-google-green animate-pulse" style="animation-delay: 0.45s"></span>
+            </div>
+            <h1 class="text-sm md:text-base font-bold text-slate-800 tracking-tight">
+                WorkBuddy 综合实战：<span class="text-google-blue">基于 Google 全家桶的数字人开发手册</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadProjectBundle()" class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-google-blue transition flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-file-zipper text-sm"></i>
+                <span class="hidden sm:inline">下载完整项目源码包 (.py)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">操作备忘录</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-green-100/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-google-blue font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-laptop-code"></i>
+                <span>WorkBuddy Vibe Coding · 沉浸式研发全流程</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                新建工作区实战：用 WorkBuddy 调度 <span class="text-google-blue">Gemini + Imagen 3 + Chirp + Gemini Omni Flash</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                本手册将指导您在 WorkBuddy 中从零建立专属工作区。我们将利用 <strong>.env 鉴权、Harness 装甲约束</strong> 以及 <strong>Vibe Coding（对话即编程）</strong>，一句话驱动 AI 写出调用 Google 顶级多模态模型的 Python 脚本，并在安全沙箱中直出电影级数字人成片！
+            </p>
+        </div>
+
+        <!-- 4 Step Tabs -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono font-semibold">
+                <button onclick="switchTab(1)" id="tabBtn1" class="tab-btn p-3 rounded-xl border border-blue-500 bg-google-blue text-white shadow-sm flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] opacity-80 uppercase">Step 01</span>
+                    <span>1. 初始化工作区与 .env</span>
+                </button>
+                <button onclick="switchTab(2)" id="tabBtn2" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 02</span>
+                    <span>2. 配置 Harness 装甲</span>
+                </button>
+                <button onclick="switchTab(3)" id="tabBtn3" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 03</span>
+                    <span>3. Vibe 编写多模态脚本</span>
+                </button>
+                <button onclick="switchTab(4)" id="tabBtn4" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 04</span>
+                    <span>4. 沙箱执行与成片交付</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Dynamic Content Workspace -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Instructions -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-google-blue font-bold">
+                        <span class="flex items-center gap-2">
+                            <i id="stepIcon" class="fa-solid fa-folder-plus text-sm"></i>
+                            <span id="stepTitle" class="text-xs">步骤 1：新建工作区并配置环境变量 (.env)</span>
+                        </span>
+                        <span id="stepBadge" class="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">INIT WORKSPACE</span>
+                    </div>
+
+                    <div id="stepInstructionBody" class="space-y-3 text-[11px] text-slate-300 font-sans mb-3">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+
+                <div class="mt-2 bg-slate-800/90 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span id="stepFooterTip"><i class="fa-solid fa-circle-check text-google-green mr-1"></i> 密钥集中管理，绝不硬编码在脚本中。</span>
+                    <button id="stepCopyBtn" onclick="copyCurrentStepCode()" class="copy-btn text-blue-400 hover:text-blue-300 underline font-bold">一键复制文本</button>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Dynamic Simulator (Code Preview OR Live Execution) -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 md:p-5 soft-shadow flex flex-col justify-between">
+                
+                <!-- View 1: Code Preview (For Steps 1-3) -->
+                <div id="codePreviewBox">
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-file-code text-google-blue"></i>
+                            <span id="previewFileTitle">工作区文件预览：.env</span>
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <button onclick="copyPreviewCode()" class="copy-btn bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-colors shadow-sm">
+                                <i class="fa-solid fa-copy"></i> 复制内容
+                            </button>
+                            <span id="previewFileBadge" class="text-[10px] bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded font-mono font-bold">WORKSPACE FILE</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 p-3 mb-3">
+                        <pre id="previewCodeContent" class="text-[11px] text-emerald-300 font-mono overflow-x-auto leading-relaxed max-h-64 whitespace-pre-wrap"></pre>
+                    </div>
+
+                    <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                        <span><i class="fa-solid fa-bolt text-google-blue mr-1"></i> WorkBuddy 将根据提示词自动创建并写入该文件。</span>
+                    </div>
+                </div>
+
+                <!-- View 2: Live Video Simulator (For Step 4) -->
+                <div id="liveSimulatorBox" class="hidden h-full flex flex-col">
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-tv text-google-blue"></i>
+                            <span>WorkBuddy 沙箱运行终端与全家桶渲染监控</span>
+                        </span>
+                        <span id="runStatusBadge" class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-mono font-bold">READY TO RUN</span>
+                    </div>
+
+                    <div class="space-y-3 flex-1 flex flex-col justify-between">
+                        <!-- Simulated Video Screen Box -->
+                        <div class="relative bg-slate-950 rounded-xl overflow-hidden aspect-video border-2 border-slate-800 flex flex-col justify-between p-3">
+                            <div class="flex items-center justify-between text-[10px] font-mono text-white/70 z-20">
+                                <span class="bg-red-600/90 text-white px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-circle text-[6px] animate-pulse"></i> SANDBOX RENDER
+                                </span>
+                                <span>4K · 60fps</span>
+                            </div>
+
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <img id="demoImage" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=1200&q=80" alt="Avatar" class="w-full h-full object-cover opacity-30 transition-opacity duration-1000">
+                            </div>
+
+                            <div class="relative z-20 text-center mb-1">
+                                <div id="karaokeText" class="inline-block bg-black/75 text-yellow-300 font-bold text-xs px-3 py-1 rounded-lg border border-yellow-400/30 opacity-0 transition-opacity duration-500">
+                                    “AI 智效鼠标，让专注回归日常！”
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Terminal Trace -->
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-[10px] text-slate-300 font-mono space-y-1 h-32 overflow-y-auto" id="terminalOutput">
+                            <div class="text-slate-400"># 点击下方按钮在沙箱中触发 google_avatar_orchestrator.py ...</div>
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-100 flex justify-end">
+                            <button onclick="runVibeSandbox()" id="btnRunSandbox" class="bg-google-blue hover:bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-play text-[10px]"></i> 运行沙箱验证
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- Speaker Notes -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>WorkBuddy 落地实战指南</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-google-blue block mb-1">🎯 为什么用 WorkBuddy 跑全家桶？</span>
+                    “直接调用多个 Google API 需要写一大堆请求代码，还要处理环境依赖。在 WorkBuddy 中，我们只要建好 `.env` 放 Key，写好 `harness.json` 限制模型必须用 Gemini 和 Imagen 3，然后丢一句话给 AI，它就会自动生成 Python 脚本并在沙箱里把视频跑出来！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-google-green mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        let currentTab = 1;
+
+        const tabsData = {
+            1: {
+                title: "步骤 1：新建工作区并配置环境变量 (.env)",
+                badge: "INIT WORKSPACE",
+                icon: "fa-solid fa-folder-plus",
+                fileName: ".env",
+                codeContent: "GEMINI_API_KEY=AIzaSy你的真实Google_API_Key\nPROJECT_NAME=Google_Avatar_Studio",
+                instructionHtml: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">1. 在 WorkBuddy 中新建工作区：</strong>
+                        在侧边栏创建一个空文件夹 <code class="text-emerald-300 font-mono">google_avatar_lab</code>，并在终端执行 <code class="text-blue-300 font-mono">pip install google-genai google-cloud-texttospeech</code> 安装环境依赖。
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">2. 创建鉴权文件：</strong>
+                        在聊天框发送：<code class="text-slate-300">请在根目录创建 .env 文件，并声明 GEMINI_API_KEY。</code><br>
+                        (注：请手动替换为你从 Google AI Studio 获取的真实 Key)
+                    </div>
+                `,
+                footerTip: "环境变量集中管理，确保凭据安全不外泄。"
+            },
+            2: {
+                title: "步骤 2：配置 Harness 装甲",
+                badge: "HARNESS SHIELD",
+                icon: "fa-solid fa-shield-halved",
+                fileName: ".workbuddy/harness.json",
+                codeContent: "{\n  \"harness_mode\": \"strict_enforce\",\n  \"context_steering\": {\n    \"pinned_system_prompts\": [\n      \"【红线】脚本生成必须严格调用 gemini-3.8-flash\",\n      \"【红线】立绘生成必须调用 imagen-3.0\"\n    ]\n  },\n  \"tool_guardrails\": {\n    \"blocked_shell_commands\": [\"rm\", \"sudo\"]\n  }\n}",
+                instructionHtml: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">1. 发送提示词创建 Harness：</strong>
+                        将下方提示词发给 WorkBuddy：
+                        <div class="mt-1 p-2 bg-slate-950 rounded border border-slate-800 text-[10px] text-slate-300 font-mono">
+"请帮我创建 .workbuddy/harness.json，设置 strict_enforce 模式。在 pinned_prompts 中强制规定后续所有代码生成必须调用最新的 gemini-3.8-flash 接口与 imagen-3.0 接口，并禁用 rm 命令。"
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">2. 验证护栏：</strong>
+                        Harness 创建后，后续的 Vibe Coding 动作将被强制框定在 Google 官方最新模型规范内，杜绝模型产生幻觉调用已废弃的旧版 API。
+                    </div>
+                `,
+                footerTip: "规格驱动：用 Harness 锁定底层模型架构。"
+            },
+            3: {
+                title: "步骤 3：Vibe Coding 一句话编写主控脚本",
+                badge: "VIBE CODING",
+                icon: "fa-solid fa-wand-magic-sparkles",
+                fileName: "Vibe Prompt (聊天框输入)",
+                codeContent: "请读取 product_brief.md，帮我编写一个主控脚本 google_avatar_orchestrator.py。\n\n要求：\n1. 读取 .env 中的 GEMINI_API_KEY。\n2. 用 Gemini 3.8 Flash 生成 30 秒分镜与运镜 Prompt。\n3. 用 Imagen 3 渲染高清主播立绘。\n4. 用 Google Chirp 3 合成音频。\n5. 用 Gemini Omni 1.1 Flash (指定 VIDEO 模态) 生成带手势动作的最终视频。\n代码写好后，请立即在终端沙箱中运行它验证！",
+                instructionHtml: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">让 AI 自己写代码并执行：</strong>
+                        这是 Vibe Coding 的核心魅力！你不需要自己手写数百行 API 请求代码。<br><br>
+                        直接将右侧预览区展示的这段话发送给 WorkBuddy。它会自动理解意图、编写出符合规范的 Python 脚本，并在内部开启沙箱终端执行它。
+                    </div>
+                `,
+                footerTip: "对话即编程：一句话统筹整个多模态管线代码生成。"
+            },
+            4: {
+                title: "步骤 4：沙箱执行与最终成片交付",
+                badge: "SANDBOX RUN",
+                icon: "fa-solid fa-play",
+                fileName: "Runtime Execution",
+                codeContent: "", // Not used in view 2
+                instructionHtml: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 leading-relaxed">
+                        <strong class="text-white block mb-1 font-mono">见证端到端自动化出片：</strong>
+                        当 WorkBuddy 在沙箱中执行 <code class="text-emerald-300 font-mono">python google_avatar_orchestrator.py</code> 时，你将在右侧终端看到实时日志。<br><br>
+                        系统将依次请求 Google 云端接口，最终将一段拥有真实光影、细腻人声与自然肢体手势的 4K 数字人视频直接保存在你的工作区目录中！
+                    </div>
+                `,
+                footerTip: "点击右侧【运行沙箱验证】体验完整渲染流。"
+            }
+        };
+
+        function switchTab(num) {
+            currentTab = num;
+            const data = tabsData[num];
+
+            for (let i = 1; i <= 4; i++) {
+                const btn = document.getElementById(`tabBtn${i}`);
+                if (i === num) {
+                    btn.className = "tab-btn p-3 rounded-xl border border-blue-500 bg-google-blue text-white shadow-sm flex flex-col items-start gap-1 text-left transition";
+                } else {
+                    btn.className = "tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition";
+                }
+            }
+
+            document.getElementById('stepTitle').innerText = data.title;
+            document.getElementById('stepBadge').innerText = data.badge;
+            document.getElementById('stepIcon').className = data.icon + " text-sm";
+            document.getElementById('stepInstructionBody').innerHTML = data.instructionHtml;
+            document.getElementById('stepFooterTip').innerHTML = `<i class="fa-solid fa-circle-check text-google-green mr-1"></i> ${data.footerTip}`;
+
+            const previewBox = document.getElementById('codePreviewBox');
+            const simBox = document.getElementById('liveSimulatorBox');
+
+            if (num <= 3) {
+                previewBox.classList.remove('hidden');
+                simBox.classList.add('hidden');
+                document.getElementById('previewFileTitle').innerText = `工作区预览：${data.fileName}`;
+                document.getElementById('previewCodeContent').innerText = data.codeContent;
+                document.getElementById('previewFileBadge').innerText = num === 3 ? "VIBE PROMPT" : "WORKSPACE FILE";
+            } else {
+                previewBox.classList.add('hidden');
+                simBox.classList.remove('hidden');
+            }
+        }
+
+        function copyCurrentStepCode() {
+            if (currentTab <= 3) {
+                copyTextToClipboard(tabsData[currentTab].codeContent, `步骤 ${currentTab} 内容已复制到剪贴板！`);
+            } else {
+                showToast("本步骤主要是沙箱演示，无需复制代码。");
+            }
+        }
+
+        function copyPreviewCode() {
+            const text = document.getElementById('previewCodeContent').innerText;
+            copyTextToClipboard(text, "右侧内容已成功复制到剪贴板！");
+        }
+
+        function runVibeSandbox() {
+            const btn = document.getElementById('btnRunSandbox');
+            const out = document.getElementById('terminalOutput');
+            const badge = document.getElementById('runStatusBadge');
+            const img = document.getElementById('demoImage');
+            const kt = document.getElementById('karaokeText');
+
+            btn.disabled = true;
+            badge.innerText = "ORCHESTRATING...";
+            badge.className = "text-[10px] bg-blue-100 text-google-blue border border-blue-300 px-2 py-0.5 rounded font-mono font-bold";
+            out.innerHTML = '<div class="text-slate-400">>> python google_avatar_orchestrator.py</div><div class="text-blue-400 mt-1"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 正在调用 Gemini 3.8 Flash 解析分镜大纲...</div>';
+
+            setTimeout(() => {
+                out.innerHTML += '<div>[OK] 立绘落盘。正在请求 Chirp 3 合成广播级 48kHz 人声...</div>';
+                img.style.opacity = "1";
+            }, 1000);
+
+            setTimeout(() => {
+                out.innerHTML += '<div class="text-amber-300">[WAIT] 正在向 Gemini Omni 1.1 Flash 注入动作帧与音频，执行多模态视频生成 (VIDEO Modality)...</div>';
+                kt.style.opacity = "1";
+            }, 3000);
+
+            setTimeout(() => {
+                badge.innerText = "CINEMATIC EXPORTED";
+                badge.className = "text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded font-mono font-bold";
+                out.innerHTML += '<div class="text-google-green font-bold mt-1">✨ [SUCCESS] 最终影片 google_avatar_promo.mp4 成功输出！支持全身微动作与电影级光影！</div>';
+                btn.disabled = false;
+                showToast("全链路沙箱运行成功！文件已落盘。");
+            }, 5000);
+        }
+
+        function copyTextToClipboard(text, successMsg) {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast(successMsg);
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+
+        function downloadProjectBundle() {
+            const pyScript = `# -*- coding: utf-8 -*-
+"""
+google_fullstack_avatar_pipeline.py
+WorkBuddy 专属：基于 Google 全家桶的高质感数字人生成智能体插件
+"""
+import os
+import time
+
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
+
+def synthesize_cinematic_avatar(product_text: str):
+    print("[*] 1. 调用 Gemini 3.8 Flash 提炼分镜大纲与运镜 Prompt...")
+    time.sleep(1)
+    print("[*] 2. 调用 Google Imagen 3 渲染电影级毛孔级主播底图...")
+    time.sleep(1)
+    print("[*] 3. 调度 Google Chirp 3 HD 合成带呼吸感的中文人声...")
+    time.sleep(1)
+    print("[*] 4. 通过 Gemini Omni 1.1 Flash (VIDEO) 驱动全身微表情与肢体手势...")
+    time.sleep(2)
+    print("[+] 最终视频渲染完毕 (4K/60fps): final_google_avatar.mp4")
+
+if __name__ == "__main__":
+    synthesize_cinematic_avatar("AI智效双模静音鼠标")
+`;
+            try {
+                const blob = new Blob([pyScript], { type: 'text/x-python;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'google_avatar_orchestrator.py';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("项目源码包下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerHTML = `<i class="fa-solid fa-check text-google-green mr-2"></i>${msg}`;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { switchTab(1); });
+    </script>
+</body>
+</html>

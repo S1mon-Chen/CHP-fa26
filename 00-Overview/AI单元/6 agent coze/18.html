@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 单元作业布置：独立实现企业级智能体并打卡</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-emerald-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyAssignmentPrompt()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-emerald-600"></i>
+                <span class="hidden sm:inline">复制结业作业要求</span>
+                <span class="sm:hidden">复制要求</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-clipboard-check text-emerald-600"></i>
+                <span>Module 4 · 单元结业作业</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                单元作业布置：<span class="text-emerald-600">独立实现企业级智能体并完成发布打卡</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                听懂千遍不如实操一遍！请各位同学登录 Coze 官网，结合您所在部门的实际业务痛点，独立从 0 到 1 编排一个多智能体或工作流系统，并发布至真实测试环境。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Assignment Requirements vs Submission Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Assignment Requirements -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-emerald-600"></i>
+                            结业作业交付标准清单
+                        </h3>
+                        <span class="text-[10px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">REQUIREMENTS</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="text-emerald-500"><i class="fa-regular fa-square-check text-base"></i></span>
+                                1. 架构完整性 (二选一)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-1.5">
+                                - <strong>方案 A (重流程)</strong>：实现包含 LLM、Plugin 和 Code 节点的复杂 Workflow。<br>
+                                - <strong>方案 B (重分发)</strong>：实现包含 Router 和至少 2 个专业 Worker 的 Multi-Agent。
+                            </p>
+                        </div>
+
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="text-emerald-500"><i class="fa-regular fa-square-check text-base"></i></span>
+                                2. 能力挂载要求
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-1.5">
+                                系统必须至少包含 <strong>1 个外部插件 (Plugin)</strong>，或挂载 <strong>1 个私有知识库 (RAG)</strong>。
+                            </p>
+                        </div>
+
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="text-emerald-500"><i class="fa-regular fa-square-check text-base"></i></span>
+                                3. 部署与交付
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                完成开发后，成功发布至<strong>企业微信、飞书或微信公众号</strong>中的任意一个渠道，并在渠道内完成一次成功的交互截图。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Submission Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-cloud-arrow-up text-sm"></i>
+                            <span class="text-xs">作业成果发布与验证控制台</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">PENDING SUBMISSION</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击下方按钮模拟提交 Coze 发布链接，校验作业是否达标：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateSubmission('invalid')" class="py-2.5 px-3 rounded-lg border border-rose-700/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-paperclip w-4 text-center"></i>
+                                <span>提交作业：一个纯闲聊的单体 Bot 链接</span>
+                            </button>
+                            <button onclick="simulateSubmission('valid')" class="py-2.5 px-3 rounded-lg border border-emerald-700/50 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-link w-4 text-center"></i>
+                                <span>提交作业：带知识库与 Router 的客服 Bot (飞书版)</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">自动化批改日志 (Evaluation Trace):</span>
+                            </div>
+                            <div id="submissionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待接收作业链接...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-emerald-600 font-bold">Slide 18 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[90%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="17.html" title="上一页：生产环境稳定性调优" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-emerald-700">19. 结业大考与宣言</strong>
+            </span>
+            <a href="19.html" title="下一页：结业大考与宣言" class="px-3 py-1.5 md:py-2 rounded-lg border border-emerald-100 bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是大家检验学习成果的时刻。理论千万遍，不如自己连一连线。<br><br>
+                    请大家务必选择一个自己工作中真实的痛点。比如你是财务，就做一个‘差旅报销初审流’；你是开发，就做一个‘Git 提交总结机器人’。不要再做简单的‘陪聊机器人’了，我们要的是企业级、能落地的智能体架构！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “通过右侧的批改沙箱，向学员强调交付标准。纯闲聊的单体 Bot 无法通过考核，必须包含工作流/多智能体、外挂知识/插件，并且要部署到真实渠道。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyAssignmentPrompt() {
+            const text = "结业作业要求：\n在 Coze (扣子) 平台独立完成一个企业级智能体：\n1. 架构：必须使用 Workflow 或 Multi-Agent（禁止纯单体闲聊 Bot）。\n2. 挂载：必须至少使用 1 个插件或 1 个知识库。\n3. 发布：成功发布至企业微信、飞书或微信公众号等任意外部渠道。\n4. 提交物：平台链接 + 测试截图。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("结业作业要求已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulateSubmission(type) {
+            const out = document.getElementById('submissionConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            badge.innerText = "EVALUATING...";
+            badge.className = "text-[10px] bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded";
+
+            if (type === 'invalid') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5">收到作业链接，正在解析元数据...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-rose-300 border-l-2 border-rose-500 pl-2 mb-1.5">
+    <span class="text-rose-400 font-bold">❌ 校验失败：未达企业级架构标准</span><br>
+    <span class="text-slate-400 pl-4">-> 架构检测: 单体智能体 (Single Bot) [不达标]</span><br>
+    <span class="text-slate-400 pl-4">-> 插件检测: 未配置任何 Plugin [不达标]</span><br>
+    <span class="text-slate-400 pl-4">-> 渠道检测: 仅发布至 C端 Bot Store [不达标]</span>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-amber-400 font-bold mt-2 pt-2 border-t border-slate-800">⚠️ 结果：作业退回。请查阅交付标准，重新设计多智能体架构。</div>`;
+                    badge.innerText = "REJECTED";
+                    badge.className = "text-[10px] bg-rose-900 text-rose-300 border border-rose-600 px-2 py-0.5 rounded";
+                }, 1800));
+
+            } else if (type === 'valid') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5">收到作业链接，正在解析元数据...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-emerald-300 border-l-2 border-emerald-500 pl-2 mb-1.5">
+    <span class="text-emerald-400 font-bold">✅ 校验通过：符合工业级最佳实践</span><br>
+    <span class="text-slate-400 pl-4">-> 架构检测: Multi-Agent (1 Router, 2 Workers) [通过]</span><br>
+    <span class="text-slate-400 pl-4">-> 插件/RAG: 命中专属知识库查询 [通过]</span><br>
+    <span class="text-slate-400 pl-4">-> 渠道检测: 成功发布至飞书 (Feishu) [通过]</span>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-400 font-bold mt-2 pt-2 border-t border-slate-800">🎉 结果：作业满分通过！您已成功掌握企业级 AI 应用开发能力。</div>`;
+                    badge.innerText = "PASSED";
+                    badge.className = "text-[10px] bg-emerald-900 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+                    showToast("作业验收完成！符合所有企业级标准。");
+                }, 1800));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

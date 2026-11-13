@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coze (扣子) 云端实战：零部署企业级多智能体与工作流</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .tab-btn { transition: all 0.2s ease; }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .console-text { animation: fadeIn 0.4s ease-out forwards; opacity: 0; transform: translateY(5px); }
+        @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: Coze 平台实战 —— <span class="text-blue-600">云端零部署智能体编排大师课</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">讲师授课/避坑指南</span>
+            </button>
+            <button onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-cloud text-blue-600"></i>
+                <span>SaaS Agent Orchestration · 零部署多智能体实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                告别网络墙与服务器：在 Coze 中一键编排企业级应用
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-5xl leading-relaxed">
+                企业落地 AI 最大的拦路虎往往是部署环境（Docker、科学上网、依赖报错）。本模块将带您直接基于字节跳动合规大模型底座，通过纯图形化拖拽，完成知识库、插件接入、多智能体协同，并一键将数字员工部署到企业微信或飞书！
+            </p>
+        </div>
+
+        <!-- 5 Step Navigation Tabs -->
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full mb-4">
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs font-mono font-semibold">
+                <button onclick="switchTab(1)" id="tabBtn1" class="tab-btn p-3 rounded-xl border border-blue-500 bg-blue-600 text-white shadow-sm flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] opacity-80 uppercase">Step 01</span>
+                    <span>1. 认知破局：为何选 Coze</span>
+                </button>
+                <button onclick="switchTab(2)" id="tabBtn2" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 02</span>
+                    <span>2. Bots 与插件生态</span>
+                </button>
+                <button onclick="switchTab(3)" id="tabBtn3" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 03</span>
+                    <span>3. 工作流 (Workflow) 编排</span>
+                </button>
+                <button onclick="switchTab(4)" id="tabBtn4" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 04</span>
+                    <span>4. Multi-Agent 协同</span>
+                </button>
+                <button onclick="switchTab(5)" id="tabBtn5" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 05</span>
+                    <span>5. 一键发布与跨端集成</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Dynamic Workspace (Split View) -->
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5 h-[420px]">
+            
+            <!-- Left Panel: Instructions -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow h-full">
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3 text-blue-400 font-bold shrink-0">
+                        <span class="flex items-center gap-2 text-sm">
+                            <i id="stepIcon" class="fa-solid fa-cloud"></i>
+                            <span id="stepTitle">步骤标题</span>
+                        </span>
+                        <span id="stepBadge" class="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded tracking-wider">PHASE</span>
+                    </div>
+
+                    <div id="stepInstructionBody" class="font-sans overflow-y-auto flex-1 pr-2">
+                        <!-- Dynamic Content Injected -->
+                    </div>
+                </div>
+
+                <div class="mt-4 bg-slate-800/90 p-2.5 rounded-lg border border-slate-700 text-[11px] text-slate-400 font-sans flex items-center justify-between shrink-0">
+                    <span id="stepFooterTip"><i class="fa-solid fa-circle-check text-blue-400 mr-1"></i> 国内无障碍访问 coze.cn。</span>
+                    <button id="btnCopyPrompt" onclick="copyCurrentPrompt()" class="copy-btn text-blue-400 hover:text-blue-300 underline font-bold">复制提示词</button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Interactive Simulator -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 md:p-5 soft-shadow flex flex-col justify-between h-full">
+                
+                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs shrink-0">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-desktop text-blue-600"></i>
+                        <span id="simulatorTitle">Coze 云端工作台动态模拟器</span>
+                    </span>
+                    <span id="simStatusBadge" class="text-[10px] bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded font-mono font-bold">AWAITING ACTION</span>
+                </div>
+
+                <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col overflow-hidden relative font-mono text-[11px] leading-relaxed">
+                    
+                    <div id="consoleBox" class="flex-1 overflow-y-auto space-y-2 text-slate-700 pb-12 pr-2">
+                        <div class="text-slate-400 text-center mt-10">
+                            <i class="fa-solid fa-code-branch text-3xl mb-2 opacity-30"></i>
+                            <p>请点击左侧标签页浏览教程，或点击下方按钮执行模拟演练。</p>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-3 right-3 flex justify-end pt-3 bg-gradient-to-t from-slate-50 to-transparent">
+                        <button onclick="runStepSimulation()" id="btnRunSim" class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] px-4 py-2 rounded-lg font-bold transition flex items-center gap-1.5 shadow-md">
+                            <i class="fa-solid fa-play"></i> <span id="btnRunText">执行演示</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>讲师授课与避坑指南</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div id="speakerNotesContent" class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <!-- Dynamically injected notes -->
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        let currentTab = 1;
+        let activeTimeouts = [];
+
+        function clearTimeouts() {
+            activeTimeouts.forEach(clearTimeout);
+            activeTimeouts = [];
+        }
+
+        const stepsConfig = {
+            1: {
+                title: "认知破局：为什么我们要从本地迁移到 Coze？",
+                badge: "SAAS PLATFORM",
+                icon: "fa-solid fa-cloud",
+                prompt: "无",
+                html: `
+                    <div class="space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">1. 彻底告别运维地狱</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                Dify、n8n 等开源框架虽好，但企业内网部署 Docker 往往面临网络被墙、安全审计、镜像拉取失败等问题。Coze 作为纯云端 SaaS，打开浏览器即可开发。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">2. 绝对的数据合规底座</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                接入未备案的海外大模型 (GPT-4/Claude) 存在企业风控红线。Coze.cn 底层强制绑定已备案的字节跳动“豆包”大模型，天然合规。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">3. 本土化生态的碾压级优势</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                Coze 原生打通了微信公众号、飞书、钉钉，并且内置了极其丰富的中文插件（如头条搜索、国内查天气/查快递等）。
+                            </div>
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <span class="font-bold text-blue-900 block mb-1">⚠️ 授课破冰话术：</span>
+                        “各位同学，前几节课大家可能被 Docker 报错折磨得不轻。今天我们换个思路：如果我不懂运维，不想买服务器，能不能做强大的多智能体？能！打开 <strong>coze.cn</strong>，注册个账号，你就能直接站在大厂的肩膀上，拼装出你的超级员工。”
+                    </div>
+                `,
+                btnText: "查看平台对比报告",
+                runLogs: [
+                    "<div class='font-bold text-blue-600 mb-2'>📊 Dify vs Coze 落地选型对比图谱：</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-2'><strong>【部署门槛】</strong><br>Dify: 需要服务器、Docker环境、解决网络问题 (高门槛)<br>Coze: 纯网页 SaaS，开箱即用 (零门槛)</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-2'><strong>【模型合规性】</strong><br>Dify: 若对接海外 API 存合规风险<br>Coze: 原生绑定备案大模型，数据不出境</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200'><strong>【生态接入】</strong><br>Dify: 需要写代码桥接企业微信/钉钉<br>Coze: 鼠标点击一键发布至飞书/微信公众号</div>",
+                    "<div class='mt-2 text-emerald-600 font-bold'>✨ 结论：面向业务人员的极速落地，Coze 是国内的不二之选！</div>"
+                ]
+            },
+            2: {
+                title: "Bots 单体智能体与国产插件 (Plugins) 生态",
+                badge: "BOTS & PLUGINS",
+                icon: "fa-solid fa-puzzle-piece",
+                prompt: "# 人设与回复逻辑\n你是一个“今日热点简报专家”。\n1. 当用户询问某个关键词时，调用【头条搜索】插件获取最新新闻。\n2. 将新闻总结为 3 个要点，用诙谐幽默的语气输出。",
+                html: `
+                    <div class="space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">Bots (单体智能体)：</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                这是 Coze 的基本单元。你在左侧写提示词（Prompt），右侧就能实时对话测试。它相当于给大模型穿上了一件特定的“职业装”。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">Plugins (插件)：消除幻觉的神器</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed mb-2">
+                                大模型不知道今天的天气或新闻。在 Coze 中，点击“添加插件”，搜索“头条搜索”或“高德地图”并挂载，你的 Bot 就立刻拥有了联网获取实时数据的能力！
+                            </div>
+                            <div class="bg-slate-950 p-2 rounded text-[10px] text-slate-400 font-mono">
+                                常用插件：字节翻译、OCR文字识别、发票查验、网页读取
+                            </div>
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <span class="font-bold text-blue-900 block mb-1">⚠️ 演示建议：</span>
+                        向学员演示一个最经典的场景：**大模型不能实时联网**。先让普通模型查今天的股市，它会胡编乱造（幻觉）。然后演示在 Coze 中挂载【搜索插件】，它就能立刻给出准确数字。通过这个反差，让学员深刻理解 Plugin 的价值。
+                    </div>
+                `,
+                btnText: "模拟挂载搜索插件",
+                runLogs: [
+                    "<div class='text-slate-500'>[用户输入] 帮我查一下今天最新的‘国产大模型’新闻，并总结。</div>",
+                    "<div class='font-bold text-blue-600 mt-2'>⚙️ 触发 Plugin 调用 (Tool Call)：</div>",
+                    "<div class='bg-blue-50 p-2 rounded border border-blue-200 text-blue-800 my-1 font-mono text-[10px]'>-> 执行 API: Toutiao_Search.search(query=\"国产大模型 最新新闻\")<br><- 成功返回 5 条搜索结果。</div>",
+                    "<div class='font-bold text-emerald-600 mt-2'>🤖 Bot 总结输出：</div>",
+                    "<div class='bg-slate-50 p-2 rounded border border-slate-200 text-slate-700'>好的，为您整理今日热点：<br>1. 字节跳动发布豆包大模型最新版，主打低定价策略。<br>2. 阿里云通义千问开源 Qwen2...<br><em>(数据来源真实可靠，彻底消除大模型幻觉)</em></div>"
+                ]
+            },
+            3: {
+                title: "工作流 (Workflow) 拖拽式编排：逻辑可视化",
+                badge: "WORKFLOW",
+                icon: "fa-solid fa-diagram-project",
+                prompt: "无 (通过界面连线操作)",
+                html: `
+                    <div class="space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">什么是工作流 (Workflow)？</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                如果你的任务需要严格的先后顺序（例如：先获取文章 URL -> 再提取正文文本 -> 再翻译成英文 -> 最后发邮件），单靠 Prompt 是无法保证稳定执行的。工作流通过“连线”将这些步骤物理锁死。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">核心节点类型：</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed space-y-1">
+                                <li><strong>大模型节点 (LLM Node)</strong>：负责推理、提炼、总结。</li>
+                                <li><strong>插件节点 (Plugin Node)</strong>：负责调接口（搜索、发邮件）。</li>
+                                <li><strong>代码节点 (Code Node)</strong>：用 Python/JS 处理复杂数据清洗（如 JSON 提取）。</li>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <span class="font-bold text-blue-900 block mb-1">⚠️ 工作流 vs 智能体的区别：</span>
+                        一定要帮学员理清这个概念！<br>
+                        - **智能体 (Agent/Bot)**：像“人”，你交代目标，它自己决定怎么用工具，灵活但偶尔会犯错。<br>
+                        - **工作流 (Workflow)**：像“流水线机器”，严格按照你画的 1-2-3 步执行，死板但绝对稳定。在金融、法律场景，多用工作流！
+                    </div>
+                `,
+                btnText: "模拟运行工作流",
+                runLogs: [
+                    "<div class='font-bold text-blue-600 mb-2'>🔄 启动长文翻译汇总工作流...</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1'><strong class='text-slate-700'>[节点 1: 开始]</strong> 接收参数 url = 'https://news.example.com/ai'</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1'><strong class='text-slate-700'>[节点 2: 网页读取插件]</strong> 成功提取正文 2000 字。</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1'><strong class='text-blue-700'>[节点 3: LLM 提炼]</strong> 提取出 3 段核心摘要。</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1'><strong class='text-amber-700'>[节点 4: Python 代码]</strong> 清洗格式，将摘要拼接为 Markdown 表格。</div>",
+                    "<div class='text-emerald-600 font-bold mt-2'>✨ 工作流执行完毕！稳定输出标准化表格数据。</div>"
+                ]
+            },
+            4: {
+                title: "Multi-Agent 多智能体协同：主控与分发",
+                badge: "MULTI-AGENT",
+                icon: "fa-solid fa-network-wired",
+                prompt: "无 (图形化配置路由)",
+                html: `
+                    <div class="space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">打破单体局限：多智能体模式</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                单个 Bot 如果背负太多指令，容易精神分裂。Coze 允许你开启 Multi-Agent 模式，配置一个【路由节点 (Router)】和多个【执行节点 (Workers)】。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">实战案例：智能客服派单员</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed space-y-1">
+                                <li><strong>主控 Router</strong>：分析用户意图，决定把任务派给谁。</li>
+                                <li><strong>Worker 1 (售后 Bot)</strong>：查物流，处理退换货规则。</li>
+                                <li><strong>Worker 2 (技术 Bot)</strong>：查询知识库，解答产品故障。</li>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <span class="font-bold text-blue-900 block mb-1">⚠️ 路由节点 (Router) 的配置诀窍：</span>
+                        在 Coze 中配置多智能体，最容易失败的地方是**“转移条件没写清楚”**。告诉学员，在配置 Router 连向 Worker 的边（Edge）时，触发条件一定要写得互斥且清晰（比如：当用户询问退货、发票时转移给售后组）。
+                    </div>
+                `,
+                btnText: "模拟 Router 派发意图",
+                runLogs: [
+                    "<div class='text-slate-500 mb-2'>[用户] 我的扫地机器人一直亮红灯不充电，怎么办？顺便问下能不能开专票？</div>",
+                    "<div class='font-bold text-blue-600 mb-1'>🧭 Router (主控节点) 分析意图...</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1 text-slate-700'>意图 1：硬件故障。➡️ 触发转移条件，转交【技术支持 Bot】</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1 text-slate-700'>意图 2：发票需求。➡️ 触发转移条件，转交【财务客服 Bot】</div>",
+                    "<div class='mt-2 font-bold text-slate-700'>[技术支持 Bot]: 亮红灯通常是触点脏污，请尝试擦拭...</div>",
+                    "<div class='font-bold text-slate-700'>[财务客服 Bot]: 支持开具增值税专票，请提供抬头...</div>",
+                    "<div class='mt-2 text-emerald-600 font-bold'>✨ 多智能体接力完成，复杂诉求被专业拆解！</div>"
+                ]
+            },
+            5: {
+                title: "一键发布与跨端集成：真正产生业务价值",
+                badge: "PUBLISH & INTEGRATION",
+                icon: "fa-solid fa-paper-plane",
+                prompt: "无 (点击发布按钮操作)",
+                html: `
+                    <div class="space-y-3">
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">让 AI 走出实验室，走向业务流</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                                你在 Coze 画好的编排再精妙，只要不发布，就只是个玩具。点击右上角的【发布】按钮，这是打通企业数字化的“最后一公里”。
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <strong class="text-blue-300 block mb-1 font-mono">支持一键集成的平台：</strong>
+                            <div class="text-[11px] text-slate-300 font-sans leading-relaxed space-y-1">
+                                <li><strong>微信生态</strong>：微信公众号 (客服回复)、微信小程序。</li>
+                                <li><strong>办公协同</strong>：飞书群机器人、钉钉、企业微信。</li>
+                                <li><strong>开放接口</strong>：发布为 API，供公司内部系统代码调用。</li>
+                            </div>
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <span class="font-bold text-blue-900 block mb-1">⚠️ 权限与合规提醒：</span>
+                        告诉学员，发布到飞书或微信，往往需要公司管理员级别的权限去获取 App ID 和 App Secret。作为架构师，在选型 Coze 时就要提前和公司的 IT 部门/审批部门打好招呼，索要相关的开发者权限。
+                    </div>
+                `,
+                btnText: "模拟多渠道发布",
+                runLogs: [
+                    "<div class='font-bold text-blue-600 mb-2'>🚀 准备将 [智能售后多智能体] 部署至生产环境...</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1 text-slate-700'>正在校验 Bot 配置与插件权限... [通过]</div>",
+                    "<div class='bg-slate-100 p-2 rounded border border-slate-200 mb-1 text-slate-700'>正在打包工作流引擎与知识库索引... [完成]</div>",
+                    "<div class='mt-2 font-bold text-emerald-600'>✅ 渠道集成状态：</div>",
+                    "<div class='text-slate-600 ml-4'>- 📱 飞书群机器人：已成功激活，WebHook 注入完成。</div>",
+                    "<div class='text-slate-600 ml-4'>- 💬 微信客服：菜单栏鉴权通过，自动回复已接管。</div>",
+                    "<div class='text-slate-600 ml-4'>- 🔗 Coze API 密钥：已生成，供内部 ERP 系统调用。</div>",
+                    "<div class='mt-2 text-blue-600 font-bold'>🎉 恭喜！你的数字员工已正式上岗服役！</div>"
+                ]
+            }
+        };
+
+        function switchTab(num) {
+            currentTab = num;
+            const data = stepsConfig[num];
+            clearTimeouts();
+
+            // Update Tabs UI
+            for (let i = 1; i <= 5; i++) {
+                const btn = document.getElementById(`tabBtn${i}`);
+                if (i === num) {
+                    btn.className = "tab-btn p-3 rounded-xl border border-blue-500 bg-blue-600 text-white shadow-sm flex flex-col items-start gap-1 text-left transition";
+                } else {
+                    btn.className = "tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition";
+                }
+            }
+
+            // Update Left Panel Content
+            document.getElementById('stepTitle').innerText = data.title;
+            document.getElementById('stepBadge').innerText = data.badge;
+            document.getElementById('stepIcon').className = data.icon + " text-sm";
+            document.getElementById('stepInstructionBody').innerHTML = data.html;
+            
+            // Update Speaker Notes
+            document.getElementById('speakerNotesContent').innerHTML = data.speakerNotes;
+
+            // Reset Right Console
+            const consoleBox = document.getElementById('consoleBox');
+            consoleBox.innerHTML = `
+                <div class="text-slate-400 text-center mt-10">
+                    <i class="fa-solid fa-code-branch text-3xl mb-2 opacity-30"></i>
+                    <p>等待操作。点击下方按钮演示【${data.title.split('：')[0]}】核心逻辑。</p>
+                </div>`;
+            
+            const badge = document.getElementById('simStatusBadge');
+            badge.innerText = "AWAITING ACTION";
+            badge.className = "text-[10px] bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded font-mono font-bold";
+
+            const runBtn = document.getElementById('btnRunSim');
+            runBtn.disabled = false;
+            document.getElementById('btnRunText').innerText = data.btnText;
+        }
+
+        function copyCurrentPrompt() {
+            const promptText = stepsConfig[currentTab].prompt;
+            if (promptText === "无" || promptText.includes("界面连线")) {
+                showToast("本步骤主要通过 Coze 图形界面操作，无需提示词。");
+                return;
+            }
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = promptText;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Prompt 提示词已成功复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+
+        function runStepSimulation() {
+            const data = stepsConfig[currentTab];
+            const consoleBox = document.getElementById('consoleBox');
+            const badge = document.getElementById('simStatusBadge');
+            const runBtn = document.getElementById('btnRunSim');
+
+            clearTimeouts();
+            runBtn.disabled = true;
+            consoleBox.innerHTML = '';
+            
+            badge.innerText = "SIMULATING...";
+            badge.className = "text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-2 py-0.5 rounded font-mono font-bold";
+
+            let delay = 300;
+            data.runLogs.forEach((log, index) => {
+                activeTimeouts.push(setTimeout(() => {
+                    const div = document.createElement('div');
+                    div.className = 'console-text text-[11px] leading-relaxed';
+                    div.innerHTML = log;
+                    consoleBox.appendChild(div);
+                    consoleBox.scrollTop = consoleBox.scrollHeight;
+
+                    // On last log
+                    if (index === data.runLogs.length - 1) {
+                        badge.innerText = "DEMO COMPLETED";
+                        badge.className = "text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-300 px-2 py-0.5 rounded font-mono font-bold";
+                        runBtn.disabled = false;
+                        document.getElementById('btnRunText').innerText = "重新演示";
+                        showToast(`步骤 ${currentTab} 演示完成！`);
+                    }
+                }, delay));
+                delay += 600; // Delay between log lines
+            });
+        }
+
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerHTML = `<i class="fa-solid fa-check text-blue-400 mr-2"></i>${msg}`;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { switchTab(1); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkBuddy 核心实操：Skill（技能插件）用法详解与实战案例</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                WorkBuddy 核心功能实操：Skill（技能插件 / 工具）的用法与调用机制
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadSkillGuide()" class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-blue-600"></i>
+                <span>下载 Skill 使用指南 (.md)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-center p-5 md:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-blue-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-screwdriver-wrench text-blue-600"></i>
+                <span>Skill Lifecycle · 从添加安装到实际调用的全流程</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                WorkBuddy <span class="text-blue-600">添加 Skill 与使用 Skill</span> 完整落地案例
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                Skill 是给 AI 装上的具体技能工具。本节以实际业务案例<strong>「增值税发票核验与表格提取工具 (invoice_auditor)」</strong>为例，演示如何通过图形界面<strong>添加 Skill</strong>，以及在日常对话中如何<strong>一键调用该 Skill</strong>。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Left (How to Add) & Right (How to Use & Simulator) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <!-- Left 6 Cols: Step 1 - How to Add Skill -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-puzzle-piece text-sm"></i>
+                            <span class="text-xs">第一阶段：在 WorkBuddy 中添加 Skill</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">STEP 01 · ADD SKILL</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300 font-sans">
+                        <!-- Step 1.1 UI Route -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <span class="text-blue-300 font-bold block mb-1 font-mono">
+                                方式 1：从技能市场一键安装 (Skills Store)
+                            </span>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">
+                                点击左下角 <strong>「Skills」</strong> → 在市场搜索对应插件（如 <code class="text-blue-300 font-mono">invoice_auditor</code>、<code class="text-blue-300 font-mono">excel_toolkit</code>）→ 点击 <strong>「Install / 添加到工作区」</strong> 即可生效。
+                            </div>
+                        </div>
+
+                        <!-- Step 1.2 Custom Skill Definition -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <div class="flex items-center justify-between mb-1 font-mono">
+                                <span class="text-blue-300 font-bold">
+                                    方式 2：点「+ Add Custom Skill」自定义添加
+                                </span>
+                                <button onclick="copySkillDocstring()" class="copy-btn bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded font-bold font-sans">
+                                    <i class="fa-solid fa-copy"></i> 复制定义
+                                </button>
+                            </div>
+                            <div class="text-[10px] text-slate-400 mb-1.5">
+                                在弹窗中输入技能说明（Docstring），AI 便能精准理解在什么时机调用它：
+                            </div>
+                            <div id="skillDefinitionText" class="text-[11px] text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono leading-relaxed">
+技能名称: #invoice_auditor
+功能说明: 专用于扫描当前工作区中的 PDF/图片发票，提取发票代码、金额、税率与开票方，检测连号发票与重复报销，输出清洗后的标准 Excel 表格。
+输入参数: folder_path (文件夹路径), strict_mode (是否严格模式)
+输出结果: 结构化表格文件 clean_invoices.xlsx 及异常清单
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800/90 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-circle-check text-blue-400 mr-1"></i> 添加完成后，技能图标变为绿色即可随调随用。</span>
+                    <button onclick="copySkillDocstring()" class="copy-btn text-blue-400 hover:text-blue-300 underline font-bold">复制技能定义</button>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Step 2 - How to Use Skill & Sandbox -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-play text-blue-600"></i>
+                            <span>第二阶段：在日常工作中调用已添加的 Skill</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono font-bold">STEP 02 · USE SKILL</span>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-[11px] text-slate-600 block font-medium">使用指令：直接在聊天框发送业务需求</label>
+                                <button onclick="copyExecutionPrompt()" class="copy-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2.5 py-1 rounded font-bold border border-slate-200 flex items-center gap-1">
+                                    <i class="fa-solid fa-copy"></i> 复制调用指令
+                                </button>
+                            </div>
+
+                            <div id="executionPromptText" class="text-[11px] text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-200 font-sans leading-relaxed">
+请调用刚添加的 #invoice_auditor 技能，把工作区里的 15 张供应商发票 PDF 扫描一遍，核对有没有重复报销，将合规的明细导出到 clean_invoices.xlsx，有问题的在屏幕上列出来。
+                            </div>
+                        </div>
+
+                        <!-- Live Simulator Output Box -->
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-slate-500 font-mono">Skill 执行轨迹演示 (Tool Trace):</span>
+                                <button onclick="simulateSkillExecution()" class="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded font-bold transition flex items-center gap-1">
+                                    <i class="fa-solid fa-play text-[9px]"></i> 运行执行模拟
+                                </button>
+                            </div>
+
+                            <div id="skillOutput" class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 font-mono space-y-1 min-h-[125px] leading-relaxed">
+                                <div class="text-blue-400 font-bold">🛠️ [调用已安装的 Skill]：invoice_auditor</div>
+                                <div>├── 📥 检测到输入参数: folder_path="./invoices", strict_mode=True</div>
+                                <div>├── ⚡ 执行处理: 正在解析 15 张发票 PDF 防伪码与金额...</div>
+                                <div>├── 🔍 异常排查: 发现 1 张发票存在连号重复 (发票号: 9812034)</div>
+                                <div class="text-emerald-300 font-bold">✨ [Done]: 14 张合规记录已导出至 clean_invoices.xlsx！</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-blue-600 mr-1"></i> 添加一次 Skill，日后可在所有会话中重复调用。</span>
+                    <button onclick="downloadSkillGuide()" class="copy-btn bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] px-2.5 py-1 rounded font-bold border border-blue-200">
+                        下载实操手册
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 3 Common Skill Scenarios -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mt-4 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-boxes-stacked text-blue-600"></i>
+                <span>企业中最推荐添加的 3 款常用 Skill 案例</span>
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                <div class="p-2.5 rounded-lg bg-blue-50/50 border border-blue-200">
+                    <strong class="text-blue-900 block mb-1">1. 🧾 invoice_auditor（发票核验与去重）</strong>
+                    <span class="text-slate-600"><strong>添加理由</strong>：自动识别发票 PDF/图片，核对发票代码，拦截重复报销与虚假发票。</span>
+                </div>
+                <div class="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-200">
+                    <strong class="text-emerald-900 block mb-1">2. 📊 excel_merger（多表合并不失真）</strong>
+                    <span class="text-slate-600"><strong>添加理由</strong>：解决大模型做数字算术不准的问题，用本地确定性脚本计算各门店利润总和。</span>
+                </div>
+                <div class="p-2.5 rounded-lg bg-purple-50/50 border border-purple-200">
+                    <strong class="text-purple-900 block mb-1">3. 📄 docx_report_styler（企业级排版）</strong>
+                    <span class="text-slate-600"><strong>添加理由</strong>：将零散的分析数据自动套用公司官方模板，输出带目录和图表的标准 Word 简报。</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                WorkBuddy Practice: <span class="text-blue-600 font-bold">Skill Usage & Tool Calling</span>
+            </div>
+            <div class="w-24 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-500 h-full w-[100%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-graduation-cap mr-1 text-blue-500"></i>企业级 AI 架构师全栈进阶研修
+            </span>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲师教学通俗话术：</span>
+                    “各位同学，怎么在 WorkBuddy 中真正把一个 Skill 用起来？分两步走：<br><br>
+                    <strong>第一步（装插件）</strong>：就像给手机装 App，在 Skills 菜单里点添加，或者自己定义一个功能说明（Docstring），告诉 AI 这个技能叫什么、能做什么；<br>
+                    <strong>第二步（用技能）</strong>：装好之后，你在聊天框里输入‘调用 #invoice_auditor 帮我验真发票’，AI 就会自动唤起这个工具去干活，算完把 Excel 稳稳放在你的文件夹里！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 怎么知道 Skill 有没有生效？</span>
+                    可以在对话框输入 <code class="text-blue-600">/skills</code> 查看当前激活的所有工具列表；执行时会看到蓝色的工具调用条（Tool Calling Trace），说明正在执行本地确定性动作。
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-blue-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copySkillDocstring() {
+            const text = document.getElementById('skillDefinitionText').innerText.trim();
+            copyTextToClipboard(text, "Skill 技能定义已复制！可直接粘贴到添加技能弹窗中。");
+        }
+
+        function copyExecutionPrompt() {
+            const text = document.getElementById('executionPromptText').innerText.trim();
+            copyTextToClipboard(text, "Skill 调用指令已成功复制到剪贴板！");
+        }
+
+        function copyTextToClipboard(text, successMsg) {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast(successMsg);
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        function simulateSkillExecution() {
+            const out = document.getElementById('skillOutput');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-400 mr-2"></i> 正在调用 #invoice_auditor 技能执行处理...';
+            
+            setTimeout(function() {
+                out.innerHTML = `
+<div class="text-blue-400 font-bold">🛠️ [调用已安装的 Skill]：invoice_auditor</div>
+<div>├── 📥 检测到输入参数: folder_path="./invoices", strict_mode=True</div>
+<div>├── ⚡ 执行处理: 正在解析 15 张发票 PDF 防伪码与金额...</div>
+<div>├── 🔍 异常排查: 发现 1 张发票存在连号重复 (发票号: 9812034)</div>
+<div class="text-emerald-300 font-bold">✨ [Done]: 14 张合规记录已导出至 clean_invoices.xlsx！</div>
+                `;
+                showToast("Skill 模拟执行成功！已成功提取发票并拦截异常。");
+            }, 400);
+        }
+
+        function downloadSkillGuide() {
+            const mdContent = `# WorkBuddy 添加与使用 Skill 完整实战指南\n\n## 一、 如何在 WorkBuddy 中添加 Skill？\n1. **方式 1：技能市场安装**：左侧菜单栏点击「Skills」-> 搜索所需技能（如 \`invoice_auditor\`）-> 点击添加安装。\n2. **方式 2：自定义创建 Skill**：点击「+ Add Custom Skill」，填入技能名称、参数及功能说明（Docstring）。\n\n## 二、 如何调用已添加的 Skill？\n- **显式指定调用**：\`请调用已添加的 #invoice_auditor 技能，对当前文件夹的发票进行验真并导出 Excel。\`\n- **自然语言触发**：\`帮我核验这批增值税发票，挑出重复的\`（AI 会根据技能库匹配自动唤起该工具）。\n\n## 三、 典型适用技能推荐\n- \`invoice_auditor\`：发票真伪核验、防重报销\n- \`excel_merger\`：多工作表确定性合并计算\n- \`docx_report_styler\`：自动化排版 Word 报告`;
+
+            try {
+                const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'workbuddy_skill_usage_guide.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("Skill 使用指南下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

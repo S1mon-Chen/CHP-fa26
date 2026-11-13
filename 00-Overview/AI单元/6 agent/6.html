@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 6 - 容器部署与本地 DeepSeek 接入：通过 Docker 一键部署 Dify 并直连 Ollama</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: Dify 引擎独立实战 —— 容器部署与本地 DeepSeek 接入
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-cyan-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-server text-emerald-600"></i>
+                    <span>Deployment &amp; LLM Link · 容器部署与模型直连</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    容器部署与本地 DeepSeek 接入：<span class="text-emerald-600 border-b-4 border-emerald-300 mx-1 pb-1">通过 Docker 一键部署 Dify 并直连 Ollama</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    无需云端付费 API。通过 Docker 运行 Dify 引擎，并配置 Base URL 完美打通本地 Ollama 运行的 DeepSeek-R1 模型。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Docker Command Box -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                    <div>
+                        <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-emerald-400 font-bold">
+                            <span><i class="fa-solid fa-terminal mr-2"></i>Docker &amp; Ollama Commands</span>
+                            <span class="text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">Terminal</span>
+                        </div>
+                        <div class="space-y-3 text-slate-300">
+                            <p class="text-[11px] text-slate-400"># 1. 获取并一键启动 Dify 容器集群：</p>
+                            <div class="bg-slate-800 p-2.5 rounded border border-slate-700 flex items-start justify-between gap-3">
+                                <span class="text-emerald-300 text-[11px] leading-relaxed break-all">git clone https://github.com/langgenius/dify.git<br>cd dify/docker<br>docker compose up -d</span>
+                                <button onclick="copyCommand('git clone https://github.com/langgenius/dify.git &amp;&amp; cd dify/docker &amp;&amp; docker compose up -d')" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded shrink-0 font-bold shadow-sm">复制</button>
+                            </div>
+                            <p class="text-[11px] text-slate-400"># 2. 启动本地 Ollama 并加载 DeepSeek：</p>
+                            <div class="bg-slate-800 p-2.5 rounded border border-slate-700 flex items-center justify-between gap-3">
+                                <span class="text-emerald-300 text-[11px]">ollama run deepseek-r1:8b</span>
+                                <button onclick="copyCommand('ollama run deepseek-r1:8b')" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded shrink-0 font-bold shadow-sm">复制</button>
+                            </div>
+                            <p class="text-[11px] text-slate-400"># 3. Dify 后台 Ollama 供应商核心连接参数：</p>
+                            <div class="bg-slate-800 p-2.5 rounded border border-slate-700 text-[10px] text-emerald-300 font-mono space-y-1">
+                                <div>- Model Name: <code class="text-cyan-300">deepseek-r1:8b</code></div>
+                                <div>- Base URL: <code class="text-cyan-300">http://host.docker.internal:11434</code></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 bg-slate-800 p-2.5 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans leading-relaxed">
+                        <i class="fa-solid fa-circle-info text-amber-400 mr-1"></i> 容器访问宿主机必须填写 <code>host.docker.internal</code>，避免 500 连接报错。
+                    </div>
+                </div>
+
+                <!-- Right: Highlights -->
+                <div class="lg:col-span-6 flex flex-col justify-between space-y-3">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shrink-0 font-bold">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">Docker Compose 一键拉起</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">通过官方容器集群配置，在本地瞬间建立完整的 Dify 后台与网页工作台环境。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center text-sm shrink-0 font-bold">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">Ollama 开源模型直连</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">借助本地运行的 DeepSeek-R1 蒸馏模型，实现零成本、高精度的智能文本推理。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">3</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">绝对的隐私与安全性</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">所有客诉数据与推理过程全部留在本地硬件中，满足企业级数据隐私合规要求。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6 - Slide <span class="text-emerald-600 font-bold">06</span> / 18
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[33%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-emerald-500"></i>模块二：Dify 独立实战
+            </span>
+            <a href="7.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🖥️ 容器部署与模型直连：</span>
+                    “各位同学，接下来我们通过 Docker 启动 Dify，并把大模型供应商直连本地的 Ollama。记住要把 Base URL 设为 `http://host.docker.internal:11434`，这样 Dify 就能流畅调用 DeepSeek-R1 了！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>命令已成功复制到剪贴板！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+        function copyCommand(text) {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast();
+            } catch (err) { console.error(err); }
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') window.location.href = '5.html';
+            else if (e.key === 'ArrowRight') window.location.href = '7.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

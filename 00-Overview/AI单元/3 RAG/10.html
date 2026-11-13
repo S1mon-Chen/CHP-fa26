@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 验证通电：AI 的“视力测试”</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        .green-glow {
+            box-shadow: 0 0 15px 5px rgba(16, 185, 129, 0.4);
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.2); }
+            50% { box-shadow: 0 0 25px 8px rgba(16, 185, 129, 0.6); transform: scale(1.1); }
+            100% { box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.2); }
+        }
+
+        .chat-bubble {
+            animation: slideUp 0.5s ease-out forwards;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .chat-delay-1 { animation-delay: 0.5s; }
+        .chat-delay-2 { animation-delay: 1.5s; }
+        .chat-delay-3 { animation-delay: 2.5s; }
+
+        @keyframes slideUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        
+        .tool-call-glow {
+            animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0% { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.2); }
+            50% { border-color: rgba(168, 85, 247, 0.8); box-shadow: 0 0 10px 2px rgba(168, 85, 247, 0.4); }
+            100% { border-color: rgba(168, 85, 247, 0.3); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.2); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 弹药准备与“外挂存储”接入
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-eye text-purple-600"></i>
+                    <span>Verification · 验证通电</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    验证通电：给 AI 来一场 <span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">“视力测试”</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    绿灯亮起只是第一步。要确保路径填写完全正确，<br>我们需要让 AI 亲自“看一眼”那个文件夹。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Visual Check (Green Light) -->
+                <div class="bg-white border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow">
+                    <div class="bg-slate-50 border-b border-slate-100 p-4 flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">1</div>
+                        <h3 class="text-base font-bold text-slate-800">步骤一：确认绿灯亮起</h3>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col gap-4 flex-1 items-center justify-center bg-slate-900 relative">
+                        <!-- Trae MCP UI Mockup -->
+                        <div class="w-full max-w-sm bg-slate-800 rounded-xl border border-slate-700 shadow-2xl p-5">
+                            <h4 class="text-slate-400 text-xs font-mono mb-4 pb-2 border-b border-slate-700 flex items-center justify-between">
+                                <span>MCP Servers</span>
+                                <i class="fa-solid fa-arrows-rotate text-slate-500 hover:text-white cursor-pointer"></i>
+                            </h4>
+                            
+                            <!-- Connected Server -->
+                            <div class="flex items-center justify-between bg-slate-700/50 p-3 rounded-lg border border-slate-600 mb-3">
+                                <div class="flex items-center gap-3">
+                                    <i class="fa-solid fa-folder-tree text-purple-400 text-lg"></i>
+                                    <div>
+                                        <div class="text-slate-200 text-sm font-bold">本地企业知识库</div>
+                                        <div class="text-slate-500 text-[10px] font-mono">server-filesystem</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 bg-slate-900 px-2.5 py-1 rounded-full border border-slate-700">
+                                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 green-glow"></div>
+                                    <span class="text-emerald-400 text-[10px] font-bold">Connected</span>
+                                </div>
+                            </div>
+                            
+                            <p class="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+                                看到 <span class="text-emerald-400 font-bold">Connected</span>，说明你的路径语法没写错，<br>大模型已获准进入该系统层级。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Conversational Check -->
+                <div class="bg-white border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow">
+                    <div class="bg-slate-50 border-b border-slate-100 p-4 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">2</div>
+                            <h3 class="text-base font-bold text-slate-800">步骤二：“视力测试”</h3>
+                        </div>
+                        <button onclick="copyTestPrompt()" class="copy-btn bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-regular fa-copy"></i> 复制指令
+                        </button>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col gap-4 flex-1 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-10 overflow-hidden relative">
+                        <!-- Chat Mockup -->
+                        <div class="flex-1 space-y-4">
+                            <!-- User Message -->
+                            <div class="flex items-start gap-3 justify-end chat-bubble chat-delay-1">
+                                <div class="bg-purple-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[90%]">
+                                    请调用工具，列出你现在能看到的文件夹里，具体有哪些文件？
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 mt-1 font-bold">
+                                    我
+                                </div>
+                            </div>
+                            
+                            <!-- AI Tool Call -->
+                            <div class="flex items-start gap-3 chat-bubble chat-delay-2">
+                                <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-purple-300 tool-call-glow p-2.5 rounded-xl shadow-sm text-slate-700 w-64">
+                                    <div class="flex items-center gap-2 text-[11px] font-bold text-purple-700 mb-1.5">
+                                        <i class="fa-solid fa-list-ul fa-spin"></i>
+                                        <span>调用工具: list_directory</span>
+                                    </div>
+                                    <div class="text-[9px] text-slate-400 text-right">等待用户允许 (Allow)...</div>
+                                </div>
+                            </div>
+
+                            <!-- AI Response -->
+                            <div class="flex items-start gap-3 chat-bubble chat-delay-3 pb-2">
+                                <div class="w-8 h-8 rounded-full bg-transparent shrink-0 mt-1"></div>
+                                <div class="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700 max-w-[95%] leading-relaxed">
+                                    我在您的知识库目录下看到了以下 3 个文件：<br>
+                                    <ul class="mt-2 space-y-1 font-mono text-xs bg-slate-50 p-2 rounded border border-slate-100">
+                                        <li><i class="fa-brands fa-markdown text-blue-500 w-4"></i> 超级充电宝V3说明书.md</li>
+                                        <li><i class="fa-regular fa-file-lines text-slate-500 w-4"></i> 2024售后退换货政策.txt</li>
+                                        <li><i class="fa-solid fa-file-csv text-emerald-500 w-4"></i> 竞品对比参数表.csv</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Troubleshooting Note -->
+            <div class="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 soft-shadow max-w-4xl mx-auto flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full bg-amber-100 text-amber-500 flex items-center justify-center text-xl shrink-0 mt-0.5">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h4 class="text-amber-900 text-sm font-bold mb-1">避坑指南：如果 AI 告诉你“文件夹是空的”怎么办？</h4>
+                    <p class="text-slate-700 text-xs leading-relaxed">
+                        这是最常见的新手错误！说明你的路径填到了 <code>.zip</code> 压缩包上，或者填了一个外层目录。<br>
+                        <strong>解决办法：</strong>再去检查一下你的 <code>config.json</code>，确保路径精确指向了<strong>解压后的 `Company_Docs` 文件夹本身</strong>。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 3 - Slide <span class="text-purple-600 font-bold">10</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[45.4%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页：接入本地文件夹" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-briefcase mr-1 text-purple-500"></i>模块二：弹药准备
+            </span>
+            <a href="11.html" title="下一页：第一回合测试" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导实操验证：</span>
+                    “各位同学，检查一下 Trae 设置里的绿灯亮了没？如果亮了，恭喜！但这只是证明物理线路通了。AI 到底能不能看清楚里面的东西，我们还要给它做个‘视力测试’。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💬 发送测试指令：</span>
+                    “请大家点击右边卡片上的‘复制指令’，发给你的 AI。如果它能像大屏幕上这样，准确地报出那三份文件（Markdown、TXT、CSV），那就说明它已经成功潜入了你的‘本地知识库’！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">⚠️ 巡场指导预案：</span>
+                    “如果有同学的 AI 说‘文件夹是空的’，或者列出来的是一对你不认识的系统文件，那说明你上一页的路径填错了。回去把路径改到具体解压后的 `Company_Docs` 文件夹上！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下半场（模块三）：</span>
+                    “通过了视力测试，AI 就长了眼睛了。下一页开始，我们要进入实战演练！先让大家看看如果不戴眼镜（不给文档）它会怎么胡扯，然后再看戴上眼镜后的‘精准对答’！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>测试指令已复制，去 Trae 里考验它吧！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyTestPrompt() {
+            const promptText = "请调用工具，列出你现在能看到的文件夹里，具体有哪些文件？";
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

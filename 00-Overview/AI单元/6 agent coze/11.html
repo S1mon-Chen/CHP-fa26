@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - 创建 Router (主控节点) 与意图识别：让大模型充当“客服派单员”</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .pulse-border { animation: pulseBorder 2s infinite; }
+        @keyframes pulseBorder {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .route-path { stroke-dasharray: 5; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -10; } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-emerald-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyRouterPrompt()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-emerald-600"></i>
+                <span class="hidden sm:inline">复制 Router 人设提示词</span>
+                <span class="sm:hidden">复制 Prompt</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-route text-emerald-600"></i>
+                <span>Module 3 · 多智能体 (Multi-Agent) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                创建 Router 与意图识别：<span class="text-emerald-600">配置转移条件，让大模型充当“派单员”</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在多智能体系统（Multi-Agent）中，<strong>Router（主控路由节点）</strong> 是大门的守卫。它的核心任务绝不是直接回答用户的问题，而是利用大模型的语义理解能力，对复杂意图进行拆解与分类，并基于您设定的“转移条件（Conditions）”，将任务精准派发给下属的专科 Bot。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Configuration vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-code-branch text-emerald-600"></i>
+                            Router 节点配置三步法
+                        </h3>
+                        <span class="text-[10px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">UI GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-emerald-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                设定 Router 专属人设 (Persona)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                在 Router 节点的提示词中，明确告诉它：“你是一个分诊员，只负责分类，不要直接回答问题！”
+                            </p>
+                            <div class="relative bg-slate-900 p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-emerald-300 leading-relaxed">
+你是电商售后前台。你需要分析用户的意图：<br>
+1. 若涉及硬件报错、死机、零部件损坏，归为【硬件故障】。<br>
+2. 若涉及开发票、退款、查物流，归为【财务票务】。<br>
+请严格分类，不要擅自解答业务问题。
+                                <button onclick="copyRouterPrompt()" class="absolute top-2 right-2 text-slate-400 hover:text-white"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-emerald-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                配置自然语言转移条件 (Condition)
+                            </h4>
+                            <p class="text-emerald-700/80 leading-relaxed mb-2">
+                                Coze Router 强大的地方在于，不需要写正则表达式。直接用自然语言描述触发条件，大模型会自动判断匹配。
+                            </p>
+                            <div class="bg-white/70 p-2 rounded border border-emerald-100 font-sans text-[10px] text-slate-700 space-y-1">
+                                <div class="flex justify-between items-center bg-white p-1.5 border border-slate-200 rounded">
+                                    <span>条件 1：<code class="text-cyan-600">用户询问了机器报错或维修问题</code></span>
+                                    <i class="fa-solid fa-arrow-right text-slate-400"></i>
+                                    <span class="font-bold text-cyan-700">指向 ➡️ 售后技术 Bot</span>
+                                </div>
+                                <div class="flex justify-between items-center bg-white p-1.5 border border-slate-200 rounded">
+                                    <span>条件 2：<code class="text-amber-600">用户索要发票或要求退款退单</code></span>
+                                    <i class="fa-solid fa-arrow-right text-slate-400"></i>
+                                    <span class="font-bold text-amber-700">指向 ➡️ 财务客服 Bot</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                托底策略 (Fallback)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                当用户的意图不在上述分类中（如闲聊），配置“否则 (Else)”路径，交给兜底节点处理，或直接回复“抱歉，我不明白”。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Router Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-code-merge text-sm"></i>
+                            <span class="text-xs">智能体路由派发动态模拟器</span>
+                        </span>
+                        <span id="routerBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">AWAITING INPUT</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击选择用户的提问，观察 Router 如何进行意图识别与路线转移：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateRouting('tech')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2 shadow-sm">
+                                <i class="fa-solid fa-user text-slate-400 mt-0.5 w-4"></i>
+                                <span>“扫地机一开机就提示 Error 05，而且刷子转不动了，怎么回事？”</span>
+                            </button>
+                            <button onclick="simulateRouting('finance')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2 shadow-sm">
+                                <i class="fa-solid fa-user text-slate-400 mt-0.5 w-4"></i>
+                                <span>“昨天买的，现在我不要了。之前开的专票怎么作废？赶紧退钱。”</span>
+                            </button>
+                            <button onclick="simulateRouting('complex')" class="py-2.5 px-3 rounded-lg border border-emerald-700 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 text-xs text-left transition flex items-start gap-2 shadow-sm border-dashed">
+                                <i class="fa-solid fa-user-ninja text-emerald-500 mt-0.5 w-4"></i>
+                                <span>“机器坏了（Error 05）！太垃圾了，赶紧给我退款重开发票！”</span>
+                            </button>
+                        </div>
+
+                        <!-- Routing Visualization & Console -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">路由分析执行流 (Router Trace):</span>
+                            </div>
+                            
+                            <!-- Visual Routing Area -->
+                            <div class="relative bg-slate-950 rounded-t-xl border border-slate-800 h-28 flex items-center justify-center overflow-hidden">
+                                
+                                <!-- Router Center -->
+                                <div id="visRouter" class="absolute left-1/4 top-1/2 -translate-y-1/2 w-20 bg-slate-800 border-2 border-emerald-500 rounded p-1.5 text-center z-10 transition-all duration-300">
+                                    <i class="fa-solid fa-route text-emerald-400 text-lg mb-1"></i>
+                                    <div class="text-[9px] font-bold text-slate-200">Router</div>
+                                </div>
+
+                                <!-- Connecting Lines -->
+                                <svg class="absolute inset-0 w-full h-full pointer-events-none z-0">
+                                    <path id="lineTech" d="M 120 56 Q 160 30 240 30" fill="none" stroke="#334155" stroke-width="2" class="transition-all duration-300"/>
+                                    <path id="lineFinance" d="M 120 56 Q 160 80 240 82" fill="none" stroke="#334155" stroke-width="2" class="transition-all duration-300"/>
+                                </svg>
+
+                                <!-- Tech Worker -->
+                                <div id="visTech" class="absolute right-[15%] top-4 w-24 bg-slate-800 border-2 border-slate-700 rounded p-1.5 text-center z-10 transition-all duration-300">
+                                    <i class="fa-solid fa-wrench text-cyan-500 text-lg mb-1"></i>
+                                    <div class="text-[9px] font-bold text-slate-200">售后技术 Bot</div>
+                                </div>
+
+                                <!-- Finance Worker -->
+                                <div id="visFinance" class="absolute right-[15%] bottom-4 w-24 bg-slate-800 border-2 border-slate-700 rounded p-1.5 text-center z-10 transition-all duration-300">
+                                    <i class="fa-solid fa-file-invoice-dollar text-amber-500 text-lg mb-1"></i>
+                                    <div class="text-[9px] font-bold text-slate-200">财务客服 Bot</div>
+                                </div>
+                            </div>
+
+                            <!-- Text Console -->
+                            <div id="routerConsole" class="bg-slate-900 p-3 rounded-b-xl border-x border-b border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[90px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 点击上方的用户提问，触发路由分析...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-emerald-600 font-bold">Slide 11 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[55%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="10.html" title="上一页：多智能体实战场景设定" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-emerald-700">12. 挂载插件建立财务 Bot</strong>
+            </span>
+            <a href="12.html" title="下一页：建立 Worker 1 (售后 Bot)" class="px-3 py-1.5 md:py-2 rounded-lg border border-emerald-100 bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 重点强调 Router 的“克制”：</span>
+                    “教大家一个避坑口诀：**派单员不修车！** 很多人在写 Router 提示词的时候，忍不住把产品的维修手册也写进去了。结果 Router 直接把用户问题回答了，根本没有触发下面的专科 Bot！<br><br>
+                    记住，在 Router 的提示词里，你要极其严肃地告诉它：‘你只负责分类，不要擅自解答业务问题！’ 这才是真正的架构分层。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “向学员演示右侧的沙箱。特别是点击第三个‘复合意图’时，展示 Router 是如何将一段话拆解成两个子任务，并分别触发两条转移路线的。这展现了大模型相较于传统关键字正则匹配的降维打击能力！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyRouterPrompt() {
+            const text = "你是电商售后前台。你需要分析用户的意图：\n1. 若涉及硬件报错、死机、零部件损坏，归为【硬件故障】。\n2. 若涉及开发票、退款、查物流，归为【财务票务】。\n请严格分类，不要擅自解答业务问题。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Router 人设提示词已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        function resetVisuals() {
+            document.getElementById('lineTech').setAttribute('stroke', '#334155');
+            document.getElementById('lineTech').classList.remove('route-path', 'stroke-cyan-500');
+            document.getElementById('lineFinance').setAttribute('stroke', '#334155');
+            document.getElementById('lineFinance').classList.remove('route-path', 'stroke-amber-500');
+            
+            document.getElementById('visRouter').classList.remove('pulse-border');
+            document.getElementById('visTech').classList.replace('border-cyan-500', 'border-slate-700');
+            document.getElementById('visFinance').classList.replace('border-amber-500', 'border-slate-700');
+        }
+
+        let simTimeout1, simTimeout2;
+
+        function simulateRouting(type) {
+            const out = document.getElementById('routerConsole');
+            const badge = document.getElementById('routerBadge');
+            
+            clearTimeout(simTimeout1);
+            clearTimeout(simTimeout2);
+            resetVisuals();
+
+            document.getElementById('visRouter').classList.add('pulse-border');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-2"></i> Router 正在进行自然语言意图提取...';
+            badge.innerText = "ROUTING...";
+            badge.className = "text-[10px] bg-emerald-900/60 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+            if (type === 'tech') {
+                simTimeout1 = setTimeout(function() {
+                    const line = document.getElementById('lineTech');
+                    line.setAttribute('stroke', '#06b6d4');
+                    line.classList.add('route-path');
+                    document.getElementById('visTech').classList.replace('border-slate-700', 'border-cyan-500');
+                    document.getElementById('visRouter').classList.remove('pulse-border');
+
+                    out.innerHTML = `
+<div class="text-cyan-400 font-bold mb-1">⚡ [单级意图识别] 触发条件 1</div>
+<div class="text-slate-300">├── <span class="text-emerald-400">Router 分析</span>: 提取到实体 "Error 05", "刷子转不动"。</div>
+<div class="text-slate-300">├── <span class="text-blue-400">逻辑匹配</span>: 完美命中【硬件报错、零部件损坏】条件。</div>
+<div class="text-slate-300">└── <span class="text-cyan-400">执行派发</span>: 将原问题移交 ➡️ <strong>售后技术 Bot</strong>。</div>
+                    `;
+                    badge.innerText = "ROUTED: TECH";
+                    showToast("已成功路由至售后技术模块！");
+                }, 1200);
+
+            } else if (type === 'finance') {
+                simTimeout1 = setTimeout(function() {
+                    const line = document.getElementById('lineFinance');
+                    line.setAttribute('stroke', '#f59e0b');
+                    line.classList.add('route-path');
+                    document.getElementById('visFinance').classList.replace('border-slate-700', 'border-amber-500');
+                    document.getElementById('visRouter').classList.remove('pulse-border');
+
+                    out.innerHTML = `
+<div class="text-amber-400 font-bold mb-1">⚡ [单级意图识别] 触发条件 2</div>
+<div class="text-slate-300">├── <span class="text-emerald-400">Router 分析</span>: 提取到意图 "作废专票", "退钱"。</div>
+<div class="text-slate-300">├── <span class="text-blue-400">逻辑匹配</span>: 完美命中【开发票、退款】条件。</div>
+<div class="text-slate-300">└── <span class="text-amber-400">执行派发</span>: 将原问题移交 ➡️ <strong>财务客服 Bot</strong>。</div>
+                    `;
+                    badge.innerText = "ROUTED: FINANCE";
+                    showToast("已成功路由至财务票务模块！");
+                }, 1200);
+
+            } else if (type === 'complex') {
+                simTimeout1 = setTimeout(function() {
+                    const line1 = document.getElementById('lineTech');
+                    const line2 = document.getElementById('lineFinance');
+                    line1.setAttribute('stroke', '#06b6d4');
+                    line1.classList.add('route-path');
+                    line2.setAttribute('stroke', '#f59e0b');
+                    line2.classList.add('route-path');
+                    
+                    document.getElementById('visTech').classList.replace('border-slate-700', 'border-cyan-500');
+                    document.getElementById('visFinance').classList.replace('border-slate-700', 'border-amber-500');
+                    document.getElementById('visRouter').classList.remove('pulse-border');
+
+                    out.innerHTML = `
+<div class="text-emerald-400 font-bold mb-1">🔥 [复合意图识别] 并行触发多路分发</div>
+<div class="text-slate-300">├── <span class="text-emerald-400">Router 分析</span>: 文本包含多个独立诉求。</div>
+<div class="text-slate-300">├── <span class="text-blue-400">任务拆解</span>: </div>
+<div class="text-slate-400 pl-4">↳ 子任务 A (机器坏了 Error 05) ➡️ <span class="text-cyan-400">售后技术 Bot</span></div>
+<div class="text-slate-400 pl-4">↳ 子任务 B (退款重开发票) ➡️ <span class="text-amber-400">财务客服 Bot</span></div>
+<div class="text-emerald-300 font-bold mt-2">✅ 结论：大模型路由支持多分支并行，最终将合并结果返给用户。</div>
+                    `;
+                    badge.innerText = "ROUTED: PARALLEL";
+                    showToast("复合意图拆解完毕，多路并发执行中！");
+                }, 1500);
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

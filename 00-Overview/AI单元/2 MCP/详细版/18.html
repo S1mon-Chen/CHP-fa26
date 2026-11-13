@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 运行演示：边上网查规矩，边审本地表格</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        /* Chat bubble animations */
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.5s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.5s; }
+        .delay-2 { animation-delay: 1.5s; }
+        .delay-3 { animation-delay: 3.0s; }
+        .delay-4 { animation-delay: 4.5s; }
+        .delay-5 { animation-delay: 6.0s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tool-call-glow {
+            animation: pulse-border 2s infinite;
+        }
+        .tool-call-glow-amber {
+            animation: pulse-border-amber 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2); }
+            50% { border-color: rgba(16, 185, 129, 0.8); box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.4); }
+            100% { border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2); }
+        }
+
+        @keyframes pulse-border-amber {
+            0% { border-color: rgba(245, 158, 11, 0.3); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.2); }
+            50% { border-color: rgba(245, 158, 11, 0.8); box-shadow: 0 0 10px 2px rgba(245, 158, 11, 0.4); }
+            100% { border-color: rgba(245, 158, 11, 0.3); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.2); }
+        }
+        
+        /* Table Styling for AI Output */
+        .ai-table th { background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; padding: 6px 10px; text-align: left; }
+        .ai-table td { border-bottom: 1px solid #e2e8f0; padding: 6px 10px; }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 实战演练二 —— 云网联动与自动化审核
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[400px] h-[400px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-teal-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-600"></i>
+                    <span>Execution · 运行演示</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    见证奇迹：<span class="text-emerald-600 border-b-4 border-emerald-300 mx-1 pb-1">边看网页规矩，边审本地表格</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    当指令发送后，AI 化身为一个不知疲倦的审计员。<br>它将同时调度多个工具，完成以前需要人工比对半小时的枯燥工作。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Chat Mockup Simulation -->
+                <div class="lg:col-span-8 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full shadow-2xl">
+                        <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-messages text-slate-400"></i>
+                                <span class="text-sm font-bold text-slate-700">Trae 多工具协同实况</span>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <div class="w-2 h-2 rounded-full bg-rose-400"></div>
+                                <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                                <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
+                            <!-- User Message -->
+                            <div class="flex items-start gap-3 justify-end chat-bubble delay-1">
+                                <div class="bg-emerald-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[85%]">
+                                    <div class="text-xs opacity-70 mb-1 font-mono">📎 10月报销明细.xlsx</div>
+                                    你现在是一位严格的【财务审计专家】。请帮我完成以下跨维度数据比对任务...
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-user"></i>
+                                </div>
+                            </div>
+
+                            <!-- AI Tool Call 1: Puppeteer -->
+                            <div class="flex items-start gap-3 chat-bubble delay-2">
+                                <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-emerald-300 tool-call-glow p-3 rounded-xl shadow-sm text-slate-700 w-72">
+                                    <div class="flex items-center gap-2 text-xs font-bold text-emerald-700 mb-2">
+                                        <i class="fa-solid fa-globe fa-spin"></i>
+                                        <span>调用工具: puppeteer_navigate</span>
+                                    </div>
+                                    <div class="bg-slate-900 p-2 rounded text-[10px] font-mono text-emerald-400 break-all">
+                                        URL: https://baike.baidu.com/item/差旅费/2965682
+                                    </div>
+                                    <div class="text-[9px] text-slate-400 mt-2 text-right text-emerald-600"><i class="fa-solid fa-check"></i> 网页抓取成功，提取规章制度...</div>
+                                </div>
+                            </div>
+
+                            <!-- AI Tool Call 2: Read Excel -->
+                            <div class="flex items-start gap-3 chat-bubble delay-3">
+                                <div class="w-8 h-8 rounded-full bg-transparent shrink-0 mt-1"></div>
+                                <div class="bg-white border border-amber-300 tool-call-glow-amber p-3 rounded-xl shadow-sm text-slate-700 w-72">
+                                    <div class="flex items-center gap-2 text-xs font-bold text-amber-700 mb-2">
+                                        <i class="fa-solid fa-file-excel fa-spin"></i>
+                                        <span>调用内部工具: read_file</span>
+                                    </div>
+                                    <div class="bg-slate-900 p-2 rounded text-[10px] font-mono text-amber-400">
+                                        Target: 10月报销明细.xlsx
+                                    </div>
+                                    <div class="text-[9px] text-slate-400 mt-2 text-right text-amber-600"><i class="fa-solid fa-check"></i> 报表读取成功，准备核对...</div>
+                                </div>
+                            </div>
+
+                            <!-- AI Thinking -->
+                            <div class="flex items-start gap-3 chat-bubble delay-4">
+                                <div class="w-8 h-8 rounded-full bg-transparent shrink-0 mt-1"></div>
+                                <div class="bg-slate-200/50 px-4 py-2 rounded-full text-xs text-slate-500 font-mono italic">
+                                    正在交叉核对规则与数据，生成报告...
+                                </div>
+                            </div>
+
+                            <!-- AI Final Response -->
+                            <div class="flex items-start gap-3 chat-bubble delay-5 pb-4">
+                                <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700 max-w-full leading-relaxed border-l-4 border-l-emerald-500 overflow-x-auto">
+                                    我已经读取了网页上的差旅报销制度，并与您提供的 Excel 进行了交叉核对。以下是审计报告：<br><br>
+                                    
+                                    <table class="ai-table w-full text-xs mb-3">
+                                        <thead>
+                                            <tr>
+                                                <th>姓名</th>
+                                                <th>报销项目</th>
+                                                <th>申报金额</th>
+                                                <th>合规判定</th>
+                                                <th>超标原因</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>张三</td>
+                                                <td>交通费-高铁</td>
+                                                <td>553.00</td>
+                                                <td><span class="text-emerald-600 font-bold">合规</span></td>
+                                                <td>-</td>
+                                            </tr>
+                                            <tr class="bg-rose-50">
+                                                <td class="text-rose-600 font-bold">李四</td>
+                                                <td class="text-rose-600 font-bold">住宿费</td>
+                                                <td class="text-rose-600 font-bold">1250.00</td>
+                                                <td><span class="text-rose-600 font-bold">违规</span></td>
+                                                <td class="text-rose-600 font-bold">制度规定住宿上限通常不超过当地四星级标准。申报五星级酒店超标。</td>
+                                            </tr>
+                                            <tr>
+                                                <td>王五</td>
+                                                <td>餐饮费</td>
+                                                <td>350.00</td>
+                                                <td><span class="text-emerald-600 font-bold">合规</span></td>
+                                                <td>-</td>
+                                            </tr>
+                                            <tr class="bg-rose-50">
+                                                <td class="text-rose-600 font-bold">赵六</td>
+                                                <td class="text-rose-600 font-bold">交通费-机票</td>
+                                                <td class="text-rose-600 font-bold">2800.00</td>
+                                                <td><span class="text-rose-600 font-bold">违规</span></td>
+                                                <td class="text-rose-600 font-bold">制度规定普通员工仅限经济舱，申报头等舱违规。</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    
+                                    <p class="text-xs font-bold text-slate-800">⚠️ 重点提醒：李四 和 赵六 存在严重超标，已标红处理，建议退回重填。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Analysis Cards -->
+                <div class="lg:col-span-4 flex flex-col justify-center space-y-5">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 soft-shadow">
+                        <div class="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg mb-3">
+                            <i class="fa-solid fa-code-branch"></i>
+                        </div>
+                        <h3 class="font-bold text-slate-800 mb-2">自主任务编排 (Agent)</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed">
+                            在这个过程中，AI 展现了惊人的智能：它知道<strong>先去</strong>调用网络插头查规矩，<strong>再去</strong>读取本地文件，最后将两边的数据在大脑里进行逻辑比对。
+                        </p>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 soft-shadow relative overflow-hidden group">
+                        <div class="absolute right-0 top-0 text-emerald-100 text-6xl -mr-4 -mt-4 opacity-50 group-hover:scale-110 transition-transform">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <div class="relative z-10">
+                            <div class="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center text-lg mb-3">
+                                <i class="fa-solid fa-table-cells"></i>
+                            </div>
+                            <h3 class="font-bold text-slate-800 mb-2">精准遵循格式约定</h3>
+                            <p class="text-xs text-slate-600 leading-relaxed">
+                                因为我们在 Prompt 的 <code>&lt;输出要求&gt;</code> 中严格规定了使用 Markdown 表格，并要求将重点违规标红，AI 完全遵循了契约，输出了可以直接截图发给老板的完美报告。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-emerald-600 font-bold">18</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 18 of 22 is ~81.8% -->
+                <div class="bg-emerald-500 h-full w-[82%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页：跨网缝合指令" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-globe mr-1 text-emerald-500"></i>模块四：实战演练二
+            </span>
+            <a href="19.html" title="下一页：举一反三" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导观察协同执行过程：</span>
+                    “各位同学，不要眨眼！当你把指令发出去后，看屏幕左边的动画预演。AI 第一步先弹出了 Puppeteer 工具，它真的跑去百度百科看规章制度了！紧接着，它又调用内部工具读取了我们下载的本地 Excel 表格。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎉 强调结果的震撼性：</span>
+                    “大家看最后输出的表格！头等舱的赵六，五星级酒店的李四，全被标红揪出来了！以前你要用肉眼一行行核对、比对半小时的活，现在只要十几秒。这就是 Vibe Coding 中多工具协同（Agent 模式）带来的生产力爆炸！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “既然它能去网上抓差旅标准，那它还能抓什么？是不是可以用同样的逻辑去抓竞争对手的新闻、抓每天波动的汇率表？下一页，我们来打开脑洞，举一反三！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '19.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '17.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

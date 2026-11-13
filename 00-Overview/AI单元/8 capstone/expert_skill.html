@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkBuddy 核心功能实操系列 (3/5)：Expert vs Skill 核心区别对比辨析</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#10b981',
+                            600: '#059669',
+                            900: '#064e3b',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                WorkBuddy 核心功能实操系列 <span class="text-emerald-600 font-mono font-bold">(3/5)</span>
+            </h1>
+        </div>
+
+        <!-- Unified Series Navigation Tabs (5 Steps: Expert -> Skill -> Expert-Skill -> Scheduled -> Connector) -->
+        <nav class="hidden md:flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <a href="workbuddy_expert.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-robot text-[11px]"></i>
+                <span>1. Expert</span>
+            </a>
+            <a href="workbuddy_skill.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-screwdriver-wrench text-[11px]"></i>
+                <span>2. Skill</span>
+            </a>
+            <a href="expert_skill.html" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-scale-balanced text-[11px]"></i>
+                <span>3. Expert-Skill</span>
+            </a>
+            <a href="workbuddy_scheduled.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-clock text-[11px]"></i>
+                <span>4. Scheduled</span>
+            </a>
+            <a href="workbuddy_connector.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-plug text-[11px]"></i>
+                <span>5. Connector</span>
+            </a>
+        </nav>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadComparisonSummary()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-emerald-600"></i>
+                <span class="hidden sm:inline">下载概念对比手册 (.md)</span>
+                <span class="sm:hidden">对比手册</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-5 md:p-8 bg-white bg-grid-pattern">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-scale-balanced text-emerald-600"></i>
+                <span>Step 3 · “人”与“工具”的本质关系与架构协同</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                一句话结论：<span class="text-emerald-600">Expert 是“拥有岗位的数字员工”</span>，而 <span class="text-blue-600">Skill 是“员工手里的专业工具箱”</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在构建智能体系统时，很多学员容易把 Expert 和 Skill 混淆。简单比喻：<strong>Expert 相当于一位【专职财务审计师】</strong>（有固定人设、行业知识与风控红线），而 <strong>Skill 相当于【发票验真工具 / Excel 计算宏】</strong>（只负责单点计算执行，谁拿去都可以用）。
+            </p>
+        </div>
+
+        <!-- 3 Columns / Cards: Concept A vs Concept B vs Live Relationship Simulator -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 4 cols: What is Expert -->
+            <div class="lg:col-span-4 bg-white border border-emerald-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between card-hover">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-emerald-100 pb-2.5">
+                        <span class="text-xs font-bold text-emerald-800 flex items-center gap-2">
+                            <i class="fa-solid fa-user-tie text-emerald-600 text-sm"></i>
+                            <span>Expert（专家智能体）</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono font-bold">PERSONA</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-xs text-slate-600">
+                        <div class="bg-emerald-50/60 p-2.5 rounded-lg border border-emerald-100 text-[11px] leading-relaxed">
+                            <strong class="text-emerald-900 block mb-1">🎯 核心定义：角色、人格与责任人</strong>
+                            Expert 是具有特定<strong>领域人设（Persona）</strong>、思维模式与目标约束的独立实体。它知道“我是谁”、“我的职责是什么”、“哪些红线不能碰”。
+                        </div>
+
+                        <div class="space-y-1.5 text-[11px]">
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>拥有专属人设</strong>：如“资深内控审计总监”、“合规法务顾问”。</span>
+                            </div>
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>具备记忆与上下文边界</strong>：不会随对话轮数漂移角色。</span>
+                            </div>
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-emerald-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>调用方式</strong>：在会话中通过 <code class="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">@财务审计专家</code> 主动唤醒指派。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[10px] font-mono text-emerald-700 flex items-center justify-between">
+                    <span>本质属性：主体（Who）</span>
+                    <i class="fa-solid fa-id-card"></i>
+                </div>
+            </div>
+
+            <!-- Middle 4 cols: What is Skill -->
+            <div class="lg:col-span-4 bg-white border border-blue-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between card-hover">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-blue-100 pb-2.5">
+                        <span class="text-xs font-bold text-blue-800 flex items-center gap-2">
+                            <i class="fa-solid fa-screwdriver-wrench text-blue-600 text-sm"></i>
+                            <span>Skill（技能插件 / 工具）</span>
+                        </span>
+                        <span class="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-mono font-bold">CAPABILITY</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-xs text-slate-600">
+                        <div class="bg-blue-50/60 p-2.5 rounded-lg border border-blue-100 text-[11px] leading-relaxed">
+                            <strong class="text-blue-900 block mb-1">🔧 核心定义：能力模块、函数与动作</strong>
+                            Skill 是被封装好的<strong>单点动作能力</strong>（Tool/Plugin/Function）。它没有思想和人设，只负责接收输入、执行特定操作、返回结构化结果。
+                        </div>
+
+                        <div class="space-y-1.5 text-[11px]">
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>无状态单点执行</strong>：如“发票OCR核验”、“生成Word图表”。</span>
+                            </div>
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>通用性与复用性</strong>：不同 Expert 均可共享同一个 Skill。</span>
+                            </div>
+                            <div class="flex items-start gap-1.5">
+                                <i class="fa-solid fa-circle-check text-blue-500 mt-0.5 text-[10px]"></i>
+                                <span><strong>调用方式</strong>：由智能体在推理链中自主动态触发（Tool Calling）。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[10px] font-mono text-blue-700 flex items-center justify-between">
+                    <span>本质属性：手段（What & How）</span>
+                    <i class="fa-solid fa-toolbox"></i>
+                </div>
+            </div>
+
+            <!-- Right 4 cols: Combined Relationship & Interactive Sandbox -->
+            <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-diagram-project text-sm"></i>
+                            <span class="text-xs">协同实战：Expert 调度 Skill</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">SANDBOX</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            选择一个业务场景，查看 Expert 如何统筹并调用底层不同的 Skills：
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 my-2">
+                            <button onclick="simulateExecution('audit')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 text-[10px] py-1.5 rounded transition font-bold">
+                                财务合规场景
+                            </button>
+                            <button onclick="simulateExecution('ops')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-blue-300 text-[10px] py-1.5 rounded transition font-bold">
+                                自动化运维场景
+                            </button>
+                        </div>
+
+                        <div id="sandboxOutput" class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-[10px] text-slate-300 font-mono min-h-[140px] leading-relaxed space-y-1">
+                            <div class="text-emerald-400 font-bold">👤 [Expert 就绪]：@财务合规与审计专家</div>
+                            <div class="text-slate-400">├── 🧠 [Expert 决策]: 收到报销单审查任务，开始拆解步骤</div>
+                            <div>├── 🛠️ [调用 Skill 1]: <span class="text-blue-300">excel_parser()</span> 解析 50 笔账单</div>
+                            <div>├── 🛠️ [调用 Skill 2]: <span class="text-blue-300">tax_invoice_validator()</span> 核验真伪</div>
+                            <div class="text-amber-300">├── ⚠️ [Expert 裁决]: 发现 1 笔违规超标，自主触发拦截</div>
+                            <div class="text-emerald-300 font-bold">✨ [Done]: 生成合规审计 Word 简报</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 bg-slate-800/90 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-link text-emerald-400 mr-1"></i> Expert 挂载多个 Skills 组成完整闭环</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Matrix Table Comparison at bottom -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-6 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-table-cells text-emerald-600"></i>
+                <span>维度对比速查表 (Quick Reference)</span>
+            </h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-[11px] text-slate-600 border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-slate-400 font-mono text-[10px]">
+                            <th class="py-1.5 px-3">对比维度</th>
+                            <th class="py-1.5 px-3 text-emerald-700 bg-emerald-50/50 rounded-t">Expert（专家智能体）</th>
+                            <th class="py-1.5 px-3 text-blue-700 bg-blue-50/50 rounded-t">Skill（能力插件）</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 font-sans">
+                        <tr>
+                            <td class="py-2 px-3 font-bold text-slate-700 font-mono text-[10px]">现实角色类比</td>
+                            <td class="py-2 px-3 text-slate-800 font-medium">企业里的专职岗位（如：注册会计师、资深架构师）</td>
+                            <td class="py-2 px-3 text-slate-800 font-medium">电脑里的专业软件或函数（如：计算器、发票验证接口）</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-3 font-bold text-slate-700 font-mono text-[10px]">是否有独立人设</td>
+                            <td class="py-2 px-3 text-emerald-600 font-bold">有（具备专属语气、知识范围与业务红线）</td>
+                            <td class="py-2 px-3 text-slate-400">无（纯代码工具，中立执行输入输出）</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-3 font-bold text-slate-700 font-mono text-[10px]">如何唤醒与使用</td>
+                            <td class="py-2 px-3">人类用户主动通过 <code class="bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded">@ExpertName</code> 呼出</td>
+                            <td class="py-2 px-3">由大模型或 Expert 根据用户意图动态自主调用 (Tool Call)</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-3 font-bold text-slate-700 font-mono text-[10px]">系统包含关系</td>
+                            <td class="py-2 px-3 text-slate-800">一个 Expert 可以挂载并使用多个不同的 Skills</td>
+                            <td class="py-2 px-3 text-slate-800">一个 Skill 可以被多个不同的 Experts 共享使用</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                WorkBuddy Suite: <span class="text-emerald-600 font-bold">Step 3 of 5 (Expert-Skill)</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="workbuddy_skill.html" title="上一页：Skill 技能插件" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一节: Skill</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-emerald-700">4. Scheduled 定时任务</strong>
+            </span>
+            <a href="workbuddy_scheduled.html" title="下一页：Scheduled 定时任务" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一节: Scheduled</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲师教学通俗话术：</span>
+                    “各位同学，一句话记住两者的区别：<br>
+                    <strong>Expert 是‘人’（专职岗位）</strong>，它有自己的大脑人设、专业判断和风控原则；<br>
+                    <strong>Skill 是‘手里的扳手或计算器’（工具函数）</strong>，它只管干单点具体的脏活累活。<br>
+                    平时我们是用 `@Expert` 把‘人’叫过来，然后这个‘人’根据具体任务自己从工具箱里挑出合适的 `Skills` 去操作！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function simulateExecution(type) {
+            const out = document.getElementById('sandboxOutput');
+            if (type === 'audit') {
+                out.innerHTML = `
+<div class="text-emerald-400 font-bold">👤 [Expert 就绪]：@财务合规与审计专家</div>
+<div class="text-slate-400">├── 🧠 [Expert 决策]: 收到报销单审查任务，开始拆解步骤</div>
+<div>├── 🛠️ [调用 Skill 1]: <span class="text-blue-300">excel_parser()</span> 解析 50 笔账单</div>
+<div>├── 🛠️ [调用 Skill 2]: <span class="text-blue-300">tax_invoice_validator()</span> 核验发票真伪</div>
+<div class="text-amber-300">├── ⚠️ [Expert 裁决]: 发现 1 笔违规超标，自主触发拦截</div>
+<div class="text-emerald-300 font-bold">✨ [Done]: 自动生成《合规审计报告.docx》</div>
+                `;
+                showToast("已切换为【财务合规专家】调用多 Skills 场景");
+            } else {
+                out.innerHTML = `
+<div class="text-blue-400 font-bold">👤 [Expert 就绪]：@SRE自动化运维专家</div>
+<div class="text-slate-400">├── 🧠 [Expert 决策]: 检测到线上集群告警，启动故障排查链</div>
+<div>├── 🛠️ [调用 Skill 1]: <span class="text-emerald-300">k8s_log_fetcher()</span> 抓取崩溃容器日志</div>
+<div>├── 🛠️ [调用 Skill 2]: <span class="text-emerald-300">database_ping()</span> 探活主从库健康状态</div>
+<div class="text-amber-300">├── ⚠️ [Expert 裁决]: 定位为内存泄露，准备重启从节点 Pod</div>
+<div class="text-blue-300 font-bold">✨ [Done]: 故障自愈完成，已向钉钉群推送排查简报</div>
+                `;
+                showToast("已切换为【自动化运维专家】调用多 Skills 场景");
+            }
+        }
+
+        function downloadComparisonSummary() {
+            const mdContent = `# WorkBuddy 核心概念解析：Expert（专家智能体） vs Skill（技能插件）\n\n## 一句话核心结论\n- **Expert 是“人”（专职数字员工）**：具备特定领域人设（Persona）、知识范围与业务红线。\n- **Skill 是“工具”（能力插件）**：具备单点执行能力的 Python 函数或 API 接口（如发票验证、格式转换）。\n\n## 协同关系\n- 一个 Expert 可以挂载并统筹多个 Skills 完成复杂业务；\n- 一个 Skill 可以被不同的 Experts 共享使用。`;
+
+            try {
+                const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'expert_vs_skill_comparison.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("概念对比手册下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = 'workbuddy_skill.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = 'workbuddy_scheduled.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

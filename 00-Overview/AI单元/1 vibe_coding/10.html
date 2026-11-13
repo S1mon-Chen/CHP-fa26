@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 魔法护栏：用 XML 标签与 Markdown 防串行</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .tag-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tag-card:hover {
+            box-shadow: 0 15px 30px -5px rgba(168, 85, 247, 0.15);
+            border-color: #c084fc;
+        }
+        .bracket {
+            color: #c084fc; /* purple-400 */
+            font-weight: 800;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 指令工程 —— 写出不翻车的“咒语”
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 left-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 right-0 w-[400px] h-[400px] bg-fuchsia-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-code text-purple-600"></i>
+                    <span>Magic Fences · 隔离护栏</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    别让 AI “看串行”：<span class="text-purple-600 border-b-4 border-purple-200">XML 标签</span>的魔法
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    当你的需求很长时，不要发“文字大乱炖”。<br>把文字装进“特殊的集装箱”里，AI 才能精准识别哪里是数据，哪里是规则。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                
+                <!-- Left: The problem (Wall of text) -->
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 relative overflow-hidden flex flex-col">
+                    <h3 class="flex items-center gap-2 text-lg font-bold text-slate-700 mb-4 pb-3 border-b border-slate-200">
+                        <i class="fa-solid fa-align-left text-slate-400"></i>
+                        常见的灾难：文字大乱炖
+                    </h3>
+                    <div class="bg-white border border-rose-100 rounded-lg p-4 font-mono text-xs text-slate-500 leading-relaxed shadow-sm relative group cursor-not-allowed">
+                        <div class="absolute inset-0 bg-rose-500/5 mix-blend-multiply rounded-lg"></div>
+                        <p class="opacity-70 group-hover:opacity-100 transition-opacity">
+                            你是资深财务，帮我处理一份表格。背景是每个月我们要计算各部门的出差费用，你帮我写个Python脚本，按部门拆分。对了，千万不要修改源文件，只能读取，还有，拆分后的文件要加个今天的日期后缀，就像这样 销售部_20240501.xlsx，原始数据有包含部门、金额、时间、人员、备注这几列，不要把金额为空的行放进去，最后保存在一个叫 output 的文件夹里。
+                        </p>
+                    </div>
+                    <div class="mt-4 bg-rose-50 rounded-lg p-3 border border-rose-100">
+                        <span class="text-xs font-bold text-rose-600"><i class="fa-solid fa-skull text-rose-500 mr-1"></i> AI 的感受：</span>
+                        <span class="text-xs text-rose-800">所有信息揉在一起，规则和数据混淆，极容易漏掉“不要修改源文件”这个关键约束！</span>
+                    </div>
+                </div>
+
+                <!-- Right: The Solution (XML Tags & Markdown) -->
+                <div class="tag-card bg-purple-50 border-2 border-purple-300 rounded-2xl p-6 relative overflow-hidden flex flex-col soft-shadow">
+                    <div class="absolute top-0 right-0 bg-purple-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase tracking-wider">The Pro Way</div>
+                    <h3 class="flex items-center gap-2 text-lg font-bold text-purple-900 mb-4 pb-3 border-b border-purple-200">
+                        <i class="fa-solid fa-box-archive text-purple-500"></i>
+                        高效沟通：装进标签集装箱
+                    </h3>
+                    
+                    <div class="space-y-4 flex-1">
+                        <!-- Concept 1: Markdown -->
+                        <div>
+                            <div class="text-xs font-bold text-purple-700 mb-2">1. 善用分行与破折号 (Markdown)</div>
+                            <div class="bg-white rounded-lg p-3 text-xs font-mono text-slate-600 border border-purple-100 shadow-sm">
+                                任务拆解：<br>
+                                <span class="text-purple-600">-</span> 步骤一：读取数据<br>
+                                <span class="text-purple-600">-</span> 步骤二：剔除空白行<br>
+                                <span class="text-purple-600">-</span> 步骤三：按部门保存
+                            </div>
+                        </div>
+
+                        <!-- Concept 2: XML Tags -->
+                        <div>
+                            <div class="text-xs font-bold text-rose-600 mb-2">2. 将核心规则用 XML 标签锁死 (重点!)</div>
+                            <p class="text-[10px] text-slate-500 mb-2">别被名字吓到，XML 标签就是一对带尖括号的词。像汉堡的面包把肉夹在中间：</p>
+                            <div class="bg-slate-900 rounded-lg p-3 text-xs font-mono text-slate-300 shadow-sm border border-slate-700">
+                                <span class="text-blue-400 font-bold">&lt;约束规则&gt;</span><br>
+                                <span class="text-rose-400 pl-4">1. 绝对不要修改原表格，必须只读！</span><br>
+                                <span class="text-rose-400 pl-4">2. 输出文件必须保存在 output 目录。</span><br>
+                                <span class="text-blue-400 font-bold">&lt;/约束规则&gt;</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-slate-800 rounded-2xl p-1 shadow-xl overflow-hidden max-w-4xl mx-auto border border-slate-700">
+                <div class="bg-slate-900 rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-4 border-b border-slate-700 pb-3">
+                        <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                            <i class="fa-solid fa-check-double"></i>
+                        </div>
+                        <span class="text-sm font-bold text-emerald-400">最终合体版：让 AI 绝对不会跑偏的“指令图纸”</span>
+                    </div>
+                    
+                    <div class="font-mono text-sm leading-relaxed text-slate-300">
+                        <div class="text-slate-400 mb-2">你是资深财务数据分析师。背景是我们每月需要按部门拆分出差费用表。</div>
+                        
+                        <div class="text-emerald-400 font-bold">&lt;任务描述&gt;</div>
+                        <div class="pl-4">请写一个 Python 脚本，读取源文件，按“部门”列进行拆分。</div>
+                        <div class="text-emerald-400 font-bold">&lt;/任务描述&gt;</div>
+                        <br>
+                        <div class="text-rose-400 font-bold">&lt;核心约束&gt;</div>
+                        <div class="pl-4">- 必须使用 pandas 库。</div>
+                        <div class="pl-4 font-bold text-white">- 绝对禁止写入和覆盖源文件！</div>
+                        <div class="pl-4">- 拆分后的文件命名规则：部门_日期.xlsx。</div>
+                        <div class="pl-4">- 剔除“金额”列为空的行。</div>
+                        <div class="text-rose-400 font-bold">&lt;/核心约束&gt;</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Slide <span class="text-purple-600 font-bold">10</span> / 16
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 10 of 16 is 62.5% -->
+                <div class="bg-purple-500 h-full w-[62.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页：PACT 指令模型" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-terminal mr-1 text-purple-500"></i>模块三：指令工程
+            </span>
+            <a href="11.html" title="下一页：结构化模板展示" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 术语脱敏：</span>
+                    “在职人员听到 'XML' 和 'Markdown' 可能会本能抗拒。讲课时，直接告诉他们：‘Markdown 就是写破折号来分点，XML 就是给字套上尖括号’。用‘集装箱’或‘汉堡包’的隐喻，让他们知道这只是排版工具，完全不需要背诵任何代码。”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 强调注意力的聚焦：</span>
+                    “引导大家看底部的合体版示例。告诉学员：‘当大模型读到 `<核心约束>` 这几个字时，它的注意力会瞬间被拉满。这就相当于在合同里写上了加粗标红的违约条款，确保 AI 绝对不会擅自修改你的原文件。’”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 承上启下：</span>
+                    “讲完这一页，顺势说：‘好，现在大家懂了四个要素，也懂了排版。为了方便大家直接上手干活，下一页，我为大家准备了一套可以直接复制粘贴的《办公自动化通用需求模板》！’”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation strictly using numerical filenames
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

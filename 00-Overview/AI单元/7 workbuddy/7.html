@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 7 - 接入大模型后端：如何将 WorkBuddy 与本地 Ollama 或云端 API 完美打通</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .backend-card { transition: all 0.3s ease; }
+        .backend-card:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 实战演练与环境配置 —— 接入大模型后端
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-brain text-purple-600"></i>
+                    <span>LLM Backend Integration · 大模型后端对接配置</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    接入大模型后端：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">打通本地 Ollama (DeepSeek) 与云端 API</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    为 WorkBuddy 提供强劲的推理算力支持。支持本地运行开源大模型（保护绝对隐私），也可无缝挂载主流云端大模型 API。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Option 1: Local Ollama -->
+                <div class="backend-card bg-white border-2 border-purple-300 rounded-2xl p-6 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center text-lg font-bold mb-4">
+                            <i class="fa-solid fa-server"></i>
+                        </div>
+                        <h3 class="font-extrabold text-slate-900 text-base mb-2">方案一：本地 Ollama (DeepSeek-R1) ⭐</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed mb-4">
+                            完全运行在本地硬件中，代码与数据零外传，特别适合涉密企业或对隐私要求极高的研发场景。
+                        </p>
+                        <div class="bg-slate-900 text-purple-300 p-3 rounded-lg font-mono text-[11px] mb-3 border border-slate-800 flex items-center justify-between">
+                            <span>ollama run deepseek-r1:8b</span>
+                            <button onclick="copyCommand('ollama run deepseek-r1:8b')" class="copy-btn bg-purple-600 hover:bg-purple-500 text-white text-[10px] px-2 py-1 rounded font-bold">复制</button>
+                        </div>
+                    </div>
+                    <div class="border-t border-slate-100 pt-3 text-[11px] font-bold text-purple-800 flex items-center gap-1.5">
+                        <i class="fa-solid fa-shield-halved text-purple-600"></i>
+                        <span>零云端成本 · 绝对隐私安全</span>
+                    </div>
+                </div>
+
+                <!-- Option 2: Cloud API -->
+                <div class="backend-card bg-white border border-slate-200 rounded-2xl p-6 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg font-bold mb-4">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <h3 class="font-extrabold text-slate-900 text-base mb-2">方案二：云端大模型 API 接入</h3>
+                        <p class="text-xs text-slate-600 leading-relaxed mb-4">
+                            通过环境变量或配置文件挂载企业级云端 API Key（如 OpenAI、Anthropic 或国内主流商业大模型）。
+                        </p>
+                        <div class="bg-slate-100 p-3 rounded-lg font-mono text-[11px] text-slate-700 mb-3 border border-slate-200">
+                            WORKBUDDY_API_KEY=sk-xxxxxx<br>
+                            WORKBUDDY_BASE_URL=https://api.model.com
+                        </div>
+                    </div>
+                    <div class="border-t border-slate-100 pt-3 text-[11px] font-bold text-indigo-700 flex items-center gap-1.5">
+                        <i class="fa-solid fa-bolt text-indigo-600"></i>
+                        <span>极致推理速度 · 适合大规模复杂重构</span>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Slide <span class="text-purple-600 font-bold">07</span> / 18
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[38%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-purple-500"></i>模块二：实战演练与环境配置
+            </span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 第七页讲解要点：</span>
+                    “各位同学，大模型的算力后端怎么连？WorkBuddy 非常灵活：你可以选择本地跑 Ollama 配合 DeepSeek 模型，所有代码和敏感数据留在本地绝对安全；如果你需要更强大的云端算力，也可以直接配置环境变量接入云端大模型 API！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>命令已成功复制到剪贴板！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+        function copyCommand(text) {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast();
+            } catch (err) { console.error(err); }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '8.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '6.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

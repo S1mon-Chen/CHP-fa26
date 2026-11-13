@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 实战演练：异构账单接入层与统一清洗引擎实操</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .step-box { transition: all 0.3s ease; }
+        .step-box:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 端到端实战 —— 异构账单接入层与统一清洗引擎实操
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadSampleBankCsv()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-csv text-emerald-600"></i>
+                <span>下载样例银行账单 (.csv)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
+                <span>Capstone 01 · 异构账单接入层与统一清洗标准</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                实战第一步：多源异构账单接入与 Python 统一清洗引擎实操
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                企业财务对账最大的痛点在于源数据格式繁杂：银行流水是 CSV 逗号分隔，第三方支付是嵌套 JSON，ERP 采购订单则是 XML。点击右上角即可下载我们的<strong class="text-emerald-700">样例银行流水 CSV 文件</strong>进行沙箱接入测试！
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-emerald-400 font-bold">
+                        <span><i class="fa-solid fa-terminal mr-2"></i>Vibe Coding 实践执行四步法</span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">WORKFLOW</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300">
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">1. 在 WorkBuddy 聊天框发送提示词：</span>
+                            <div class="text-[10px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-700 mt-1 flex items-center justify-between gap-2">
+                                <span id="promptText">"请编写一个异构账单清洗脚本 ingestion.py，能够自动解析银行 CSV、支付 JSON 和 ERP 订单，将其标准化为包含 [tx_id, amount, timestamp, source] 的统一规范格式。"</span>
+                                <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold shrink-0">
+                                    <i class="fa-solid fa-copy mr-1"></i> 复制提示词
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">2. AI 自动生成清洗源码：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                WorkBuddy 在后台自动新建 <code class="text-emerald-300">ingestion.py</code>，内置多格式解析器与字段对齐映射。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">3. 自动调起沙箱终端 (Sandbox)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                AI 自动在沙箱中执行运行命令：<code class="text-emerald-300">python ingestion.py --input sample_bills/</code>，验证多源输入。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">4. 检验标准化效果 (Verification)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                终端输出统一格式的对账中间表日志，验证异构数据抹平成功！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-wand-magic-sparkles text-emerald-400 mr-1"></i> 统一接入：消除数据孤岛，奠定精准对账基石！</span>
+                    <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold">一键复制完整提示词</button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span><i class="fa-solid fa-play text-emerald-600 mr-2"></i>模拟沙箱异构清洗实时验证 (Live Ingestion Demo)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">ONLINE</span>
+                    </div>
+
+                    <!-- Sandbox Input & Trigger -->
+                    <div class="space-y-2 mb-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">选择待接入的异构账单源：</label>
+                        <div class="flex gap-2">
+                            <select id="billSourceSelect" class="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500">
+                                <option value="bank_csv">银行流水 CSV (字段名: transaction_id, sum, date)</option>
+                                <option value="payment_json">第三方支付 JSON (字段名: id, value, timestamp)</option>
+                                <option value="erp_xml">ERP 采购订单 XML (字段名: orderId, total, created_at)</option>
+                            </select>
+                            <button onclick="runIngestionSandbox()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-bold transition flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-rotate text-[10px]"></i> 执行清洗
+                            </button>
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button onclick="setSource('bank_csv')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-emerald-700 px-2 py-0.5 rounded border border-slate-200">银行 CSV 账单</button>
+                            <button onclick="setSource('payment_json')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-teal-700 px-2 py-0.5 rounded border border-slate-200">支付 JSON 账单</button>
+                            <button onclick="setSource('erp_xml')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-cyan-700 px-2 py-0.5 rounded border border-slate-200">ERP 订单 XML</button>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Output Console -->
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <div class="text-slate-400 text-[10px] font-mono"># 终端沙箱 Ingestion 统一清洗输出：</div>
+                        <div id="routerOutput" class="text-emerald-300 font-mono text-[11px] bg-slate-950 p-2.5 rounded border border-slate-800 min-h-[60px] flex items-center">
+                            [Ingestion Engine] 检测到输入源: 银行 CSV。<br>🔄 正在映射字段: transaction_id → tx_id, sum → amount...<br>✨ [Success]: 成功标准化 1,420 条记录，已安全写入中间对账缓冲区。
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i> 标准化输出：为后续确定性对账内核提供纯净数据。</span>
+                    <button onclick="downloadSampleBankCsv()" class="copy-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2.5 py-1 rounded font-bold">下载样例账单</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 8 - Slide <span class="text-emerald-600 font-bold">13</span> / 20
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[65%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-emerald-500"></i>第八单元：端到端业务系统实战
+            </span>
+            <a href="14.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 第十三页实战要点讲解：</span>
+                    “各位同学，在构建智能财务对账系统时，第一步必须解决数据格式不统一的问题！点击右上角即可下载我们的样例银行流水 CSV 文件 `sample_bank_statement.csv`。无论是银行 CSV、支付 JSON 还是 ERP 订单，都能通过统一清洗引擎抹平字段差异！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function setSource(val) {
+            document.getElementById('billSourceSelect').value = val;
+            runIngestionSandbox();
+        }
+        function runIngestionSandbox() {
+            const val = document.getElementById('billSourceSelect').value;
+            const out = document.getElementById('routerOutput');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-2"></i> 正在沙箱中运行异构账单标准化解析...';
+            setTimeout(function() {
+                if (val === 'bank_csv') {
+                    out.innerHTML = '[Ingestion Engine] 检测到输入源: 银行 CSV。<br>🔄 正在映射字段: transaction_id → tx_id, sum → amount...<br>✨ [Success]: 成功标准化 1,420 条银行流水，已写入对账缓冲区。';
+                } else if (val === 'payment_json') {
+                    out.innerHTML = '[Ingestion Engine] 检测到输入源: 第三方支付 JSON。<br>🔄 正在解析嵌套结构: payload.id → tx_id, payload.value → amount...<br>✨ [Success]: 成功标准化 3,890 条支付账单，已写入对账缓冲区。';
+                } else {
+                    out.innerHTML = '[Ingestion Engine] 检测到输入源: ERP 采购订单 XML。<br>🔄 正在提取标签: &lt;orderId&gt; → tx_id, &lt;total&gt; → amount...<br>✨ [Success]: 成功标准化 450 条 ERP 订单，已写入对账缓冲区。';
+                }
+                showToast("异构账单接入清洗沙箱验证成功！");
+            }, 400);
+        }
+        function copyPromptText() {
+            const text = document.getElementById('promptText').innerText.replace(/^"|"$/g, '');
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("异构清洗提示词已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+        function downloadSampleBankCsv() {
+            const csvData = "transaction_id,sum,date,description\nTXN20260601001,1500.00,2026-06-01,Enterprise Cloud Server Service Fee\nTXN20260601002,328.50,2026-06-01,Office Stationery Procurement\nTXN20260601003,12500.00,2026-06-02,Quarterly Software License Renewal\nTXN20260601004,89.00,2026-06-02,Express Courier Shipping Services\n";
+
+            try {
+                const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'sample_bank_statement.csv';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("样例银行账单 sample_bank_statement.csv 下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '14.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '12.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

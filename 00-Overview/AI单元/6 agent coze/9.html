@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 9 - 运行演示与验证：测试工作流闭环与 Trace 日志调试</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-blue-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-bug text-blue-600"></i>
+                <span>Module 2 · 工作流 (Workflow) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                运行演示与验证：<span class="text-indigo-600">一键测试闭环，掌握 Trace 调试日志</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                工作流编排完成后，绝对不能直接发布上线！我们需要在工作台中进行“试运行 (Test Run)”。作为科技管理者，您必须掌握如何查看 <strong>Trace (执行轨迹日志)</strong>，通过逐个节点排查耗时与输入输出，快速定位系统瓶颈或报错根源。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Instructions vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-magnifying-glass-chart text-blue-600"></i>
+                            Coze 调试与日志查看指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">DEBUGGING GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                触发试运行 (Test Run)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                点击 Coze 画布右上角的 <strong>“试运行”</strong> 按钮，输入 Start 节点必填的测试参数（如 <code>keyword: "小米 SU7"</code>），系统将启动整条流水线。
+                            </p>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                展开节点执行详情 (Trace Log)
+                            </h4>
+                            <p class="text-indigo-700/80 leading-relaxed mb-2">
+                                运行完毕后，界面右侧或下方会弹出执行结果。点击任意节点（如 Plugin 或 LLM），可以展开查看该节点的<strong>绝对透明黑盒</strong>：
+                            </p>
+                            <ul class="space-y-1.5 text-[10px] font-mono text-indigo-900 bg-white/60 p-2.5 rounded border border-indigo-100">
+                                <li><i class="fa-solid fa-arrow-right-to-bracket text-slate-400 w-3"></i> <strong>Input</strong>: 上游真实传过来的数据是什么？</li>
+                                <li><i class="fa-solid fa-arrow-right-from-bracket text-slate-400 w-3"></i> <strong>Output</strong>: 本节点处理后吐出的数据是什么？</li>
+                                <li><i class="fa-solid fa-stopwatch text-slate-400 w-3"></i> <strong>Duration</strong>: 这个节点耗费了多少毫秒？</li>
+                            </ul>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-rose-50 border border-rose-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-rose-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-rose-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                节点标红报错定位 (Error Handling)
+                            </h4>
+                            <p class="text-rose-700/80 leading-relaxed">
+                                如果工作流中断，出错的节点会高亮标红。通常的报错原因有：插件网络超时、大模型参数缺失、或 Code 节点代码存在语法错误（SyntaxError）。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-terminal text-sm"></i>
+                            <span class="text-xs">Workflow 运行监控与 Trace 分析台</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">READY</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击下方按钮，观察两种不同运行结果的 Trace 日志表现：</label>
+                        
+                        <div class="grid grid-cols-2 gap-2 font-sans">
+                            <button onclick="simulateTraceRun('success')" class="py-2.5 px-2 rounded-lg border border-emerald-500/50 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-check-circle"></i>
+                                <span>1. 模拟顺畅执行流</span>
+                            </button>
+                            <button onclick="simulateTraceRun('error')" class="py-2.5 px-2 rounded-lg border border-rose-500/50 bg-rose-900/40 hover:bg-rose-800/60 text-rose-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-bug"></i>
+                                <span>2. 模拟节点抛出异常</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">执行链路监控 (Trace Viewer):</span>
+                                <span id="timecode" class="text-[10px] text-slate-500">0.00s</span>
+                            </div>
+                            <div id="executionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[220px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待发起试运行测试...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-blue-600 font-bold">Slide 9 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[45%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="8.html" title="上一页：数据清洗与代码节点" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一模块：<strong class="text-emerald-700">10. Multi-Agent 多智能体实战</strong>
+            </span>
+            <a href="10.html" title="下一页：多智能体实战场景" class="px-3 py-1.5 md:py-2 rounded-lg border border-emerald-100 bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一模块</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是工作流实战的最后一环：<strong>验证与排错 (Observability)</strong>。很多新手遇到报错就慌了，认为是 AI 坏了。其实，在成熟的工作流平台里，一切都是透明的。<br><br>
+                    当你的智能体没有按预期工作时，一定要养成看 Trace 日志的习惯。点开每个节点，看看 Input (它收到了什么) 和 Output (它吐出了什么)。90% 的问题，要么是上游插件没抓到数据，要么是你上一节写的 Code 节点有语法错误。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱互动提示：</span>
+                    “点击右侧第二个按钮‘模拟节点抛出异常’，让学员看看真实的报错长什么样。特别指出：错误截断在 Code 节点，报错提示 KeyError，代表代码中引用了不存在的变量名，直接定位问题并修改。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-indigo-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        let simTimeouts = [];
+
+        function clearSimTimeouts() {
+            simTimeouts.forEach(t => clearTimeout(t));
+            simTimeouts = [];
+            document.getElementById('timecode').innerText = "0.00s";
+        }
+
+        function simulateTraceRun(type) {
+            const out = document.getElementById('executionConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            clearSimTimeouts();
+            out.innerHTML = '';
+
+            if (type === 'success') {
+                badge.innerText = "RUNNING (HEALTHY)";
+                badge.className = "text-[10px] bg-emerald-900/60 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+                // Step 1: Start
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "0.02s";
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 border-l-2 border-slate-600 pl-2 mb-1.5"><span class="text-slate-300 font-bold">[Start 节点]</span> 初始化参数: {"keyword": "小米 SU7"} <span class="text-slate-500 float-right">12ms</span></div>`;
+                }, 200));
+
+                // Step 2: Plugin
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "1.25s";
+                    out.innerHTML += `<div class="log-slide-in text-blue-300 border-l-2 border-blue-500 pl-2 mb-1.5"><span class="text-blue-400 font-bold">[Plugin: 头条搜索]</span> 请求发送... 成功返回 5 条聚合新闻数据。 <span class="text-slate-500 float-right">1204ms</span></div>`;
+                }, 1000));
+
+                // Step 3: LLM
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "3.80s";
+                    out.innerHTML += `<div class="log-slide-in text-indigo-300 border-l-2 border-indigo-500 pl-2 mb-1.5"><span class="text-indigo-400 font-bold">[LLM: 大模型提炼]</span> Context 构建完成，流式输出生成 3 条精简结论。 <span class="text-slate-500 float-right">2540ms</span></div>`;
+                }, 2500));
+
+                // Step 4: Code
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "3.82s";
+                    out.innerHTML += `<div class="log-slide-in text-emerald-300 border-l-2 border-emerald-500 pl-2 mb-1.5"><span class="text-emerald-400 font-bold">[Code: Python 脚本]</span> 格式清洗与 Markdown 表格拼接成功。 <span class="text-slate-500 float-right">23ms</span></div>`;
+                }, 3200));
+
+                // Finish
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-400 font-bold mt-2 pt-2 border-t border-slate-800">✅ 试运行成功！全链路共耗时: 3.84 秒。格式校验完美通过。</div>`;
+                    badge.innerText = "SUCCESS";
+                    showToast("工作流顺畅执行完毕！");
+                }, 3500));
+
+            } else if (type === 'error') {
+                badge.innerText = "RUNNING (TESTING)";
+                badge.className = "text-[10px] bg-amber-900/60 text-amber-300 border border-amber-600 px-2 py-0.5 rounded";
+
+                // Step 1 & 2 & 3 Success
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "3.40s";
+                    out.innerHTML += `<div class="text-slate-400 border-l-2 border-slate-600 pl-2 mb-1.5"><span class="text-slate-300 font-bold">[Start 节点]</span> OK</div>`;
+                    out.innerHTML += `<div class="text-blue-300 border-l-2 border-blue-500 pl-2 mb-1.5"><span class="text-blue-400 font-bold">[Plugin 节点]</span> OK (1100ms)</div>`;
+                    out.innerHTML += `<div class="text-indigo-300 border-l-2 border-indigo-500 pl-2 mb-1.5"><span class="text-indigo-400 font-bold">[LLM 节点]</span> OK (2300ms)</div>`;
+                }, 500));
+
+                // Step 4: Code Crash
+                simTimeouts.push(setTimeout(() => {
+                    document.getElementById('timecode').innerText = "3.45s";
+                    out.innerHTML += `
+<div class="log-slide-in bg-rose-950/50 p-2 rounded border border-rose-900 mt-2">
+    <div class="text-rose-400 font-bold mb-1"><i class="fa-solid fa-bug"></i> [Code 节点] 执行异常挂起！</div>
+    <div class="text-slate-400 text-[10px] font-mono leading-tight">
+        Traceback (most recent call last):<br>
+        &nbsp;&nbsp;File "main.py", line 4, in main<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;clean_line = args.input['<span class="text-rose-300 underline">llm_content</span>']<br>
+        <span class="text-rose-400 font-bold">KeyError: 'llm_content'</span>
+    </div>
+</div>`;
+                }, 1500));
+
+                // Finish Error
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-rose-400 font-bold mt-2 pt-2 border-t border-slate-800">❌ 试运行失败！原因：Code 节点接收的参数名与上游不一致 (找不到 llm_content)。请点击该节点修正。</div>`;
+                    badge.innerText = "TRACE ERROR";
+                    badge.className = "text-[10px] bg-rose-900/60 text-rose-300 border border-rose-600 px-2 py-0.5 rounded";
+                    showToast("模拟错误链路已生成，便于学习排错。");
+                }, 2200));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '10.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '8.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

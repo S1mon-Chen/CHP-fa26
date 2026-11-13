@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 8 - 寻找新插头：FileSystem MCP</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        .feature-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-top: 4px solid transparent;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px -5px rgba(168, 85, 247, 0.15);
+            border-top-color: #a855f7;
+        }
+
+        .plug-glow {
+            animation: plugPulse 2.5s infinite alternate;
+        }
+        @keyframes plugPulse {
+            0% { filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.4)); }
+            100% { filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.8)); }
+        }
+
+        .line-flow {
+            stroke-dasharray: 10;
+            animation: dash 20s linear infinite;
+        }
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -1000;
+            }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 弹药准备与“外挂存储”接入
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-10 w-[400px] h-[400px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-10 w-[400px] h-[400px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-12">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-plug text-purple-600"></i>
+                    <span>The Missing Piece · 核心插头</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    寻找新插头：赋予 AI <span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">“翻箱倒柜”</span> 的超能力
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    既然不能把所有文件一次性塞进聊天框，那就给 AI 装上官方的<strong class="text-purple-600 mx-1">FileSystem MCP</strong>，让它自己去你指定的本地文件夹里查资料。
+                </p>
+            </div>
+
+            <!-- Visual Metaphor Section -->
+            <div class="flex flex-col md:flex-row items-center justify-center gap-8 mb-12 max-w-4xl mx-auto">
+                
+                <!-- AI Brain -->
+                <div class="w-32 h-32 rounded-3xl bg-slate-900 border-4 border-slate-700 flex flex-col items-center justify-center text-white relative z-10 shadow-2xl">
+                    <i class="fa-solid fa-brain text-4xl text-purple-400 mb-2"></i>
+                    <span class="text-xs font-bold font-mono">大模型</span>
+                </div>
+
+                <!-- The Connection Bridge -->
+                <div class="hidden md:flex flex-1 items-center justify-center relative h-32">
+                    <svg class="absolute w-full h-12" preserveAspectRatio="none">
+                        <path d="M0,24 C50,24 50,24 100%,24" fill="none" stroke="#d8b4fe" stroke-width="3" class="line-flow" />
+                    </svg>
+                    <div class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm z-10 shadow-lg border border-purple-400 plug-glow flex items-center gap-2">
+                        <i class="fa-solid fa-plug-circle-check"></i>
+                        FileSystem MCP
+                    </div>
+                </div>
+                
+                <!-- Mobile Connector -->
+                <div class="md:hidden flex flex-col items-center justify-center">
+                    <div class="w-1 h-8 bg-purple-300"></div>
+                    <div class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold text-sm z-10 shadow-lg border border-purple-400 plug-glow">
+                        FileSystem MCP
+                    </div>
+                    <div class="w-1 h-8 bg-purple-300"></div>
+                </div>
+
+                <!-- Local Folder -->
+                <div class="w-32 h-32 rounded-3xl bg-amber-100 border-4 border-amber-300 flex flex-col items-center justify-center text-amber-800 relative z-10 shadow-xl">
+                    <i class="fa-solid fa-folder-open text-4xl text-amber-500 mb-2"></i>
+                    <span class="text-xs font-bold font-mono text-center leading-tight">Company_Docs<br>(本地文件夹)</span>
+                </div>
+
+            </div>
+
+            <!-- The 3 Core Tools -->
+            <h3 class="text-center font-bold text-slate-700 mb-6 text-lg">装上这个插头后，AI 将获得三个核心工具：</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                
+                <!-- Tool 1 -->
+                <div class="feature-card bg-white border border-slate-200 rounded-xl p-6 soft-shadow flex flex-col h-full">
+                    <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl mb-4">
+                        <i class="fa-solid fa-list-ul"></i>
+                    </div>
+                    <div class="font-mono text-sm font-bold text-slate-800 mb-1">list_directory</div>
+                    <h4 class="text-sm font-bold text-blue-700 mb-2">“查看目录”</h4>
+                    <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded flex-1 border border-slate-100">
+                        AI 相当于打开了抽屉。它可以看一眼指定文件夹里目前有哪些文件，判断自己该去读哪一个。
+                    </p>
+                </div>
+
+                <!-- Tool 2 -->
+                <div class="feature-card bg-white border border-slate-200 rounded-xl p-6 soft-shadow flex flex-col h-full">
+                    <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl mb-4">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                    <div class="font-mono text-sm font-bold text-slate-800 mb-1">search_files</div>
+                    <h4 class="text-sm font-bold text-emerald-700 mb-2">“搜索文件”</h4>
+                    <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded flex-1 border border-slate-100">
+                        如果文件夹里有上百个文档，AI 不需要一个个肉眼看，它可以利用关键词，瞬间定位到需要的文件。
+                    </p>
+                </div>
+
+                <!-- Tool 3 -->
+                <div class="feature-card bg-white border border-slate-200 rounded-xl p-6 soft-shadow flex flex-col h-full">
+                    <div class="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center text-xl mb-4">
+                        <i class="fa-solid fa-book-open-reader"></i>
+                    </div>
+                    <div class="font-mono text-sm font-bold text-slate-800 mb-1">read_file</div>
+                    <h4 class="text-sm font-bold text-purple-700 mb-2">“读取内容”</h4>
+                    <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded flex-1 border border-slate-100">
+                        AI 的“火眼金睛”。找到目标文件后，直接读取里面的文字内容（支持 TXT, Markdown 等纯文本格式）。
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 3 - Slide <span class="text-purple-600 font-bold">08</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[36.3%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页：下载企业知识库" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-briefcase mr-1 text-purple-500"></i>模块二：弹药准备
+            </span>
+            <a href="9.html" title="下一页：接入本地文件夹" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🔗 概念衔接：</span>
+                    “刚刚我们下载并解压了测试文件，现在，这堆文件静静地躺在你的电脑硬盘里，但 Trae 里的 AI 是个‘瞎子’，它看不见。怎么让它看见？答案就是中间这根发光的线：FileSystem MCP。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🛠️ 拆解插件功能：</span>
+                    “有些同学可能会问，直接把文件发给它不就行了吗？为什么要用这个插件？请看下方的三个卡片。装了这个插件，AI 不仅仅是‘阅读’某一个文件，它相当于长出了手脚，可以去文件柜里【查看目录】、【搜索特定文件】、然后再【提取内容】。它是活的！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “既然这个工具这么强大，那我们怎么把它装到软件里呢？还记得上一单元的填空题吗？下一页，我们直接复制配置代码，把它点亮！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

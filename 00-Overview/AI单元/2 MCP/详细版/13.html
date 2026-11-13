@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 实战一：发号施令与见证奇迹</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        /* Chat bubble animations */
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.5s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.5s; }
+        .delay-2 { animation-delay: 1.5s; }
+        .delay-3 { animation-delay: 3.0s; }
+        .delay-4 { animation-delay: 4.5s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .tool-call-glow {
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2); }
+            50% { border-color: rgba(59, 130, 246, 0.8); box-shadow: 0 0 10px 2px rgba(59, 130, 246, 0.4); }
+            100% { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2); }
+        }
+
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战演练一 —— 无代码对话本地数据库
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-blue-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-paper-plane text-blue-600"></i>
+                    <span>Execution · 发号施令</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    见证奇迹：用大白话 <span class="text-blue-600 border-b-4 border-blue-300 mx-1 pb-1">“查水表”</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    现在，你不再是一个需要苦学 SQL 的新手，而是一位指挥官。<br>复制下面的指令发给 AI，看它是如何调用你刚刚配置的插头来干活的。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Prompt Block -->
+                <div class="lg:col-span-5 flex flex-col">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-2xl h-full relative">
+                        <!-- Header -->
+                        <div class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-terminal text-blue-400"></i>
+                                <span class="text-xs text-slate-300 font-bold">你的“业务需求书”</span>
+                            </div>
+                            <button onclick="copyPrompt()" class="copy-btn bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-regular fa-copy"></i> 一键复制
+                            </button>
+                        </div>
+                        
+                        <!-- Prompt Content -->
+                        <div class="p-5 font-mono text-xs leading-relaxed text-slate-300 overflow-y-auto flex-1">
+                            <div class="text-slate-400 mb-2"># 请将以下内容复制并发送给 Trae：</div>
+                            <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-blue-100">
+                                请调用本地数据库工具，帮我查询刚才老板要的两个指标：<br><br>
+                                1. <span class="text-rose-400 font-bold">退款金额最高</span>的前 3 个产品是什么？<br>
+                                2. 这些退款订单主要集中在哪个<span class="text-indigo-400 font-bold">地区</span>？<br><br>
+                                要求：<br>
+                                - 数据库表名为 orders，状态列为 status，金额列为 price，地区列为 region。<br>
+                                - 请直接用大白话输出最终业务结论。
+                            </div>
+                        </div>
+                        
+                        <div class="bg-blue-950/50 p-3 border-t border-blue-900/50 flex items-start gap-2">
+                            <i class="fa-solid fa-circle-info text-blue-400 mt-0.5 text-xs"></i>
+                            <p class="text-[10px] text-blue-200 leading-relaxed">
+                                注意：AI 不是神，它不知道你数据库里每一列叫什么名字。所以在 Prompt 里顺手告诉它字段名（status, price等），能极大提高成功率。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Chat Mockup Simulation -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full">
+                        <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+                            <i class="fa-solid fa-messages text-slate-400"></i>
+                            <span class="text-sm font-bold text-slate-700">Trae 对话实况预演</span>
+                        </div>
+                        
+                        <div class="p-5 flex flex-col gap-4 flex-1 overflow-y-auto">
+                            <!-- User Message -->
+                            <div class="flex items-start gap-3 justify-end chat-bubble delay-1">
+                                <div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[85%]">
+                                    请调用本地数据库工具，帮我查询刚才老板要的两个指标：1. 退款金额最高...
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-user"></i>
+                                </div>
+                            </div>
+
+                            <!-- AI Tool Calling State -->
+                            <div class="flex items-start gap-3 chat-bubble delay-2">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 border border-blue-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-blue-300 tool-call-glow p-3 rounded-xl shadow-sm text-slate-700 w-64">
+                                    <div class="flex items-center gap-2 text-xs font-bold text-blue-700 mb-2">
+                                        <i class="fa-solid fa-cog fa-spin"></i>
+                                        <span>调用工具: read_query</span>
+                                    </div>
+                                    <div class="bg-slate-900 p-2 rounded text-[10px] font-mono text-emerald-400">
+                                        SELECT product_name, SUM(price) <br>
+                                        FROM orders <br>
+                                        WHERE status='refunded'<br>
+                                        ...
+                                    </div>
+                                    <div class="text-[9px] text-slate-400 mt-2 text-right">等待用户允许 (Allow)...</div>
+                                </div>
+                            </div>
+
+                            <!-- AI Thinking -->
+                            <div class="flex items-start gap-3 chat-bubble delay-3">
+                                <div class="w-8 h-8 rounded-full bg-transparent shrink-0 mt-1"></div>
+                                <div class="bg-slate-200/50 px-4 py-2 rounded-full text-xs text-slate-500 font-mono italic">
+                                    分析返回的数据...
+                                </div>
+                            </div>
+
+                            <!-- AI Final Response -->
+                            <div class="flex items-start gap-3 chat-bubble delay-4">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 border border-blue-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700 max-w-[90%] leading-relaxed border-l-4 border-l-blue-500">
+                                    我已经为您查询了数据库，得出的业务结论如下：<br><br>
+                                    1. <strong>退款金额最高的前3个产品：</strong><br>
+                                    <span class="text-rose-600 font-bold">① Standing Desk (站立办公桌)</span> - 3198元<br>
+                                    <span class="text-rose-600 font-bold">② Mechanical Keyboard (机械键盘)</span> - 1377元<br>
+                                    <span class="text-rose-600 font-bold">③ Ergonomic Office Chair (人体工学椅)</span> - 899元<br><br>
+                                    2. <strong>退款重灾区：</strong><br>
+                                    根据数据，退款订单极其集中在 <span class="text-indigo-600 font-bold">【华东区】</span>。建议通知华东区负责该类家具硬件的售后团队进行重点排查。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-blue-600 font-bold">13</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 13 of 22 is ~59% -->
+                <div class="bg-blue-500 h-full w-[59%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="12.html" title="上一页：配置 SQLite MCP" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-database mr-1 text-blue-500"></i>模块三：实战演练一
+            </span>
+            <a href="14.html" title="下一页：魔法揭秘与避坑" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 引导现场震撼体验：</span>
+                    “各位同学，见证奇迹的时刻到了！请大家点击幻灯片左侧的‘一键复制’，把这段大白话需求发送到 Trae 的聊天框里。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">👁️ 重点提示观察细节：</span>
+                    “当你发出去之后，千万别眨眼！注意看右侧的模拟动画——AI 会突然弹出一个请求：‘我要调用 read_query 工具’，这就是它在通过 MCP 连你的数据库！它甚至会向你展示它自己偷偷写的 SQL 语句。点一下 Allow（允许），它就会瞬间把冰冷的数据翻译成漂亮的结论端给你！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “大家刚才一句代码都没写，就完成了高级数据分析师的工作！这种感觉爽不爽？下一页，我们将揭秘这个魔法的后台逻辑，并教大家如何防范 AI 瞎查数据！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>指令已复制，请前往 Trae 粘贴运行！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyPrompt() {
+            const promptText = `请调用本地数据库工具，帮我查询刚才老板要的两个指标：
+
+1. 退款金额最高的前 3 个产品是什么？
+2. 这些退款订单主要集中在哪个地区？
+
+要求：
+- 数据库表名为 orders，状态列为 status，金额列为 price，地区列为 region。
+- 请直接用大白话输出最终业务结论。`;
+            
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

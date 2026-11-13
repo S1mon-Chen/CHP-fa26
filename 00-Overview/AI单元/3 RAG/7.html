@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 7 - 弹药准备：下载“企业知识库”</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 JSZip 用于在浏览器端直接生成真实的 ZIP 压缩包 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        .zip-pulse {
+            animation: zipPulse 2.5s infinite;
+        }
+        @keyframes zipPulse {
+            0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(168, 85, 247, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
+        }
+
+        /* Folder Tree Styling */
+        .tree-line {
+            position: relative;
+        }
+        .tree-line::before {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 24px;
+            bottom: -8px;
+            width: 2px;
+            background-color: #e2e8f0; /* slate-200 */
+        }
+        .tree-item {
+            position: relative;
+            padding-left: 36px;
+            margin-bottom: 12px;
+        }
+        .tree-item::before {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 12px;
+            width: 16px;
+            height: 2px;
+            background-color: #e2e8f0;
+        }
+        .tree-item:last-child::after {
+            content: '';
+            position: absolute;
+            left: 9px;
+            top: 14px;
+            bottom: -12px;
+            width: 6px;
+            background-color: white; /* Hide the vertical line overflow */
+        }
+
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 弹药准备与“外挂存储”接入
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-fuchsia-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-box-open text-purple-600"></i>
+                    <span>Ammo Prep · 弹药准备</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    下载你的专属 <span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">“企业知识库”</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    我们要让 AI 挑战跨越不同格式的文档进行复杂推理。<br>请下载这些包含防水参数和退换货红线的测试文件。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: File Structure Preview -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 soft-shadow flex flex-col h-full">
+                    <div class="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                        <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xl shrink-0">
+                            <i class="fa-solid fa-magnifying-glass-chart"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-base">知识库内容预览</h3>
+                            <div class="text-[10px] text-slate-500 font-mono mt-0.5">3 files • Unstructured Data</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-5 font-mono text-sm relative overflow-hidden">
+                        
+                        <!-- Root Folder -->
+                        <div class="flex items-center gap-2 font-bold text-slate-700 mb-4 tree-line">
+                            <i class="fa-solid fa-folder-open text-amber-400 text-lg"></i>
+                            <span>Company_Docs</span>
+                        </div>
+                        
+                        <!-- Files -->
+                        <div class="tree-item flex items-center gap-2 group">
+                            <i class="fa-brands fa-markdown text-blue-500 text-lg group-hover:scale-110 transition-transform"></i>
+                            <span class="text-slate-600 group-hover:text-blue-600 transition-colors">超级充电宝V3说明书.md</span>
+                        </div>
+                        
+                        <div class="tree-item flex items-center gap-2 group">
+                            <i class="fa-regular fa-file-lines text-slate-500 text-lg group-hover:scale-110 transition-transform"></i>
+                            <span class="text-slate-600 group-hover:text-slate-800 transition-colors">2024售后退换货政策.txt</span>
+                        </div>
+                        
+                        <div class="tree-item flex items-center gap-2 group">
+                            <i class="fa-solid fa-file-csv text-emerald-500 text-lg group-hover:scale-110 transition-transform"></i>
+                            <span class="text-slate-600 group-hover:text-emerald-600 transition-colors">竞品对比参数表.csv</span>
+                        </div>
+
+                        <!-- Highlight badge -->
+                        <div class="absolute right-4 bottom-4 bg-purple-100 border border-purple-200 text-purple-700 text-[10px] px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>内含故意设置的“冲突规则”</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Download Action Area -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative text-white">
+                    <div class="absolute top-0 right-0 w-48 h-48 bg-purple-500/20 rounded-bl-full blur-3xl pointer-events-none"></div>
+                    
+                    <div class="p-8 flex flex-col flex-1 justify-center items-center text-center relative z-10">
+                        
+                        <div class="w-28 h-28 rounded-3xl bg-purple-500/20 border-2 border-purple-400/50 flex flex-col items-center justify-center mb-8 zip-pulse">
+                            <i class="fa-regular fa-file-zipper text-5xl text-purple-400 mb-2"></i>
+                            <span class="text-[10px] font-mono text-purple-300 bg-purple-900/50 px-2 py-0.5 rounded">.ZIP</span>
+                        </div>
+                        
+                        <p class="text-sm text-slate-300 mb-8 max-w-sm leading-relaxed">
+                            点击下方按钮，将生成一份包含上述 3 份真实文件的压缩包。<br>
+                            <span class="text-purple-300 font-bold mt-2 block">💡 这就是你即将喂给 AI 的“私有大脑”。</span>
+                        </p>
+                        
+                        <button id="downloadZipBtn" onclick="generateAndDownloadZip()" class="bg-purple-600 hover:bg-purple-500 text-white text-base font-bold py-3.5 px-8 rounded-xl shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all flex items-center gap-3 transform hover:scale-105 active:scale-95 mb-6">
+                            <i class="fa-solid fa-cloud-arrow-down text-xl"></i>
+                            <span>下载 Company_Docs.zip</span>
+                        </button>
+
+                        <div class="bg-slate-800/80 border border-slate-700 p-3 rounded-lg flex items-start gap-3 text-left w-full max-w-sm">
+                            <div class="text-amber-400 mt-0.5"><i class="fa-solid fa-circle-exclamation"></i></div>
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-200 mb-1">下载后的重要操作：</h4>
+                                <p class="text-[10px] text-slate-400 leading-relaxed">
+                                    请务必将下载好的 `.zip` 文件<strong>解压</strong>到你的 Downloads 或 Documents 文件夹中。下一页配置时，我们需要用到这个解压后文件夹的路径！
+                                </p>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 3 - Slide <span class="text-purple-600 font-bold">07</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[31.8%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页：场景设定" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-briefcase mr-1 text-purple-500"></i>模块二：弹药准备
+            </span>
+            <a href="8.html" title="下一页：寻找新插头" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 引导实操：</span>
+                    “好的，既然老板发话了，我们就来接收文件。请大家点击右边的紫色按钮，浏览器会当场给你生成一个真实的压缩包。”
+                </div>
+                <div class="p-3 rounded-lg bg-fuchsia-50 border border-fuchsia-200">
+                    <span class="font-bold text-fuchsia-900 block mb-1">📂 强调解压动作：</span>
+                    “下载完之后，非常重要的一步：**一定要把它解压！** 我们一会儿配置的 MCP 是读取文件夹的，不是读压缩包的。解压后，你会看到里面有 Markdown、TXT 和 CSV 三个不同格式的文件。这就是我们一会儿要用来测试 AI 智商的弹药。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “弹药有了，文件也解压了。接下来，怎么把这个本地的文件夹‘喂’给 Trae 里的 AI 呢？下一页，我们将介绍今天的主角：FileSystem MCP！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>知识库压缩包已下载，请记得解压！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 4000);
+        }
+
+        // Generate and Download ZIP using JSZip
+        async function generateAndDownloadZip() {
+            const btn = document.getElementById('downloadZipBtn');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xl"></i><span>正在打包知识库...</span>';
+                btn.classList.add('opacity-80', 'cursor-not-allowed');
+                
+                const zip = new JSZip();
+                
+                // Create a folder inside the zip
+                const folder = zip.folder("Company_Docs");
+                
+                // Add File 1: Markdown
+                const mdContent = `# 超级充电宝 V3 产品说明书
+
+## 1. 产品概述
+超级充电宝 V3 是我司2024年推出的旗舰级移动电源，专为户外极客与商务差旅人士设计。
+
+## 2. 基本参数
+- 产品型号：V3-Pro-Max
+- 电池容量：20000mAh (符合民航携带标准)
+- 接口类型：2C1A (双 Type-C, 单 USB-A)
+- 最高输出功率：单口最高 120W 快充
+- 净重：350g
+
+## 3. 防护与环境参数
+- 工作温度：-10℃ 至 45℃
+- **防水等级：IP68** (支持水下 2 米深度持续浸泡 30 分钟不进水)
+- 防摔等级：1.5米抗跌落
+
+## 4. 常见问题解答
+Q: 为什么充电时外壳会发热？
+A: 120W 高功率输出时，内部芯片高速运转，外壳温度在 45℃ 以内均属正常散热现象，具备过热断电保护，请放心使用。
+`;
+                folder.file("超级充电宝V3说明书.md", mdContent);
+
+                // Add File 2: TXT
+                const txtContent = `【2024版】全线产品退换货管理规定及售后政策
+
+第一条：通用原则
+为保障消费者权益，本公司所有常规硬件产品，自签收之日起，均支持国家法定的“7天无理由退换货”。
+
+第二条：退换货前提条件
+退回的商品应当完好，配件齐全，且不得影响商家的二次销售。
+
+第三条：电池及密封类产品特殊规定（重点）
+鉴于电池类产品（包含超级充电宝系列、户外电源系列）的防伪塑封膜拆除后无法复原，为杜绝二手电池安全隐患，特制定以下补充条款：
+1. 若产品存在功能性质量问题（如无法充电、短路），无论是否拆封，均支持 15 天内退换。
+2. 非功能性质量问题（如：觉得太重、颜色不喜欢、冲动消费等主观原因），一旦拆除产品外包装的透明防伪塑封膜，概不接受退货或换货。
+3. 未拆塑封膜的商品，正常享受 7 天无理由退款。
+
+第四条：邮费说明
+因产品质量问题产生的退换货，来回运费由公司承担；非质量问题产生的退换货，运费由客户自行承担。
+`;
+                folder.file("2024售后退换货政策.txt", txtContent);
+
+                // Add File 3: CSV
+                const csvContent = `品牌,产品型号,电池容量(mAh),最高功率(W),防水防尘,官方售价(元)
+本公司,超级充电宝V3,20000,120,IP68,199
+友商A,Flash20,20000,65,IP54,149
+友商B,PowerMax,10000,100,不支持,129
+友商C,极速充Pro,25000,140,IP67,299
+`;
+                // Add BOM for Excel to open CSV correctly with UTF-8
+                const csvContentWithBOM = '\uFEFF' + csvContent;
+                folder.file("竞品对比参数表.csv", csvContentWithBOM);
+
+                // Generate ZIP blob
+                const blob = await zip.generateAsync({type: "blob"});
+                
+                // Trigger download
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.style.display = "none";
+                a.href = url;
+                a.download = "Company_Docs.zip";
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // Success state
+                btn.innerHTML = '<i class="fa-solid fa-check text-xl"></i><span>下载成功！请解压！</span>';
+                btn.classList.replace('bg-purple-600', 'bg-emerald-600');
+                btn.classList.replace('hover:bg-purple-500', 'hover:bg-emerald-500');
+                showToast();
+                
+                // Restore button after 4 seconds
+                setTimeout(() => {
+                    btn.innerHTML = originalContent;
+                    btn.classList.replace('bg-emerald-600', 'bg-purple-600');
+                    btn.classList.replace('hover:bg-emerald-500', 'hover:bg-purple-500');
+                    btn.classList.remove('opacity-80', 'cursor-not-allowed');
+                }, 4000);
+                
+            } catch (err) {
+                console.error("ZIP generation failed:", err);
+                btn.innerHTML = originalContent;
+                btn.classList.remove('opacity-80', 'cursor-not-allowed');
+                alert("生成压缩包失败，请检查网络是否正常加载 JSZip 组件。");
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

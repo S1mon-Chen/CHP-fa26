@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - 第一回合：故意看它翻车（Baseline 测试）</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#faf5ff',
+                            100: '#f3e8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 1.5s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .stamp-fake {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-15deg) scale(2);
+            color: rgba(239, 68, 68, 0.85);
+            border: 4px solid rgba(239, 68, 68, 0.85);
+            padding: 4px 16px;
+            border-radius: 8px;
+            font-size: 2rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            animation: stampIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards 2.5s;
+        }
+
+        @keyframes stampIn {
+            0% { opacity: 0; transform: translate(-50%, -50%) rotate(-15deg) scale(2); }
+            100% { opacity: 1; transform: translate(-50%, -50%) rotate(-15deg) scale(1); }
+        }
+
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战演练一 —— 精准对答与消灭幻觉
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 left-0 w-[500px] h-[500px] bg-rose-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 right-0 w-[400px] h-[400px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-vial-virus text-rose-600"></i>
+                    <span>Baseline Test · 对照组测试</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    第一回合：先设个局，<span class="text-rose-600 border-b-4 border-rose-300 mx-1 pb-1">故意看它翻车</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    在教 AI “开卷考试”之前，我们要先证明它闭卷考试一定会挂科。<br>这在测试里叫做 Baseline（基线）测试。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: The Trap Prompt -->
+                <div class="lg:col-span-5 flex flex-col">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-2xl h-full relative">
+                        <!-- Header -->
+                        <div class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-comment-dots text-rose-400"></i>
+                                <span class="text-xs text-slate-300 font-bold">闭卷考试指令 (故意不提知识库)</span>
+                            </div>
+                            <button onclick="copyTrapPrompt()" class="copy-btn bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-regular fa-copy"></i> 复制陷阱
+                            </button>
+                        </div>
+                        
+                        <div class="p-6 font-mono text-sm leading-relaxed text-slate-300 flex-1 flex flex-col justify-center items-center text-center bg-[#0f172a]">
+                            <p class="text-rose-300 mb-4 opacity-80 text-xs">直接把这句话发给 AI，看看它怎么回答：</p>
+                            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-inner text-white w-full font-sans">
+                                “超级充电宝V3的防水等级是多少？”
+                            </div>
+                            <div class="mt-6 bg-slate-800/50 p-3 rounded-lg border border-slate-700 text-left w-full">
+                                <div class="text-[10px] text-slate-500 mb-1 flex items-center gap-1"><i class="fa-solid fa-eye text-slate-400"></i> 观察重点：</div>
+                                <ul class="text-[10px] text-slate-400 space-y-1 pl-1">
+                                    <li>1. 它会不会调用工具去找资料？(大概率不会)</li>
+                                    <li>2. 它是坦诚说“我不知道”，还是开始端水胡编？</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Simulated Car Crash -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full shadow-xl">
+                        <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-truck-burst text-slate-400"></i>
+                                <span class="text-sm font-bold text-slate-700">翻车现场预演</span>
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 flex flex-col gap-4 flex-1 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-10">
+                            
+                            <!-- User Message -->
+                            <div class="flex items-start gap-3 justify-end chat-bubble delay-1">
+                                <div class="bg-purple-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm max-w-[85%]">
+                                    超级充电宝V3的防水等级是多少？
+                                </div>
+                                <div class="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 mt-1 font-bold">我</div>
+                            </div>
+
+                            <!-- AI Response (The Lie) -->
+                            <div class="flex items-start gap-3 chat-bubble delay-2 relative">
+                                <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 border border-purple-200 flex items-center justify-center text-xs shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700 max-w-[90%] leading-relaxed">
+                                    关于“超级充电宝V3”的防水等级，由于市面上的充电宝品牌众多，通常情况下，高端户外移动电源的防水等级会达到 <strong class="text-rose-600">IPX4（防泼溅）或者 IP65</strong>。如果您指的是特定品牌的型号，建议您查看产品包装盒上的详细说明...
+                                </div>
+                                <!-- The FAKE Stamp -->
+                                <div class="stamp-fake">废话 / 凭空猜测</div>
+                            </div>
+
+                            <div class="mt-auto bg-rose-50 border border-rose-200 p-3 rounded-lg flex items-start gap-3 chat-bubble delay-2 shadow-sm" style="animation-delay: 3s;">
+                                <div class="text-rose-500 mt-0.5"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
+                                <div>
+                                    <h4 class="text-xs font-bold text-rose-900">事实核查：</h4>
+                                    <p class="text-[10px] text-rose-700 mt-0.5">还记得我们在 Slide 7 下载的《说明书.md》里是怎么写的吗？真实的参数是：<strong class="bg-rose-200 px-1 rounded">IP68，支持水下2米浸泡</strong>。AI 完全答错了！</p>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 3 - Slide <span class="text-purple-600 font-bold">11</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[50%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页：验证通电" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-bullseye mr-1 text-purple-500"></i>模块三：精准对答实战
+            </span>
+            <a href="12.html" title="下一页：开卷考试指令" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎭 制造节目效果：</span>
+                    “大家刚才已经配好了插件，是不是迫不及待想问问题了？停！为了凸显 RAG 的牛逼之处，我们先来做一个‘裸考’测试。也就是不告诉 AI 去看文件，直接问它业务问题。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💬 引导实操：</span>
+                    “请点击左边的按钮，把这句话发给 AI。看看它怎么回答。有些人可能会得到大屏幕右边这种‘端水大师’的回答（说了一堆废话，猜个 IPX4），有些人可能会得到‘我不知道’。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页核心痛点解决：</span>
+                    “但我们知道，真实文件的说明书里写的是 IP68！AI 的这种猜测如果是回给真实客户的，客户立马退货了。怎么办？下一页，我们要教 AI 正式进入‘开卷考试’模式！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-rose-400 mr-2"></i>陷阱指令已复制，去考验 AI 吧！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyTrapPrompt() {
+            const promptText = "超级充电宝V3的防水等级是多少？";
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

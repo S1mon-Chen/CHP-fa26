@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 实战案例一：Excel 极速批量拆分</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 SheetJS 用于在浏览器中直接生成 Excel 文件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .excel-table {
+            background-image: 
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 80px 24px;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 实战演练 —— 让 AI 替你干活
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 left-0 w-[400px] h-[400px] bg-cyan-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 right-0 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-play text-cyan-600"></i>
+                    <span>Live Action 1 · 见证实战</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    案例一：Excel <span class="text-cyan-600">极速批量拆分</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    终于到了检验武器的时候。我们将用刚才学到的模板，让 Trae 在 10 秒钟内完成你过去需要耗费半天时间的重复劳动。
+                </p>
+            </div>
+
+            <!-- Business Scenario Panel -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-6 soft-shadow mb-8">
+                <div class="flex items-center gap-3 mb-4 border-b border-slate-100 pb-4">
+                    <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-lg">
+                        <i class="fa-solid fa-briefcase"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">业务场景与痛点</h3>
+                        <p class="text-xs text-slate-500">高频发生于：HR / 财务 / 销售运营岗</p>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 items-center">
+                    
+                    <!-- Before: Big Messy File -->
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-bold text-slate-500 uppercase">处理前 (Before)</span>
+                            <span class="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded font-bold">人工耗时: 3小时</span>
+                        </div>
+                        <div class="flex flex-col items-center p-4 bg-white border border-slate-200 rounded shadow-sm relative overflow-hidden">
+                            <i class="fa-solid fa-file-excel text-4xl text-green-600 mb-2"></i>
+                            <span class="text-sm font-bold text-slate-700">全国总表.xlsx</span>
+                            <span class="text-[10px] text-slate-400 mt-1">包含 50 个分公司，10000+ 行数据</span>
+                        </div>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div class="hidden md:flex flex-col items-center text-cyan-400">
+                        <div class="text-xs font-bold mb-1">Vibe Coding</div>
+                        <i class="fa-solid fa-arrow-right-long text-3xl"></i>
+                        <div class="text-xs font-bold mt-1 text-emerald-500">只需 10 秒</div>
+                    </div>
+
+                    <!-- After: Split Files -->
+                    <div class="bg-cyan-50/50 border border-cyan-100 rounded-xl p-4">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-bold text-cyan-700 uppercase">处理后 (After)</span>
+                            <span class="text-[10px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded font-bold">无痛自动化</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="flex flex-col items-center p-2 bg-white border border-slate-200 rounded shadow-sm">
+                                <i class="fa-solid fa-file-excel text-xl text-green-600 mb-1"></i>
+                                <span class="text-[9px] font-bold text-slate-600 truncate w-full text-center">北京分公司.xlsx</span>
+                            </div>
+                            <div class="flex flex-col items-center p-2 bg-white border border-slate-200 rounded shadow-sm">
+                                <i class="fa-solid fa-file-excel text-xl text-green-600 mb-1"></i>
+                                <span class="text-[9px] font-bold text-slate-600 truncate w-full text-center">上海分公司.xlsx</span>
+                            </div>
+                            <div class="flex flex-col items-center p-2 bg-white border border-slate-200 rounded shadow-sm">
+                                <i class="fa-solid fa-file-excel text-xl text-green-600 mb-1"></i>
+                                <span class="text-[9px] font-bold text-slate-600 truncate w-full text-center">广州分公司.xlsx</span>
+                            </div>
+                            <div class="col-span-3 text-center text-xs text-slate-400 mt-1">
+                                <i class="fa-solid fa-ellipsis"></i> 自动生成 50 份文件
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Prep Steps -->
+            <div class="bg-slate-900 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                <div class="absolute right-0 top-0 w-64 h-full bg-gradient-to-l from-cyan-900/40 to-transparent pointer-events-none"></div>
+                
+                <h3 class="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-cyan-400"></i>
+                    行动前准备：两步就位
+                </h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 items-start">
+                        <div class="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center shrink-0 border border-cyan-500/30">1</div>
+                        <div class="w-full">
+                            <div class="flex justify-between items-start mb-1">
+                                <strong class="text-slate-200 text-sm block">准备战场（资源管理器）</strong>
+                                <!-- 新增：一键下载测试数据按钮 -->
+                                <button onclick="downloadTestData()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm transition-colors flex items-center gap-1">
+                                    <i class="fa-solid fa-download"></i> 下载测试表
+                                </button>
+                            </div>
+                            <p class="text-slate-400 text-xs leading-relaxed mb-3">
+                                在桌面新建一个文件夹（如“拆分任务”），把测试用的总表拖进去。然后用 Trae 打开这个文件夹。
+                            </p>
+                            <div class="bg-slate-950 p-2 rounded text-[10px] text-slate-500 font-mono border border-slate-800">
+                                <i class="fa-solid fa-folder-open text-amber-500 mr-1"></i> 拆分任务/<br>
+                                &nbsp;&nbsp;<i class="fa-solid fa-file-excel text-green-600 mr-1"></i> 2024全国工资总表.xlsx
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex gap-4 items-start">
+                        <div class="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center shrink-0 border border-cyan-500/30">2</div>
+                        <div>
+                            <strong class="text-slate-200 text-sm block mb-1">呼叫包工头（打开 Builder）</strong>
+                            <p class="text-slate-400 text-xs leading-relaxed mb-3">
+                                确保你点击了 Trae 右上角的 <span class="bg-cyan-900 text-cyan-200 px-1 rounded">Builder</span> 模式，而不是 Chat 模式。准备好你的结构化 Prompt。
+                            </p>
+                            <div class="bg-slate-950 p-2 rounded text-[10px] text-slate-500 font-mono border border-slate-800 flex justify-between items-center">
+                                <span>输入框已就绪...</span>
+                                <i class="fa-solid fa-paper-plane text-cyan-600"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Slide <span class="text-cyan-600 font-bold">12</span> / 16
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 12 of 16 is 75% -->
+                <div class="bg-cyan-500 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="11.html" title="上一页：结构化Prompt模板库" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-play mr-1 text-cyan-500"></i>模块四：实战演练
+            </span>
+            <a href="13.html" title="下一页：实战：发号施令与接受代码" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">📢 渲染气氛，拉升期待感：</span>
+                    “各位同学，我们铺垫了这么多理论，现在终于到了魔法时刻！这个‘拆分表格’的场景，做过 HR 或财务的同学一定深有体会。平时人工拆，复制粘贴要弄几个小时，还容易漏掉。今天，我们让 AI 在 10 秒内搞定！”
+                </div>
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">⚠️ 讲师预操作提醒：</span>
+                    “在讲这一页时，讲师务必要在电脑桌面上现场操作：新建文件夹、放入测试用的大表格，然后在 Trae 中将这个文件夹打开。向学员证明：我们是真的在本地操作你们的文件，而不是在网页上空谈。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一步：</span>
+                    “好，现在战场准备完毕，包工头也就位了。下一页，我们将把刚才的 Prompt 模板发给它，看看它会怎么做！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+
+        // 动态生成并下载测试用的 Excel 文件
+        function downloadTestData() {
+            // 准备模拟数据
+            const data = [
+                ["姓名", "工号", "部门", "归属分公司", "基本工资", "绩效", "出勤天数", "备注"],
+                ["张三", "EMP001", "销售部", "北京分公司", 8000, 2000, 22, ""],
+                ["李四", "EMP002", "技术部", "上海分公司", 12000, 3000, 22, ""],
+                ["王五", "EMP003", "人事部", "广州分公司", 7000, 1000, 21, ""],
+                ["赵六", "EMP004", "销售部", "上海分公司", 8500, 2500, 22, ""],
+                ["钱七", "EMP005", "技术部", "北京分公司", 11000, 2800, 20, "迟到1次"],
+                ["孙八", "EMP006", "财务部", "广州分公司", 9000, 1500, 22, ""],
+                ["周九", "EMP007", "客服部", "北京分公司", 6000, 800, 22, ""],
+                ["吴十", "EMP008", "销售部", "广州分公司", 8200, 2100, 21, ""],
+                ["郑十一", "EMP009", "技术部", "深圳分公司", 13000, 3500, 22, "优秀员工"],
+                ["王十二", "EMP010", "销售部", "深圳分公司", 8800, 2600, 22, ""]
+            ];
+
+            try {
+                // 创建工作簿和工作表
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "5月工资表");
+
+                // 设置列宽让表格好看点
+                ws['!cols'] = [
+                    {wch: 10}, {wch: 10}, {wch: 12}, {wch: 15}, 
+                    {wch: 10}, {wch: 10}, {wch: 10}, {wch: 15}
+                ];
+
+                // 导出文件
+                XLSX.writeFile(wb, "2024全国工资总表.xlsx");
+
+                // 显示成功提示
+                showToast("测试数据已下载！");
+            } catch (err) {
+                console.error("导出失败", err);
+                alert("下载失败，请确保网络畅通以加载 Excel 组件。");
+            }
+        }
+
+        // 简单的 Toast 提示组件
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium z-50 opacity-0 transition-opacity duration-300';
+            toast.innerHTML = `<i class="fa-solid fa-check mr-2"></i>${message}`;
+            document.body.appendChild(toast);
+            
+            // 动画淡入淡出
+            requestAnimationFrame(() => toast.classList.remove('opacity-0'));
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
+        }
+    </script>
+</body>
+</html>

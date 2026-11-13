@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 7 - 挂载插件 (Plugins)：接入搜索 API 消除大模型幻觉</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-blue-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyPluginConfig()" class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-blue-600"></i>
+                <span class="hidden sm:inline">复制插件配置指南</span>
+                <span class="sm:hidden">复制指南</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-plug text-blue-600"></i>
+                <span>Module 2 · 工作流 (Workflow) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                挂载插件 (Plugins)：<span class="text-indigo-600">接入实时搜索 API，彻底消除大模型幻觉</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                大模型本身是不联网的“记忆罐”，直接让它生成最新的“竞品动态”，它极大概率会胡编乱造（产生幻觉）。在 Coze 工作流中，我们需要在 Start 和 LLM 节点之间，插入一个<strong>插件节点 (Plugin Node)</strong>，让流水线具备“实时查阅外部世界”的超能力。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Instructions vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-mouse-pointer text-blue-600"></i>
+                            Coze 插件挂载操作指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">UI GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-blue-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                寻找并拖入头条搜索插件
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                在 Coze 左侧的“插件 (Plugins)”栏，搜索 <strong>Toutiao Search</strong>。将其拖入画布，放置在 Start 与 LLM 节点之间。
+                            </p>
+                            <div class="bg-white p-2 rounded border border-slate-200 font-mono text-[10px] text-slate-700 flex items-center gap-2">
+                                <i class="fa-solid fa-magnifying-glass text-blue-500"></i> Toutiao_Search.search
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                剪断旧连线，重新映射参数
+                            </h4>
+                            <p class="text-indigo-700/80 leading-relaxed mb-2">
+                                <strong>核心操作：</strong>悬停在之前 Start -> LLM 的连线上点击垃圾桶<strong class="text-rose-500">剪断它</strong>。然后将 Start 的 <code>keyword</code> 连线给插件的 <code>query</code> 必填参数。
+                            </p>
+                            <div class="flex items-center gap-2 bg-white/60 p-2 rounded border border-indigo-100 font-mono text-[10px] text-indigo-900">
+                                <span class="text-slate-500">Start.keyword</span> 
+                                <i class="fa-solid fa-arrow-right text-indigo-400"></i> 
+                                <span class="font-bold">Plugin.query</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                将检索结果投喂给大模型
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                插件搜索完毕后会输出一个 JSON 列表 (news_list)。将它连线给下游的 LLM 节点，让 LLM 充当“阅读理解”的角色，根据最新资料进行总结。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-shield-virus text-sm"></i>
+                            <span class="text-xs">实时搜索插件消除幻觉对比沙箱</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">READY TO TEST</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">任务：获取“小米 SU7 今日最新交付量”</label>
+                        
+                        <div class="grid grid-cols-2 gap-2 font-sans">
+                            <button onclick="simulateExecution('without_plugin')" class="py-2.5 px-2 rounded-lg border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                                <span>1. 无插件 (纯大模型推理)</span>
+                            </button>
+                            <button onclick="simulateExecution('with_plugin')" class="py-2.5 px-2 rounded-lg border border-emerald-500/50 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <span>2. 有插件 (头条搜索注入)</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">执行过程与输出分析 (Trace Log):</span>
+                            </div>
+                            <div id="executionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[175px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 点击上方按钮，对比“大模型裸奔”与“挂载外部插件”的区别...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-blue-600 font-bold">Slide 7 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[35%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="6.html" title="上一页：创建 Workflow" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-blue-700">8. 数据清洗与代码节点</strong>
+            </span>
+            <a href="8.html" title="下一页：数据清洗与代码节点" class="px-3 py-1.5 md:py-2 rounded-lg border border-indigo-100 bg-indigo-600 text-white hover:bg-indigo-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是大模型落地业务的生命线：**消除幻觉**！<br><br>
+                    大家看屏幕，我们现在要把上一节课连好的那根线给**剪断**！把头条搜索插件塞到中间。<br><br>
+                    为什么要这么做？因为大模型就像一个被关在小黑屋里的学者。你不给他外网数据，他为了回答你的问题，就会凭借历史经验‘瞎编’。而 Plugin（插件）就是我们在小黑屋墙上开的窗户！现在真实数据流向是：Start -> 搜索插件获取今天的新闻 -> LLM 阅读这篇新闻并提炼。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “点击右侧沙箱，先展示大模型直接瞎编的数据，再展示挂载插件后，通过 API 获取真实网页内容再由大模型提炼的过程，对比极具说服力。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-blue-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyPluginConfig() {
+            const text = "在 Coze 工作流中挂载搜索插件步骤：\n1. 剪断原本 Start 连向 LLM 的线。\n2. 左侧菜单添加 Toutiao Search 插件，拖入 Start 和 LLM 之间。\n3. 将 Start 的 keyword 变量连线到插件的 query 参数。\n4. 将插件的输出（news_list）连线到 LLM 节点，作为背景知识进行总结。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("插件配置指南已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

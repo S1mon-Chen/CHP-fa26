@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 18 - 运行演示：在工位上对 PRD 进行魔鬼体检</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(15px);
+            animation: slideUpFade 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 1.2s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .stamp-warning {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-10deg) scale(2);
+            color: rgba(225, 29, 72, 0.9);
+            border: 4px solid rgba(225, 29, 72, 0.9);
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 4px 16px;
+            border-radius: 8px;
+            font-size: 1.4rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            animation: stampIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards 3s;
+        }
+        @keyframes stampIn {
+            0% { opacity: 0; transform: translate(-50%, -50%) rotate(-10deg) scale(2); }
+            100% { opacity: 1; transform: translate(-50%, -50%) rotate(-10deg) scale(1); }
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 实战演练二 —— 挑剔的 PRD 需求漏洞扫描 Skill
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-teal-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-play text-emerald-600"></i>
+                    <span>Live Execution · 运行演示</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    运行演示：在工位上对 PRD 进行 <span class="text-rose-600 border-b-4 border-rose-300 mx-1 pb-1">魔鬼体检</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    看看 AI 如何一眼揪出产品经理藏在方案里的并发漏洞，确保评审会一次通关。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Chat Window Simulation -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full shadow-xl relative">
+                        <div class="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-comments text-slate-400 text-xs"></i>
+                                <span class="text-xs font-bold text-slate-700">Trae Chat 毒舌审计现场</span>
+                            </div>
+                            <button onclick="copyAuditPrompt()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1 rounded flex items-center gap-1">
+                                <i class="fa-regular fa-copy"></i> 复制对话指令
+                            </button>
+                        </div>
+                        
+                        <div class="p-4 flex flex-col gap-3 flex-1 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-10 justify-center">
+                            
+                            <!-- User Prompt -->
+                            <div class="flex items-start gap-2 justify-end chat-bubble delay-1">
+                                <div class="bg-slate-800 text-white p-2.5 rounded-xl rounded-tr-sm text-[11px] shadow-sm max-w-[90%] font-mono">
+                                    @prd_audit_skill.md 请对《双十一积分秒杀活动方案.md》进行深度漏洞扫描。
+                                </div>
+                                <div class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] shrink-0 mt-1 font-bold">我</div>
+                            </div>
+
+                            <!-- AI Audit Result -->
+                            <div class="flex items-start gap-2 chat-bubble delay-2 relative">
+                                <div class="w-7 h-7 rounded-full bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center text-[10px] shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-rose-300 p-3 rounded-xl rounded-tl-sm text-xs shadow-sm text-slate-700 max-w-[95%] leading-relaxed border-l-4 border-l-rose-500 font-mono space-y-1.5">
+                                    <div class="text-rose-700 font-bold">🚨 【PRD 严重漏洞扫描报告】</div>
+                                    <div>- <strong class="text-rose-600">[致命级] 并发超扣风险：</strong>库存扣减未加 Redis 分布式锁，秒杀瞬间会导致库存出现负数。</div>
+                                    <div>- <strong class="text-amber-600">[警告级] 弱网事务回滚：</strong>扣减积分成功但生成订单超时时，未定义自动退款或幂等补偿机制。</div>
+                                </div>
+                                <div class="stamp-warning">发现 3 处致命大坑</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Explanatory Cards -->
+                <div class="lg:col-span-5 flex flex-col justify-between space-y-3">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            <i class="fa-solid fa-skull"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">提前暴露隐患</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">在产品评审会召开前把大坑全挖出来，免得会上被开发和测试小哥当场问得哑口无言。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            <i class="fa-solid fa-shield-heart"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">自信从容通关</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">带着 AI 生成的补齐方案去开会，你就是全场准备最充分、逻辑最严密的产品专家。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            <i class="fa-solid fa-lightbulb"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">角色对抗威力</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">通过赋予 AI “毒舌架构师”人设，彻底打破思维盲区，实现高质量交付。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 4 - Slide <span class="text-emerald-600 font-bold">18</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[81.8%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="17.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-emerald-500"></i>模块四：实战演练二
+            </span>
+            <a href="19.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🔍 运行演示见证：</span>
+                    “大家看大屏幕！我们把刚才的 PRD 测试文档丢给 prd_audit_skill 后, AI 瞬间化身毒舌架构师, 一眼就挑出了并发超扣和弱网回滚两大致命大坑！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “同样的审计逻辑, 还可以举一反三到各个岗位！请看下一页的专属审计员矩阵。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>审计对话指令已复制！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+        function copyAuditPrompt() {
+            const promptText = "@prd_audit_skill.md 请对《双十一积分秒杀活动方案.md》进行深度漏洞扫描。";
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) { console.error(err); }
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '19.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '17.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

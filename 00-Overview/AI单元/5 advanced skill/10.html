@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 拆解演示：观察多文件协同执行过程</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(15px);
+            animation: slideUpFade 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.3s; }
+        .delay-2 { animation-delay: 1.2s; }
+        .delay-3 { animation-delay: 2.2s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 多文件结构化与按需加载 —— 拆解协同执行
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadSkillPackage()" class="px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-download text-emerald-600"></i>
+                <span>下载完整 Skill 源码包 (.zip)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-teal-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-play text-emerald-600"></i>
+                    <span>Execution Simulation · 协同执行演示</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    拆解演示：观察多文件协同执行过程
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    观察 Trae Chat 终端如何通过主控网关自动加载子模块、调用校验脚本并输出标准交付报告。上方按钮支持一键打包下载。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Chat Window Simulation -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow h-full shadow-xl relative">
+                        <div class="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-comments text-slate-400 text-xs"></i>
+                                <span class="text-xs font-bold text-slate-700">Trae Chat 终端多文件路由现场</span>
+                            </div>
+                            <button onclick="copyChatPrompt()" class="copy-btn bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold px-2.5 py-1 rounded flex items-center gap-1">
+                                <i class="fa-regular fa-copy"></i> 复制对话指令
+                            </button>
+                        </div>
+                        
+                        <div class="p-4 flex flex-col gap-3 flex-1 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-opacity-10 justify-center font-mono">
+                            
+                            <!-- User Prompt -->
+                            <div class="flex items-start gap-2 justify-end chat-bubble delay-1">
+                                <div class="bg-slate-800 text-white p-2.5 rounded-xl rounded-tr-sm text-[11px] shadow-sm max-w-[90%]">
+                                    @enterprise-architect 请帮我评审秒杀系统的安全与并发架构。
+                                </div>
+                                <div class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] shrink-0 mt-1 font-bold">我</div>
+                            </div>
+
+                            <!-- AI Tool Routing Step 1 -->
+                            <div class="flex items-start gap-2 chat-bubble delay-2">
+                                <div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 flex items-center justify-center text-[10px] shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-slate-200 p-2.5 rounded-xl rounded-tl-sm text-[11px] shadow-sm text-slate-700 max-w-[90%]">
+                                    <span class="text-emerald-600 font-bold"><i class="fa-solid fa-route"></i> 路由匹配：</span>
+                                    识别到“安全”与“并发”意图，自动按需读取 <code class="text-cyan-600">rules/security.md</code> 与 <code class="text-cyan-600">rules/performance.md</code>。
+                                </div>
+                            </div>
+
+                            <!-- AI Tool Routing Step 2 -->
+                            <div class="flex items-start gap-2 chat-bubble delay-3">
+                                <div class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 flex items-center justify-center text-[10px] shrink-0 mt-1">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div class="bg-white border border-slate-300 p-3 rounded-xl rounded-tl-sm text-xs shadow-sm text-slate-700 max-w-[95%] leading-relaxed border-l-4 border-l-emerald-500">
+                                    <strong class="text-emerald-800">【架构评审报告完成】</strong><br>
+                                    已结合安全合规红线与 Redis 缓存准则生成标准报告，并挂载 <code class="text-purple-600">templates/arch_report.md</code> 排版。
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Explanatory Cards -->
+                <div class="lg:col-span-5 flex flex-col justify-between space-y-3">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            1
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">主控网关无缝调度</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">主控 <code class="bg-slate-100 px-1 rounded font-mono">SKILL.md</code> 收到请求后，准确分发至对应的领域子模块文件。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            2
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">资产与逻辑完全解耦</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">规约、模板与校验脚本各自独立，极大提升了 AI 响应的准确性与系统的可维护性。</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">
+                            3
+                        </div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">准备进入生态部署</h3>
+                            <p class="text-11px text-slate-500 leading-relaxed">掌握了多文件编写后，接下来我们将学习如何在 IDE 中将其安装为全局或局部 Skill。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 5 - Slide <span class="text-emerald-600 font-bold">10</span> / 20
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[50%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-emerald-500"></i>模块二：多文件与懒加载
+            </span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">▶️ 拆解演示观察：</span>
+                    “大家看终端模拟！当我们输入 `@enterprise-architect` 并要求评审安全与并发时，主控网关精准识别意图，并动态加载了 security.md 和 performance.md。顶部按钮也支持一键打包下载整套源码！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>指令已成功复制到剪贴板！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+        function copyChatPrompt() {
+            const text = "@enterprise-architect 请帮我评审秒杀系统的安全与并发架构。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast();
+            } catch (err) { console.error(err); }
+        }
+        function downloadSkillPackage() {
+            const fileContent = `# Enterprise Architect Skill Suite
+Directory: enterprise-architect/
+- SKILL.md
+- rules/security.md
+- rules/performance.md
+- templates/arch_report.md
+- scripts/validate_schema.py
+
+(Please use the copy buttons on Slide 9 to copy individual files into your local project.)`;
+            const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'enterprise-architect-skill-suite.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '11.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '9.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

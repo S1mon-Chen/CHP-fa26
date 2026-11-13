@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 15 - 实战演练：高风险差额拦截与人类参与网关 (Human-in-the-Loop Gateway) 实操</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .step-box { transition: all 0.3s ease; }
+        .step-box:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 端到端实战 —— 高风险差额拦截与人类参与网关
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadHitlAuditReport()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-emerald-600"></i>
+                <span>下载对账异常审核日志规范 (.md)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-user-shield text-emerald-600"></i>
+                <span>Capstone 03 · 异常挂起与人类参与网关 (HITL)</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                实战第三步：大额差额自动挂起、财务总监审批与安全落盘实操
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                当确定性对账引擎检测到单笔绝对差额超过设定的安全阈值（如 &gt; 1,000 元）时，系统会自动触发 <strong>Human-in-the-Loop (HITL) 挂起机制</strong>，暂停自动化流水线，并向财务总监发送审批授权卡片，确认无误后方可写入主表。
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-emerald-400 font-bold">
+                        <span><i class="fa-solid fa-terminal mr-2"></i>Vibe Coding 实践执行四步法</span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">WORKFLOW</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300">
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">1. 在 WorkBuddy 聊天框发送提示词：</span>
+                            <div class="text-[10px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-700 mt-1 flex items-center justify-between gap-2">
+                                <span id="promptText">"请在对账引擎中集成一个 HITL 审批网关 hitl_gate.py，当差额绝对值大于 1,000 元时自动挂起当前事务，向钉钉/企业微信推送审批卡片，收到 CFO 授权后方可写入数据库。"</span>
+                                <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold shrink-0">
+                                    <i class="fa-solid fa-copy mr-1"></i> 复制提示词
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">2. AI 自动生成网关源码：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                WorkBuddy 在后台自动新建 <code class="text-emerald-300">hitl_gate.py</code>，内置高危差额拦截与异步状态挂起逻辑。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">3. 自动调起沙箱终端 (Sandbox)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                AI 自动在沙箱中执行运行命令：<code class="text-emerald-300">python hitl_gate.py --discrepancy 1200.00</code>，验证拦截。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">4. 检验人工审批效果 (Verification)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                终端输出事务成功挂起与模拟 CFO 点击批准后的安全落盘日志，验证风控闭环完美生效！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-wand-magic-sparkles text-emerald-400 mr-1"></i> 人类参与网关：守住企业资金安全与审计合规的最后防线！</span>
+                    <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold">一键复制完整提示词</button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span><i class="fa-solid fa-play text-emerald-600 mr-2"></i>模拟沙箱 HITL 网关实时审批验证 (Live HITL Demo)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">ONLINE</span>
+                    </div>
+
+                    <!-- Sandbox Input & Trigger -->
+                    <div class="space-y-2 mb-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">选择对账差异金额与风控场景：</label>
+                        <div class="flex gap-2">
+                            <select id="hitlScenarioSelect" class="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500">
+                                <option value="small">小额微差 (￥0.05 手续费抹平，自动安全放行)</option>
+                                <option value="large">大额异常差额 (￥1,200.00 差额，触发 HITL 挂起等待 CFO 审批)</option>
+                            </select>
+                            <button onclick="runHitlSandbox()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-bold transition flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-rotate text-[10px]"></i> 运行风控网关
+                            </button>
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button onclick="setHitlMode('small')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-emerald-700 px-2 py-0.5 rounded border border-slate-200">小额自动放行测试</button>
+                            <button onclick="setHitlMode('large')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-amber-700 px-2 py-0.5 rounded border border-slate-200">大额挂起审批测试</button>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Output Console -->
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <div class="text-slate-400 text-[10px] font-mono"># 终端沙箱 HITL 审批流输出：</div>
+                        <div id="routerOutput" class="text-emerald-300 font-mono text-[11px] bg-slate-950 p-2.5 rounded border border-slate-800 min-h-[60px] flex items-center">
+                            [HITL Gate] 检测到差异金额: ￥1,200.00 (> ￥1,000.00 风险阈值)。<br>⏸️ 事务已挂起，已向 CFO 推送审批卡片。<br>✅ [CFO Approved]: 收到人工授权确认，正在安全写入对账主表！
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i> 安全闭环：大额异常绝不盲目自动化，必须经人工复核。</span>
+                    <button onclick="downloadHitlAuditReport()" class="copy-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2.5 py-1 rounded font-bold">下载审核日志规范</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 8 - Slide <span class="text-emerald-600 font-bold">15</span> / 20
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="14.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-emerald-500"></i>第八单元：端到端业务系统实战
+            </span>
+            <a href="16.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 第十五页实战要点：</span>
+                    “各位同学，在我们的端到端对账系统中，小额的抹平可以自动化，但如果出现超过 1,000 元的大额差额，系统绝对不能私自做主！必须触发 HITL 网关暂停挂起，等待财务总监审批通过后，才能安全落盘入库！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function setHitlMode(val) {
+            document.getElementById('hitlScenarioSelect').value = val;
+            runHitlSandbox();
+        }
+        function runHitlSandbox() {
+            const val = document.getElementById('hitlScenarioSelect').value;
+            const out = document.getElementById('routerOutput');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-2"></i> 正在沙箱中评估差额风险与触发 HITL 策略...';
+            setTimeout(function() {
+                if (val === 'small') {
+                    out.innerHTML = '[HITL Gate] 检测到微小差额: ￥0.05 (< ￥1,000.00 阈值)。<br>✅ [Auto-Passed]: 系统自动归档并完成平账入库，0 延迟！';
+                } else {
+                    out.innerHTML = '[HITL Gate] 检测到差异金额: ￥1,200.00 (> ￥1,000.00 风险阈值)。<br>⏸️ 事务已挂起，已向 CFO 推送审批卡片。<br>✅ [CFO Approved]: 收到人工授权确认，正在安全写入对账主表！';
+                }
+                showToast("HITL 审核网关沙箱验证成功！");
+            }, 400);
+        }
+        function copyPromptText() {
+            const text = document.getElementById('promptText').innerText.replace(/^"|"$/g, '');
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("HITL 网关提示词已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+        function downloadHitlAuditReport() {
+            const guideMd = `# 企业级智能财务系统：对账异常审核与 HITL 审计日志规范\n\n## 一、 审计目标\n确保所有超过授权阈值（￥1,000.00）的对账差额在写入主数据库前，必须经过授权财务总监（CFO）的手工复核与签名确认。\n\n## 二、 日志结构规范\n1. transaction_id: 交易流水号\n2. discrepancy_amount: 差异绝对值\n3. approver: 审核人工号与姓名\n4. timestamp: 审批确认时间戳`;
+            try {
+                const blob = new Blob([guideMd], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'hitl_reconciliation_audit_specification.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("审核日志规范文档下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '16.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '14.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

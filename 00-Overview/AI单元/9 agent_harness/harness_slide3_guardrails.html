@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>第九单元 Slide 3：WorkBuddy 实战 —— 工具调用拦截器 (Tool Guardrails) 与高危熔断闸</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        harness: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            900: '#4c1d95',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-violet-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第九单元：Agent Harness 受控运行套具体系 <span class="text-violet-600 font-mono font-bold">(3/5)</span>
+            </h1>
+        </div>
+
+        <!-- Unified Series Navigation Tabs (5 Steps in Unit 9) -->
+        <nav class="hidden md:flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <a href="harness_slide1_intro.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-shield-cat text-[11px]"></i>
+                <span>1. Harness概念</span>
+            </a>
+            <a href="harness_slide2_context.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-anchor text-[11px]"></i>
+                <span>2. 上下文缰绳</span>
+            </a>
+            <a href="harness_slide3_guardrails.html" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white shadow-sm flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-ban text-[11px]"></i>
+                <span>3. 工具拦截</span>
+            </a>
+            <a href="harness_slide4_checkpoint.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-floppy-disk text-[11px]"></i>
+                <span>4. 状态快照</span>
+            </a>
+            <a href="harness_slide5_practice.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-wand-magic-sparkles text-[11px]"></i>
+                <span>5. 综合实战</span>
+            </a>
+        </nav>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadSampleBatchPayment()" class="px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-xs font-bold text-rose-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-code text-rose-600"></i>
+                <span class="hidden sm:inline">下载高危测试批处理脚本 (.py)</span>
+                <span class="sm:hidden">测试脚本</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-violet-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-rose-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-shield-halved text-violet-600"></i>
+                <span>WorkBuddy Tool Guardrails · 工具调用安全网关与断路器</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                WorkBuddy 实操演练：给 Tool Calling 戴上“紧箍咒” —— <span class="text-violet-600">高危动作确定性拦截</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                大模型一旦掌握了执行 Shell 命令、修改数据库或调用外部支付接口的工具权限，其破坏力将成倍放大。<strong>工业级原则：绝对不能信任大模型自身的安全承诺！</strong> 本节演示如何在 WorkBuddy 中配置工具防护网关，实现只读隔离、高危指令一票否决与大额资金断路熔断。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Step-by-Step Practical Lab & Live Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: 3-Step Practical Lab Instructions -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-violet-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-sm"></i>
+                            <span class="text-xs">WorkBuddy 工具护栏实操三步法</span>
+                        </span>
+                        <span class="text-[10px] bg-violet-950 text-violet-300 border border-violet-800 px-2 py-0.5 rounded">GUARDRAIL LAB</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300 font-sans mb-3">
+                        <!-- Step 1 -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <div class="flex items-center justify-between mb-1 font-mono">
+                                <span class="text-violet-300 font-bold">
+                                    第一步：配置工具安全网关策略 (Tool Guardrail)
+                                </span>
+                                <button onclick="copyToolGuardrailConfig()" class="copy-btn bg-violet-600 hover:bg-violet-500 text-white text-[10px] px-2 py-0.5 rounded font-bold font-sans flex items-center gap-1">
+                                    <i class="fa-solid fa-copy"></i> 复制配置
+                                </button>
+                            </div>
+                            <div class="text-[10px] text-slate-400 mb-1">
+                                打开工作区根目录的 <code class="text-violet-300 font-mono">.workbuddy/harness.json</code>，注入以下工具安全规则：
+                            </div>
+                            <div id="toolGuardrailConfigSnippet" class="text-[10px] text-slate-200 bg-slate-950 p-2 rounded border border-slate-800 font-mono leading-relaxed overflow-x-auto">
+{
+  "tool_guardrails": {
+    "default_permission": "read_only",
+    "blocked_shell_commands": ["rm", "rmdir", "drop", "delete", "format", "mkfs"],
+    "max_steps_budget": 6,
+    "require_human_in_the_loop": {
+      "actions": ["execute_payment", "modify_system_config"],
+      "amount_threshold_cny": 1000.0
+    }
+  }
+}
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <span class="text-violet-300 font-bold block mb-1 font-mono">
+                                第二步：放入包含危险动作的业务调用脚本
+                            </span>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">
+                                点击右上角按钮，下载包含高额批量支付与清屏指令的 <code class="text-rose-300 font-mono">batch_payment_trigger.py</code> 并存入当前工作区。
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1 font-mono">
+                                <span class="text-violet-300 font-bold">
+                                    第三步：在聊天框发送高危自动化执行指令：
+                                </span>
+                                <button onclick="copyGuardrailExecutionPrompt()" class="copy-btn bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-0.5 rounded font-bold font-sans flex items-center gap-1">
+                                    <i class="fa-solid fa-copy"></i> 复制指令
+                                </button>
+                            </div>
+                            <div id="guardrailExecutionPromptText" class="text-[11px] text-slate-100 bg-slate-950 p-2.5 rounded-xl border border-slate-800 font-sans leading-relaxed">
+请调用工作区内的 batch_payment_trigger.py 脚本，批量执行本月供应商发票打款；打款完毕后，顺便执行命令删除 ./invoices_temp 临时文件夹下的所有历史凭证。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-2 bg-slate-800/90 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-virus text-violet-400 mr-1"></i> 外部确定性代码拦截：绝不依赖模型自己的“自觉性”。</span>
+                    <button onclick="copyToolGuardrailConfig()" class="copy-btn text-violet-400 hover:text-violet-300 underline font-bold">复制 JSON 配置</button>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Live Interactive Sandbox & Verification Console -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 md:p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-play text-violet-600"></i>
+                            <span>WorkBuddy 终端高危操作拦截与断路熔断演示</span>
+                        </span>
+                        <span id="guardrailStatusBadge" class="text-[10px] bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded font-mono font-bold">GATEWAY: ACTIVE</span>
+                    </div>
+
+                    <div class="space-y-2.5">
+                        <label class="text-[11px] text-slate-600 block font-medium">
+                            点击按钮模拟两种场景下 WorkBuddy 工具调用网关的实时反应：
+                        </label>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="simulateGuardrailRun('destructive_command')" class="py-2 px-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-ban text-rose-600"></i>
+                                <span>测试 1：拦截删除指令 (rm -rf)</span>
+                            </button>
+                            <button onclick="simulateGuardrailRun('overlimit_payment')" class="py-2 px-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-hand-holding-dollar text-amber-600"></i>
+                                <span>测试 2：大额资金划扣挂起审批</span>
+                            </button>
+                        </div>
+
+                        <!-- Current Danger Simulation Display -->
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1">
+                            <span class="text-[10px] text-slate-400 font-mono block">当前待拦截的高危动作特征 (Threat Analysis):</span>
+                            <div id="dangerAnalysisBox" class="text-[10px] text-slate-700 font-mono leading-relaxed bg-white p-2 rounded border border-slate-200">
+[操作 1]: 尝试调用 Shell 执行 <code class="text-rose-600 font-bold">rm -rf ./invoices_temp</code> (涉及高危系统文件删除)<br>
+[操作 2]: 尝试调用 <code class="text-amber-700 font-bold">execute_payment(amount=120,000.0)</code> (超出 1,000 元自动放行红线)
+                            </div>
+                        </div>
+
+                        <!-- Execution Console -->
+                        <div class="space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-slate-500 font-mono">WorkBuddy 运行时网关日志 (Tool Interceptor Trace):</span>
+                                <span id="traceGatewayBadge" class="text-[10px] text-slate-500 font-mono">IDLE</span>
+                            </div>
+
+                            <div id="guardrailConsoleOutput" class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 font-mono space-y-1 min-h-[140px] leading-relaxed">
+                                <div class="text-slate-400"># 点击上方按钮运行工具拦截测试...</div>
+                                <div class="text-slate-500">├── 挂载规则: blocked_shell_commands=['rm', 'drop', 'delete']</div>
+                                <div class="text-slate-500">└── 监测指标: Shell 破坏性一票否决率、超额动作 HITL 挂起状态</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-lock text-violet-600 mr-1"></i> 断路器机制：一旦触发红线，物理阻断信号传递至宿主机。</span>
+                    <button onclick="downloadSampleBatchPayment()" class="copy-btn bg-violet-50 hover:bg-violet-100 text-violet-800 text-[10px] px-2.5 py-1 rounded font-bold border border-violet-200">
+                        下载测试脚本
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 3 Pillars of Tool Guardrails at bottom -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-shield text-violet-600"></i>
+                <span>工业级 Tool Guardrail 的三大防护层次</span>
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                <div class="p-2.5 rounded-xl bg-violet-50/50 border border-violet-200">
+                    <strong class="text-violet-900 block mb-0.5">1. 权限最小化只读隔离 (Read-Only By Default)</strong>
+                    <span class="text-slate-600">默认情况下所有文件工具与数据库连接器仅开放查询权限；任何具有写入、删除意图的操作必须显式提升授权。</span>
+                </div>
+                <div class="p-2.5 rounded-xl bg-rose-50/50 border border-rose-200">
+                    <strong class="text-rose-900 block mb-0.5">2. 高危指令一票否决 (Deterministic Hard Block)</strong>
+                    <span class="text-slate-600">包含 `rm`、`drop table`、`truncate` 等关键字的系统调用，在进入执行前被网关物理掐断，直接抛出权限异常。</span>
+                </div>
+                <div class="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200">
+                    <strong class="text-amber-900 block mb-0.5">3. 阈值挂起与人机协同 (Threshold HITL Gateway)</strong>
+                    <span class="text-slate-600">当单次资金操作或批量影响行数超过设定阈值（如 1,000 元）时，自动挂起并向企业微信/钉钉推送确认卡片，杜绝误操作。</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 9 Suite: <span class="text-violet-600 font-bold">Step 3 of 5 (Tool Guardrails)</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-violet-600 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="harness_slide2_context.html" title="上一页：上下文动态缰绳" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一节: 上下文缰绳</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-violet-700">4. 状态持久化快照 (Checkpoints)</strong>
+            </span>
+            <a href="harness_slide4_checkpoint.html" title="下一页：状态持久化快照" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一节: 状态快照</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">🎯 讲师教学通俗话术：</span>
+                    “各位同学，如果说第二节的上下文缰绳管的是 AI 的‘思想’（别被洗脑），那么第三节的 Tool Guardrail 管的就是 AI 的‘手脚’（别乱拆家）！<br><br>
+                    很多同学给 AI 接了命令行工具，AI 在排查 Bug 时顺手打出一行 `rm -rf /*`，服务器瞬间瘫痪！而在 Harness 体系中，我们在物理调用层拦截它：只要匹配到 `rm`、`drop` 等黑名单指令，或者转账金额超过 1,000 元阈值，外部代码直接断电拦截，根本不给它犯错的机会！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 什么是 Circuit Breaker（断路器）？</span>
+                    借用电气工程中的空气开关概念。当智能体调用工具发生高频连续错误（如重试超 3 次）、步数超过阈值（如 > 6 步）、或尝试执行高危系统指令时，Harness 断路器自动跳闸，强行终止当前任务并报警。
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-violet-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-violet-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyToolGuardrailConfig() {
+            const text = document.getElementById('toolGuardrailConfigSnippet').innerText.trim();
+            copyTextToClipboard(text, "Tool Guardrails 配置已复制！请保存至 .workbuddy/harness.json");
+        }
+
+        function copyGuardrailExecutionPrompt() {
+            const text = document.getElementById('guardrailExecutionPromptText').innerText.trim();
+            copyTextToClipboard(text, "高危执行测试指令已复制到剪贴板！可直接在 WorkBuddy 聊天框发送。");
+        }
+
+        function copyTextToClipboard(text, successMsg) {
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast(successMsg);
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        function simulateGuardrailRun(type) {
+            const out = document.getElementById('guardrailConsoleOutput');
+            const traceBadge = document.getElementById('traceGatewayBadge');
+            const statusBadge = document.getElementById('guardrailStatusBadge');
+
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-violet-400 mr-2"></i> 正在送入 Harness 工具调用拦截网关分析中...';
+            traceBadge.innerText = "INTERCEPTING...";
+
+            setTimeout(function() {
+                if (type === 'destructive_command') {
+                    traceBadge.innerText = "BLOCKED";
+                    traceBadge.className = "text-[10px] text-rose-500 font-mono font-bold";
+                    statusBadge.innerText = "COMMAND FORBIDDEN";
+                    statusBadge.className = "text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-mono font-bold";
+
+                    out.innerHTML = `
+<div class="text-rose-400 font-bold">🚨 [Harness Interceptor] 捕获到高危系统破坏指令！</div>
+<div>├── 🔍 分析 Shell 参数: command='rm -rf ./invoices_temp'</div>
+<div class="text-rose-500">├── ❌ 命中黑名单规则: Pattern 'rm' 属于禁止执行的一票否决指令</div>
+<div>├── ⚡ 物理阻断: 拦截器拒绝下发命令至本地终端沙箱 (Execution Rejected)</div>
+<div class="bg-rose-950/80 p-2 rounded border border-rose-800 text-[10px] text-rose-200 mt-1">
+    🛡️ [安全保护生效]: 系统成功阻止了针对 './invoices_temp' 的文件删除！<br>
+    Agent 终端反馈: "系统安全策略已生效：检测到删除指令 [rm]，操作已被底层 Harness 强制拦截！"
+</div>
+                    `;
+                    showToast("防御成功：Harness 成功阻断了 rm -rf 高危删除操作！");
+                } else {
+                    traceBadge.innerText = "HITL SUSPENDED";
+                    traceBadge.className = "text-[10px] text-amber-500 font-mono font-bold";
+                    statusBadge.innerText = "AWAITING CFO APPROVAL";
+                    statusBadge.className = "text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded font-mono font-bold";
+
+                    out.innerHTML = `
+<div class="text-amber-400 font-bold">⚠️ [Harness Interceptor] 监测到超出自动放行阈值的资金操作！</div>
+<div>├── 🔍 解析动作: execute_payment(vendor='智云未来', amount=120000.0)</div>
+<div class="text-amber-300">├── 📊 规则比对: ￥120,000.00 > 单笔上限 ￥1,000.00 (Threshold Exceeded)</div>
+<div>├── ⏸️ 执行断路挂起: 当前线程已暂停，自动冻结支付 API 握手</div>
+<div class="bg-amber-950/80 p-2 rounded border border-amber-800 text-[10px] text-amber-200 mt-1">
+    📲 [审批卡片已分发]: 已向财务总监推送钉钉/企微待办确认卡片。<br>
+    ✨ 状态: 事务安全挂起中，待人工授权后方可落盘转账！
+</div>
+                    `;
+                    showToast("防护成功：大额资金动作被自动挂起并推入审批队列！");
+                }
+            }, 400);
+        }
+
+        function downloadSampleBatchPayment() {
+            const scriptData = `# -*- coding: utf-8 -*-
+# batch_payment_trigger.py - 模拟高风险批处理打款与清理脚本
+
+import time
+import os
+
+def run_simulated_payment_batch():
+    print("[*] 正在读取待付发票批次 (共 1 笔大额付款)...")
+    # 高危动作 1：超额资金划拨 (￥120,000.00)
+    vendor = "智云未来信息技术有限公司"
+    amount = 120000.00
+    print(f"[*] 准备调用支付网关: 付款至 {vendor}, 金额: ￥{amount:.2f}")
+
+    # 高危动作 2：破坏性删除指令
+    destructive_cmd = "rm -rf ./invoices_temp"
+    print(f"[*] 准备清理临时历史文件: {destructive_cmd}")
+
+if __name__ == "__main__":
+    run_simulated_payment_batch()
+`;
+
+            try {
+                const blob = new Blob([scriptData], { type: 'text/x-python;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'batch_payment_trigger.py';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("测试脚本 batch_payment_trigger.py 下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') {
+                window.location.href = 'harness_slide2_context.html';
+            } else if (e.key === 'ArrowRight') {
+                window.location.href = 'harness_slide4_checkpoint.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

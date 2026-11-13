@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - 实战场景设定：电商大促海量客诉的智能分类与多智能体分发</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-emerald-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyScenarioBrief()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-emerald-600"></i>
+                <span class="hidden sm:inline">复制场景需求文档</span>
+                <span class="sm:hidden">复制需求</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-network-wired text-emerald-600"></i>
+                <span>Module 3 · 多智能体 (Multi-Agent) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                实战场景设定：<span class="text-emerald-600">电商大促海量发散客诉的智能分类与专业接待</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在上一模块中，我们用 Workflow 解决了“格式固定、逻辑线形”的问题。但客服场景截然不同：用户可能问退款、问发票、问技术故障，甚至混合双打。面对这种<strong>极度发散的意图</strong>，如果把所有规则塞进一个单体大模型，它必然“精神分裂”。我们需要引入 <strong>Multi-Agent (多智能体) 架构</strong>。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Business Scenario vs Interactive Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Scenario & Solution -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-stethoscope text-emerald-600"></i>
+                            业务痛点与“专科医院”破局方案
+                        </h3>
+                        <span class="text-[10px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">BUSINESS CASE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Pain Point -->
+                        <div class="bg-rose-50 border border-rose-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-rose-800 mb-1.5 flex items-center gap-1.5">
+                                <i class="fa-solid fa-brain text-rose-500"></i> 单体大模型 (Single Bot) 的认知灾难
+                            </h4>
+                            <ul class="space-y-1 text-rose-700/80 leading-relaxed list-disc list-inside">
+                                <li><strong>Prompt 溢出</strong>：把售后规则、财务报销要求、产品故障排查手册全写进一个 Bot 的人设里，提示词长达上万字，导致严重“注意力丢失”。</li>
+                                <li><strong>工具互斥混乱</strong>：既给它挂查订单的插件，又挂知识库，模型经常调错工具。</li>
+                                <li><strong>回复毫无专业度</strong>：面对复合问题（如：机器坏了+退款），容易避重就轻。</li>
+                            </ul>
+                        </div>
+
+                        <!-- Solution -->
+                        <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-emerald-800 mb-1.5 flex items-center gap-1.5">
+                                <i class="fa-solid fa-hospital-user text-emerald-500"></i> Coze Multi-Agent 专科医院架构
+                            </h4>
+                            <p class="text-emerald-700/80 leading-relaxed mb-2">
+                                将系统划分为“导诊台”和“专科医生”。主控负责精准分发，专科负责深挖解决，互不干扰！
+                            </p>
+                            <div class="bg-white/60 p-2 rounded border border-emerald-100 font-mono text-[10px] text-emerald-900">
+                                [Router 分诊路由] ➡️ 分析用户意图<br>
+                                ├── 意图 1：财务发票 ➡️ 转交 [Worker: 财务专家 Bot]<br>
+                                └── 意图 2：机器故障 ➡️ 转交 [Worker: 售后技术 Bot]
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Experience Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-code-branch text-sm"></i>
+                            <span class="text-xs">智能体架构应对复杂意图对比沙箱</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">READY TO TEST</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans font-bold">高压客诉模拟：</label>
+                        <div class="bg-slate-800 p-2 rounded border border-slate-700 text-slate-200 italic">
+                            “我买的扫地机器人一直亮红灯不充电，急死了！另外我昨天申请的增值税专票怎么还没开出来？！”
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-2 font-sans mt-2">
+                            <button onclick="simulateResponse('single')" class="py-2.5 px-2 rounded-lg border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-robot"></i>
+                                <span>1. 全能单体大模型响应</span>
+                            </button>
+                            <button onclick="simulateResponse('multi')" class="py-2.5 px-2 rounded-lg border border-emerald-500/50 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-300 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-network-wired"></i>
+                                <span>2. 触发多智能体分诊协作</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">执行过程与客户体验 (Trace & Experience):</span>
+                            </div>
+                            <div id="executionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 点击上方按钮，观察“全能大模型”与“多智能体专家”的回复质量差距...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Grid: Core Multi-Agent Nodes Preview -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mt-2 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-gears text-emerald-600"></i>
+                <span>剧透：下一节我们将构建的 Coze 多智能体三大核心节点</span>
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-[11px]">
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <strong class="text-slate-700 block mb-1 font-mono flex items-center gap-1.5">
+                        <i class="fa-solid fa-route text-slate-500"></i> 1. Router (路由节点)
+                    </strong>
+                    <span class="text-slate-500">智能体大门的“分诊台”。它不直接回答问题，只负责分析意图，并设定严格的转移条件（Condition），将任务派发给正确的底层 Worker。</span>
+                </div>
+                <div class="p-3 rounded-xl bg-cyan-50/50 border border-cyan-200">
+                    <strong class="text-cyan-700 block mb-1 font-mono flex items-center gap-1.5">
+                        <i class="fa-solid fa-wrench text-cyan-500"></i> 2. Worker: 售后技术 Bot
+                    </strong>
+                    <span class="text-slate-500">人设：资深维修工程师。外挂能力：<strong>产品说明书与故障排查知识库 (RAG)</strong>。专注于解决硬件报错、操作指导。</span>
+                </div>
+                <div class="p-3 rounded-xl bg-amber-50/50 border border-amber-200">
+                    <strong class="text-amber-700 block mb-1 font-mono flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-invoice-dollar text-amber-500"></i> 3. Worker: 财务客服 Bot
+                    </strong>
+                    <span class="text-slate-500">人设：严谨的财务专员。外挂能力：<strong>ERP 订单查询 API 插件</strong>。专注于查询付款状态、开具发票与退单审核。</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-emerald-600 font-bold">Slide 10 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[50%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="9.html" title="上一页：工作流运行验证" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-emerald-700">11. 创建 Router 主控节点</strong>
+            </span>
+            <a href="11.html" title="下一页：创建 Router 与意图识别" class="px-3 py-1.5 md:py-2 rounded-lg border border-emerald-100 bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲师场景引入话术：</span>
+                    “各位同学，我们在前面用工作流解决了‘格式对齐’的问题，现在我们迈入 AI 架构中最性感的领域——多智能体协作！<br><br>
+                    大家想一想，如果在现实中，一个客服既要懂硬件主板维修，又要懂税务开发票，还要懂安抚客户情绪，这个人是不是很难找？大模型也是一样！不要试图写一个两万字的超级 Prompt 来造一个‘全能神’，它一定会脑爆。我们要做的，是建立一个专科医院，让导诊台去分发任务！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “点击右侧沙箱，先展示单体模型应对复合客诉时的敷衍（顾此失彼，可能只回答了维修，忘了发票）。然后再展示多智能体模式下，Router 如何将一句话拆分成两个任务，分别丢给两个专家处理。效果震撼，直接引出下一节的具体构建！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        let simTimeout = null;
+
+        function simulateResponse(type) {
+            const out = document.getElementById('executionConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            // Clear previous simulation
+            if (simTimeout) clearTimeout(simTimeout);
+
+            if (type === 'single') {
+                out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-rose-500 mr-2"></i> 单体大模型正在吃力地处理长下文约束...';
+                badge.innerText = "SINGLE BOT (CONFUSED)";
+                badge.className = "text-[10px] bg-rose-900/60 text-rose-300 border border-rose-600 px-2 py-0.5 rounded";
+
+                simTimeout = setTimeout(function() {
+                    out.innerHTML = `
+<div class="text-rose-400 font-bold mb-1">⚠️ [全能单体 Bot 响应] 顾此失彼与敷衍</div>
+<div class="text-slate-400 italic">"您好！关于扫地机器人亮红灯的问题，建议您先重启一下试试，或者检查底部的刷子是不是卡住了。至于发票，您可以联系我们的财务部门，谢谢您的支持！"</div>
+<div class="text-rose-400 font-bold mt-2">❌ 分析：因为系统提示词太杂，模型没有调取知识库给出具体红灯报错代码含义，也没有调用插件查询开票进度，给出了毫无业务价值的“正确废话”。</div>
+                    `;
+                    showToast("单体大模型测试完成，效果不佳。");
+                }, 1200);
+
+            } else if (type === 'multi') {
+                out.innerHTML = '<i class="fa-solid fa-network-wired fa-spin text-emerald-400 mr-2"></i> 路由节点正在拆解意图，唤醒底层专业智能体...';
+                badge.innerText = "MULTI-AGENT ROUTING";
+                badge.className = "text-[10px] bg-emerald-900/60 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+                simTimeout = setTimeout(function() {
+                    out.innerHTML = `
+<div class="text-emerald-400 font-bold mb-1">⚡ [多智能体协同响应] 专科专治，完美应对</div>
+<div class="text-slate-300">🧭 <span class="text-blue-400 font-bold">Router</span>: 拆解出[硬件故障]与[财务查询]两个意图。</div>
+<div class="text-slate-300 mt-1">👨‍🔧 <span class="text-cyan-400 font-bold">[售后技术 Bot 接管]</span>: 检索产品知识库。</div>
+<div class="text-slate-400 pl-4 italic">"您好，亮红灯通常是由于尘盒未装平或主刷被毛发卡死。请您取下尘盒检查底部触片是否清洁。这有详细排查图文教程[链接]。"</div>
+<div class="text-slate-300 mt-1">👩‍💼 <span class="text-amber-400 font-bold">[财务客服 Bot 接管]</span>: 调用订单 ERP 插件。</div>
+<div class="text-slate-400 pl-4 italic">"帮您查到了，您的增值税专票在昨晚已进入税务开票队列，预计今天下午 14:00 前将发送至您预留的邮箱，请注意查收哦！"</div>
+<div class="text-emerald-300 font-bold mt-2">✅ 分析：多智能体接力，精准调取各自专属工具，客户体验拉满！</div>
+                    `;
+                    showToast("多智能体分诊协同演示完毕！");
+                }, 1800);
+            }
+        }
+
+        function copyScenarioBrief() {
+            const text = "【实战场景需求文档】\n任务：电商大促海量高压客诉智能分类与接待\n痛点：用户意图极度发散（退换货、硬件报修、开发票混杂）。单体大模型因提示词过载导致幻觉、敷衍回复。\n方案：Coze Multi-Agent 多智能体架构。\n核心链路：[Router 主控路由分发] ➡️ 分别流转给 ➡️ [挂载知识库的技术 Bot] 和 [挂载查询插件的财务 Bot]。";
+            
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("多智能体场景需求文档已成功复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

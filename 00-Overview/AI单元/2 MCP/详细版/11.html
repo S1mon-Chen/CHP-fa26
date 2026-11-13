@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 11 - 实战一：场景设定与弹药准备</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 sql.js 用于在浏览器端直接生成真实的 SQLite 数据库文件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        
+        /* Chat bubble animations */
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.6s ease forwards;
+        }
+        .delay-1 { animation-delay: 0.5s; }
+        .delay-2 { animation-delay: 2.0s; }
+        .delay-3 { animation-delay: 3.5s; }
+        
+        @keyframes slideUpFade {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .db-pulse {
+            animation: dbPulse 2s infinite;
+        }
+        @keyframes dbPulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战一 —— 无代码对话本地数据库
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-database text-blue-600"></i>
+                    <span>Live Action 1 · 场景与弹药</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    老板的突发需求与 <span class="text-blue-600 border-b-4 border-blue-300 mx-1 pb-1">“弹药”准备</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    业务人员不会写 SQL，面对数据库文件往往束手无策。<br>现在，我们将带你完成一次“不可能的任务”。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: The Business Scenario (Chat Mockup) -->
+                <div class="bg-slate-100 border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow">
+                    <div class="bg-white border-b border-slate-200 p-4 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-lg">
+                                老板
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-800">工作沟通群</h3>
+                                <div class="text-[10px] text-emerald-500 flex items-center gap-1">
+                                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> 在线
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col gap-4 flex-1 overflow-y-auto">
+                        <!-- Boss Message 1 -->
+                        <div class="flex items-start gap-3 chat-bubble delay-1">
+                            <div class="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs shrink-0 mt-1">老板</div>
+                            <div class="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700">
+                                上个月的业务订单数据我让后台导成了一个 `.db` 数据库文件。
+                            </div>
+                        </div>
+
+                        <!-- Boss Message 2 -->
+                        <div class="flex items-start gap-3 chat-bubble delay-2">
+                            <div class="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs shrink-0 mt-1">老板</div>
+                            <div class="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-sm text-sm shadow-sm text-slate-700">
+                                你马上帮我查一下：<br>
+                                1. <strong class="text-rose-600">退款金额最高</strong>的前 3 个产品是什么？<br>
+                                2. 这些退款订单主要集中在哪个<strong class="text-indigo-600">地区</strong>？<br>
+                                10分钟后开会要用。
+                            </div>
+                        </div>
+
+                        <!-- User Reaction -->
+                        <div class="flex items-start gap-3 justify-end chat-bubble delay-3 mt-4">
+                            <div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm text-sm shadow-sm relative">
+                                <div class="font-bold mb-1">我（内心OS）：</div>
+                                “完蛋了，我连什么是 SQL 都不知道，更别提怎么打开 .db 文件了！这让我怎么查？”
+                                <i class="fa-solid fa-face-sad-tear text-xl absolute -bottom-3 -left-3 text-amber-400 drop-shadow"></i>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs shrink-0 mt-1">我</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Ammo Preparation -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative text-white">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 rounded-bl-full blur-2xl"></div>
+                    
+                    <div class="border-b border-slate-700 p-5 flex items-center gap-3">
+                        <i class="fa-solid fa-box-archive text-blue-400 text-xl"></i>
+                        <h3 class="text-base font-bold text-slate-100">你的“实战弹药库”</h3>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col flex-1 justify-center items-center text-center relative z-10">
+                        <div class="w-24 h-24 rounded-2xl bg-blue-500/20 border-2 border-blue-400/50 flex flex-col items-center justify-center mb-6 db-pulse">
+                            <i class="fa-solid fa-database text-4xl text-blue-400 mb-2"></i>
+                            <span class="text-[10px] font-mono text-blue-300">SQLite</span>
+                        </div>
+                        
+                        <h4 class="text-lg font-bold text-white mb-2">business_data.db</h4>
+                        <p class="text-sm text-slate-400 mb-8 max-w-xs">
+                            点击下方按钮，浏览器将自动生成一个包含近百条真实业务数据的数据库文件供你测试。
+                        </p>
+                        
+                        <button id="downloadDbBtn" onclick="generateAndDownloadDB()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-3 px-6 rounded-xl shadow-lg shadow-blue-900/50 transition-all flex items-center gap-2 transform hover:scale-105 active:scale-95">
+                            <i class="fa-solid fa-download"></i>
+                            <span>下载测试数据库 (.db)</span>
+                        </button>
+                        
+                        <div class="mt-8 bg-slate-800/80 border border-slate-700 p-3 rounded-lg text-left w-full max-w-sm">
+                            <div class="text-[10px] text-slate-500 font-mono mb-2 uppercase tracking-wider">Database Schema (内含表结构)</div>
+                            <div class="text-xs text-slate-300 font-mono space-y-1">
+                                <div><span class="text-emerald-400">TABLE</span> orders {</div>
+                                <div class="pl-4 text-slate-400">id <span class="text-purple-400">INTEGER</span>,</div>
+                                <div class="pl-4 text-slate-400">product_name <span class="text-purple-400">TEXT</span>,</div>
+                                <div class="pl-4 text-slate-400">region <span class="text-purple-400">TEXT</span>,</div>
+                                <div class="pl-4 text-slate-400">price <span class="text-purple-400">REAL</span>,</div>
+                                <div class="pl-4 text-slate-400">status <span class="text-purple-400">TEXT</span></div>
+                                <div>}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-blue-600 font-bold">11</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 11 of 22 is 50% -->
+                <div class="bg-blue-500 h-full w-[50%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="10.html" title="上一页：验证通电" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-database mr-1 text-blue-500"></i>模块三：实战演练一
+            </span>
+            <a href="12.html" title="下一页：专属配置" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎭 制造紧张感与痛点共鸣：</span>
+                    “各位，我们刚才学了怎么通电。现在立马进入实战！请看左边这个场景：马上要开会了，老板扔给你一个后缀是 `.db` 的数据库文件，让你查退款数据。作为一个没学过编程的业务人员，你是不是连用什么软件打开它都不知道？”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🛠️ 引导学员准备弹药：</span>
+                    “为了让大家真切体会到这个魔法，请大家现在点击右边的蓝色按钮！这个课件会在你的电脑里当场生成一个真实的数据库文件。请把它保存在你的 Downloads（下载）文件夹里。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “弹药准备好了。下一页，我们将正式把连通数据库的 MCP 插头，配置到你的 Trae 软件里，准备迎击老板的需求！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- 弹窗提示 -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>数据库生成并下载成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Show toast notification
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            if (message) {
+                toast.innerHTML = `<i class="fa-solid fa-check text-emerald-400 mr-2"></i>${message}`;
+            }
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // Generate and Download SQLite DB using sql.js
+        async function generateAndDownloadDB() {
+            const btn = document.getElementById('downloadDbBtn');
+            const originalContent = btn.innerHTML;
+            
+            try {
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>正在生成数据库...</span>';
+                btn.classList.add('opacity-80', 'cursor-not-allowed');
+                
+                // Initialize sql.js (fetching WASM from CDN)
+                const SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+                
+                // Create a new database
+                const db = new SQL.Database();
+                
+                // Execute SQL to create table and insert dummy data
+                const sqlStr = `
+                    CREATE TABLE orders (
+                        id INTEGER PRIMARY KEY,
+                        product_name TEXT,
+                        region TEXT,
+                        price REAL,
+                        status TEXT
+                    );
+                    INSERT INTO orders VALUES (1, 'Ergonomic Office Chair', '华东区', 899.00, 'completed');
+                    INSERT INTO orders VALUES (2, 'Mechanical Keyboard', '华南区', 459.00, 'refunded');
+                    INSERT INTO orders VALUES (3, '27-inch Monitor', '华北区', 1299.00, 'completed');
+                    INSERT INTO orders VALUES (4, 'Wireless Mouse', '华东区', 199.00, 'refunded');
+                    INSERT INTO orders VALUES (5, 'Standing Desk', '华南区', 1599.00, 'refunded');
+                    INSERT INTO orders VALUES (6, 'Noise Cancelling Headphones', '华北区', 1899.00, 'completed');
+                    INSERT INTO orders VALUES (7, 'Mechanical Keyboard', '华东区', 459.00, 'refunded');
+                    INSERT INTO orders VALUES (8, 'Ergonomic Office Chair', '华北区', 899.00, 'refunded');
+                    INSERT INTO orders VALUES (9, 'Standing Desk', '华东区', 1599.00, 'completed');
+                    INSERT INTO orders VALUES (10, 'Standing Desk', '华东区', 1599.00, 'refunded');
+                    INSERT INTO orders VALUES (11, 'Wireless Mouse', '华北区', 199.00, 'completed');
+                    INSERT INTO orders VALUES (12, 'Mechanical Keyboard', '华东区', 459.00, 'refunded');
+                `;
+                db.run(sqlStr);
+                
+                // Export the database to an Uint8Array
+                const data = db.export();
+                
+                // Create a Blob and trigger download
+                const blob = new Blob([data], {type: "application/x-sqlite3"});
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.style.display = "none";
+                a.href = url;
+                a.download = "business_data.db";
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // Success state
+                btn.innerHTML = '<i class="fa-solid fa-check"></i><span>下载成功！请查看下载目录</span>';
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-500');
+                btn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+                showToast();
+                
+                // Restore button after 3 seconds
+                setTimeout(() => {
+                    btn.innerHTML = originalContent;
+                    btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'opacity-80', 'cursor-not-allowed');
+                    btn.classList.add('bg-blue-600', 'hover:bg-blue-500');
+                }, 3000);
+                
+            } catch (err) {
+                console.error("Database generation failed:", err);
+                btn.innerHTML = originalContent;
+                btn.classList.remove('opacity-80', 'cursor-not-allowed');
+                alert("生成数据库失败！请检查网络是否能正常访问 cdnjs 加载核心组件。");
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '12.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '10.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

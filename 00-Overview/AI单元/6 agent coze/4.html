@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 4 - 架构选型指南：什么时候该用工作流串联？什么时候该用多智能体分发？</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-blue-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyDecisionTree()" class="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-blue-600"></i>
+                <span class="hidden sm:inline">复制选型决策树手册</span>
+                <span class="sm:hidden">复制决策树</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-map-signs text-blue-600"></i>
+                <span>Module 1 · 架构选型与决策边界</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                架构选型指南：<span class="text-indigo-600">什么时候用工作流？什么时候选多智能体？</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                没有万能的架构，只有最适合业务的方案。作为企业级 AI 架构师，你必须克制“手里有锤子看什么都是钉子”的冲动。理清业务需求的**确定性**与**发散性**，是决定采用 <strong>Workflow (工作流)</strong> 还是 <strong>Multi-Agent (多智能体)</strong> 的唯一标准。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Decision Tree vs Smart Selector -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Decision Tree -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-code-branch text-blue-600"></i>
+                            企业 AI 架构选型决策树
+                        </h3>
+                        <span class="text-[10px] font-mono text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">DECISION TREE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Decision 1 -->
+                        <div class="relative pl-6 border-l-2 border-indigo-200">
+                            <div class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-indigo-500 border-2 border-white"></div>
+                            <h4 class="font-bold text-slate-800 mb-1 text-sm">Q1：任务流转路径是否 100% 固定？</h4>
+                            <p class="text-slate-600 mb-2 leading-relaxed">业务是否总是遵循 A -> B -> C 的顺序（例如：每天先爬数据，再翻译，最后发邮件）？</p>
+                            <div class="flex gap-2 font-mono text-[10px]">
+                                <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold border border-indigo-200">是 ➡️ 首选 Workflow</span>
+                                <span class="bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-200">否 ➡️ 往下看</span>
+                            </div>
+                        </div>
+
+                        <!-- Decision 2 -->
+                        <div class="relative pl-6 border-l-2 border-emerald-200">
+                            <div class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white"></div>
+                            <h4 class="font-bold text-slate-800 mb-1 text-sm">Q2：是否需要处理极其发散的用户意图？</h4>
+                            <p class="text-slate-600 mb-2 leading-relaxed">系统是否面向 C 端用户或复杂的内部问答，用户可能问出完全不相关的问题（如查物流、技术答疑、投诉）？</p>
+                            <div class="flex gap-2 font-mono text-[10px]">
+                                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">是 ➡️ 首选 Multi-Agent</span>
+                                <span class="bg-slate-50 text-slate-500 px-2 py-0.5 rounded border border-slate-200">否 ➡️ 往下看</span>
+                            </div>
+                        </div>
+
+                        <!-- Decision 3 -->
+                        <div class="relative pl-6 border-l-2 border-rose-200">
+                            <div class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-rose-500 border-2 border-white"></div>
+                            <h4 class="font-bold text-slate-800 mb-1 text-sm">Q3：对输出格式是否有苛刻的“防脱轨”要求？</h4>
+                            <p class="text-slate-600 mb-2 leading-relaxed">结果是否必须严格按照指定的 JSON 结构或排版输出，哪怕错一个标点都不行（如自动化入库、生成正式合同）？</p>
+                            <div class="flex gap-2 font-mono text-[10px]">
+                                <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold border border-indigo-200">是 ➡️ 必须用 Workflow 锁死</span>
+                                <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-bold border border-emerald-200">否 ➡️ 可尝试 Multi-Agent</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Selector Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-blue-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-microchip text-sm"></i>
+                            <span class="text-xs">AI 架构师智能选型模拟器</span>
+                        </span>
+                        <span id="selectorBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">EVALUATING</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">作为架构师，面对以下业务需求，你会选择什么架构？点击测试：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <!-- Scenario 1 -->
+                            <button onclick="evaluateScenario('workflow_data')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2.5 shadow-sm">
+                                <i class="fa-solid fa-file-invoice text-indigo-400 mt-0.5"></i>
+                                <div>
+                                    <div class="font-bold">场景 A：每日财务对账助手</div>
+                                    <div class="text-[10px] text-slate-400 mt-0.5">每天上午 9 点，抓取昨日订单表 -> 清洗数据 -> 计算汇总 -> 严格按表格格式发到高管企微群。</div>
+                                </div>
+                            </button>
+                            <!-- Scenario 2 -->
+                            <button onclick="evaluateScenario('multi_agent_cs')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2.5 shadow-sm">
+                                <i class="fa-solid fa-headset text-emerald-400 mt-0.5"></i>
+                                <div>
+                                    <div class="font-bold">场景 B：综合型政务服务数字人</div>
+                                    <div class="text-[10px] text-slate-400 mt-0.5">面向市民的窗口，有的市民问社保怎么交，有的要投诉城管，有的只是单纯发牢骚闲聊。</div>
+                                </div>
+                            </button>
+                            <!-- Scenario 3 -->
+                            <button onclick="evaluateScenario('hybrid')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2.5 shadow-sm">
+                                <i class="fa-solid fa-layer-group text-blue-400 mt-0.5"></i>
+                                <div>
+                                    <div class="font-bold">场景 C：研报生成系统</div>
+                                    <div class="text-[10px] text-slate-400 mt-0.5">用户输入关键词，系统先去网搜多篇资料，然后分发给金融、法律两个专家分别评审，最后汇总排版。</div>
+                                </div>
+                            </button>
+                        </div>
+
+                        <!-- Selector Output Console -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">架构师选型诊断结果 (Architect Decision):</span>
+                            </div>
+                            <div id="decisionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[140px] leading-relaxed">
+                                <div class="text-slate-500"># 点击上方的业务场景按钮，生成架构评审结论...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-blue-600 font-bold">Slide 4 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[20%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="3.html" title="上一页：核心组件辨析" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一模块：<strong class="text-indigo-700">5. 工作流 (Workflow) 实战</strong>
+            </span>
+            <a href="5.html" title="下一页：工作流实战" class="px-3 py-1.5 md:py-2 rounded-lg border border-indigo-100 bg-indigo-600 text-white hover:bg-indigo-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一模块</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 为什么选型这么难？</span>
+                    “各位同学，这是我在指导很多企业落地 AI 时遇到的最大误区：**大家都觉得 Multi-Agent 听起来更高级，所以什么业务都想用多智能体。**<br><br>
+                    结果就是，明明只是想洗个数据生成个图表，非要派个智能体去‘自主思考’，结果每次生成的格式都不一样，甚至有时候它还会偷懒跳过某些步骤，导致下游系统直接崩溃。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 黄金法则一句话总结：</span>
+                    “当你追求 **100% 确定性和格式稳定** 时，必须用 <strong>工作流 (Workflow)</strong>，把大模型锁死在一个节点里剥夺它的自主权。<br>
+                    当你面向 **C 端用户无法预测的提问** 时，必须用 <strong>多智能体 (Multi-Agent)</strong>，用 Router 去灵活分发。这才是真正的架构智慧！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-blue-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-blue-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function evaluateScenario(type) {
+            const out = document.getElementById('decisionConsole');
+            const badge = document.getElementById('selectorBadge');
+
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-blue-400 mr-2"></i> 架构师正在评估业务约束条件...';
+            
+            setTimeout(function() {
+                if (type === 'workflow_data') {
+                    badge.innerText = "WORKFLOW (工作流)";
+                    badge.className = "text-[10px] bg-indigo-900 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-indigo-400 font-bold">✅ 架构建议：强烈推荐使用 Workflow (工作流)</div>
+<div class="text-slate-300">├── 诊断 1: 业务流转路径 100% 固定 (定时->抓取->清洗->汇总)。</div>
+<div class="text-slate-300">├── 诊断 2: 对输出格式有刚性要求，不允许大模型自由发挥。</div>
+<div class="text-slate-300">└── 方案: 用 Workflow 画一条死线，大模型仅作为清洗文本的运算节点，剥夺其统筹自主权。</div>
+<div class="text-indigo-300 font-bold mt-2">💡 收益：绝对稳定，零幻觉，不出幺蛾子。</div>
+                    `;
+                    showToast("场景 A 诊断完成。");
+                } else if (type === 'multi_agent_cs') {
+                    badge.innerText = "MULTI-AGENT (多智能体)";
+                    badge.className = "text-[10px] bg-emerald-900 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-emerald-400 font-bold">✅ 架构建议：强烈推荐使用 Multi-Agent (多智能体路由)</div>
+<div class="text-slate-300">├── 诊断 1: 用户意图极端发散，无法用固定流程覆盖所有可能。</div>
+<div class="text-slate-300">├── 诊断 2: 不同的问题需要不同的专业知识库和性格面具。</div>
+<div class="text-slate-300">└── 方案: 设置一个主控 Router 专门负责判别意图，然后派发给下属的专科 Worker (社保Bot/投诉Bot)。</div>
+<div class="text-emerald-300 font-bold mt-2">💡 收益：术业有专攻，防止一个通用大脑精神分裂。</div>
+                    `;
+                    showToast("场景 B 诊断完成。");
+                } else if (type === 'hybrid') {
+                    badge.innerText = "HYBRID (混合编排)";
+                    badge.className = "text-[10px] bg-blue-900 text-blue-300 border border-blue-600 px-2 py-0.5 rounded";
+
+                    out.innerHTML = `
+<div class="text-blue-400 font-bold">✅ 架构建议：采用 Workflow 内嵌 Multi-Agent 的混合架构</div>
+<div class="text-slate-300">├── 诊断 1: 整体大框架是确定的 (网搜 -> 评审 -> 汇总)。</div>
+<div class="text-slate-300">├── 诊断 2: 但在“评审”这个中间环节，需要发散性、辩论性的思考。</div>
+<div class="text-slate-300">└── 方案: 外层用 Workflow 串联流程；在评审节点处，丢给一组背靠背 Multi-Agent 互相审核打分。</div>
+<div class="text-blue-300 font-bold mt-2">💡 收益：既有流程的确定性把控，又有生成内容的质量博弈。</div>
+                    `;
+                    showToast("场景 C 诊断完成。");
+                }
+            }, 600);
+        }
+
+        function copyDecisionTree() {
+            const text = "架构选型决策树：\n1. 路径是否固定？是 -> 选 Workflow；否 -> 选 Multi-Agent。\n2. 意图是否发散（客服类）？是 -> 选 Multi-Agent；否 -> 选 Workflow。\n3. 对格式和稳定性要求极高（不允许犯错）？是 -> 必须选 Workflow。";
+            
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("决策树指南已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

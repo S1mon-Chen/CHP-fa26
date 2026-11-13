@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 8 - 避坑指南 1：致命的“系统路径”陷阱</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            900: '#312e81',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        
+        .error-shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+            transform: translate3d(0, 0, 0);
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .keyboard-key {
+            display: inline-flex;
+            align-items: center;
+            justify-center;
+            padding: 0.2rem 0.5rem;
+            background-color: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-bottom-width: 3px;
+            border-radius: 0.375rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #475569;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        /* Connecting dashed line */
+        .path-connection {
+            background-image: linear-gradient(to bottom, #cbd5e1 50%, transparent 50%);
+            background-size: 2px 10px;
+            background-repeat: repeat-y;
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 攻克“配置恐惧症”
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-1/4 right-0 w-[400px] h-[400px] bg-rose-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-bomb text-rose-600"></i>
+                    <span>Pitfall Guide #1 · 高频避坑指南</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    99% 的新手，死在<span class="text-rose-600 border-b-4 border-rose-300 mx-1 pb-1">“路径填空”</span>上
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    大多数人的 MCP 启动失败，并不是代码写错了，<br>而是把官方示例里的“假地址”，原封不动地贴到了自己的配置里。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: The Trap (Error) -->
+                <div class="lg:col-span-5 flex flex-col">
+                    <div class="bg-slate-900 rounded-2xl flex flex-col overflow-hidden shadow-xl error-shake border-2 border-rose-900/50 relative h-full">
+                        <div class="absolute inset-0 bg-rose-500/5 mix-blend-overlay"></div>
+                        <div class="bg-slate-800 border-b border-rose-900/50 p-3 flex items-center justify-between z-10">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-solid fa-bug text-rose-500"></i>
+                                <span class="text-sm font-bold text-slate-200">常见的绝望时刻</span>
+                            </div>
+                            <span class="text-[10px] bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded border border-rose-500/30 font-mono">Terminal</span>
+                        </div>
+                        
+                        <div class="p-5 font-mono text-[10px] leading-relaxed text-slate-400 overflow-y-auto flex-1 flex flex-col gap-2 relative z-10">
+                            <div class="text-slate-500 mb-1">...</div>
+                            <div class="bg-slate-800/80 p-2 rounded border border-slate-700">
+                                [mcp.config.usrlocalmcp.sqlite-db] MCPClient#onClose npm warn deprecated...<br>
+                                [info] [mcp...sqlite-db] MCPServerManager#onClose <span class="text-rose-400 font-bold">Disconnected.</span>
+                            </div>
+                            <div class="bg-rose-950/40 p-2 rounded border border-rose-900 text-rose-300">
+                                [error] ... MCPClient#startFailed <span class="text-rose-400 font-bold">Connection closed</span><br>
+                                [error] ... ExtHostMCPService#$start <span class="text-rose-400 font-bold">Fail to start</span>
+                            </div>
+                            
+                            <!-- Analysis Box -->
+                            <div class="mt-auto bg-slate-800 rounded-lg p-3 border border-slate-600 shadow-inner">
+                                <div class="text-amber-400 font-bold mb-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-magnifying-glass"></i> 案情侦破：
+                                </div>
+                                <p class="text-[9px] text-slate-300 leading-relaxed">
+                                    你用的是 <strong class="text-white">Mac</strong> 电脑（路径前缀是 <code>/Users/...</code>），<br>但你刚才配置里的最后一行却写着：<br>
+                                    <span class="text-rose-400 bg-rose-950/50 px-1 rounded block mt-1">"C:/我的工作/2024财务数据.db"</span><br>
+                                    这是 Windows 的假路径！文件找不到，插件当然当场崩溃。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: The Solution (How to copy paths) -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-white border border-emerald-200 rounded-2xl flex flex-col overflow-hidden soft-shadow relative h-full">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+                        <div class="bg-emerald-50 border-b border-emerald-100 p-4 flex items-center gap-2">
+                            <i class="fa-solid fa-check-circle text-emerald-500 text-lg"></i>
+                            <span class="text-base font-bold text-emerald-900">正确姿势：获取文件的“绝对路径”</span>
+                        </div>
+                        
+                        <div class="p-6 flex flex-col gap-6 flex-1 justify-center">
+                            
+                            <!-- Mac Instructions -->
+                            <div class="border border-slate-200 rounded-xl p-5 bg-slate-50 relative hover:border-indigo-300 transition-colors group">
+                                <div class="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                                    <i class="fa-brands fa-apple"></i>
+                                </div>
+                                <div class="pl-4">
+                                    <h4 class="font-bold text-slate-800 text-sm mb-3">如果你是 Mac 用户：</h4>
+                                    <ol class="text-xs text-slate-600 space-y-3">
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">1</span>
+                                            在访达中选中目标文件或文件夹。
+                                        </li>
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">2</span>
+                                            按住键盘上的 <span class="keyboard-key">Option (⌥)</span> 键不要松开。
+                                        </li>
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">3</span>
+                                            点击鼠标右键，选择 <strong>“将 xxx 拷贝为路径名”</strong>。
+                                        </li>
+                                    </ol>
+                                </div>
+                            </div>
+
+                            <!-- Windows Instructions -->
+                            <div class="border border-slate-200 rounded-xl p-5 bg-slate-50 relative hover:border-blue-300 transition-colors group">
+                                <div class="absolute -left-3 top-1/2 transform -translate-y-1/2 w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                    <i class="fa-brands fa-windows"></i>
+                                </div>
+                                <div class="pl-4">
+                                    <h4 class="font-bold text-slate-800 text-sm mb-3">如果你是 Windows 用户：</h4>
+                                    <ol class="text-xs text-slate-600 space-y-3">
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">1</span>
+                                            在资源管理器中选中目标文件或文件夹。
+                                        </li>
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">2</span>
+                                            按住键盘上的 <span class="keyboard-key">Shift ⇧</span> 键不要松开。
+                                        </li>
+                                        <li class="flex items-center gap-2">
+                                            <span class="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold">3</span>
+                                            点击鼠标右键，选择 <strong>“复制为路径 (Copy as path)”</strong>。
+                                        </li>
+                                    </ol>
+                                    <div class="mt-3 bg-blue-50 text-blue-800 p-2 rounded text-[10px] border border-blue-100 flex gap-2">
+                                        <i class="fa-solid fa-circle-info mt-0.5 shrink-0"></i>
+                                        <span>注意：Windows 复制出来的路径自带双引号（如 <code>"C:\..."</code>），粘贴到 JSON 时，<strong>确保不要出现双重引号</strong> <code>""C:\...""</code>。</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-indigo-600 font-bold">8</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 8 of 22 is ~36.3% -->
+                <div class="bg-indigo-500 h-full w-[36%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页：揭秘 JSON" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-bomb mr-1 text-rose-500"></i>模块二：避坑指南
+            </span>
+            <a href="9.html" title="下一页：环境报错避坑" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎭 重现真实车祸现场：</span>
+                    “在刚才的填空题里，大家觉得最简单的是填地址。但相信我，99% 的非技术小白第一次配 MCP 时，都会在 Trae 里看到左边这种提示 `Connection closed` 的红字报错！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 点破真相：</span>
+                    “不要以为自己弄坏了电脑。真相极其简单：你是个 Mac 用户，但你把教程里那段以 `C:/` 开头的 Windows 假地址原封不动地贴了进去。插件去你电脑上找文件，找不到，它就只能罢工闪退了。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🛠️ 手把手教隐藏技能：</span>
+                    “重点讲解右边的操作。很多用了很多年电脑的人，都不知道怎么快速获取一个文件的‘绝对路径’。让全场一起回忆这个动作：Mac 按住 Option，Windows 按住 Shift。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “好，如果你把路径填对了，但它还是报错呢？下一页，我们将面对非技术人员的终极噩梦——环境编译报错，并教大家 Vibe Coding 时代的降维打击解法！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

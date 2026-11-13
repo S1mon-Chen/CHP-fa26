@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 生产环境稳定性调优：人设约束、Prompt 瘦身与测试集</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-emerald-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyCheatSheet()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-emerald-600"></i>
+                <span class="hidden sm:inline">复制调优检查清单</span>
+                <span class="sm:hidden">检查清单</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-sliders text-emerald-600"></i>
+                <span>Module 4 · 工程避坑与生产调优</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                生产环境稳定性调优：<span class="text-emerald-600">Prompt 瘦身、精准路由与黄金测试集</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                系统上线前的最后一公里，是将粗糙的 Demo 打磨成坚不可摧的工业级软件。我们需要对大模型的 Prompt 进行“减脂增肌”，消除带有歧义的自然语言路由，并建立自动化回归测试集，以此来对抗大模型版本迭代带来的概率性波动。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Tuning Guide vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Tuning Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-screwdriver-wrench text-emerald-600"></i>
+                            生产级系统调优三大法则
+                        </h3>
+                        <span class="text-[10px] font-mono text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">BEST PRACTICES</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Law 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-blue-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                Prompt 瘦身与绝对边界约束
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-1.5">
+                                <strong>痛点：</strong> 提示词写了 3000 字口水话，模型不仅响应慢、费钱，还会把后面的重点忘了（注意力丢失）。<br>
+                                <strong>调优：</strong> 使用 Markdown 结构化编写（如 <code># 角色</code>, <code># 规则</code>, <code># 约束</code>）。将安全红线写在最末尾的约束中：<strong class="text-rose-600">绝对禁止回答非本职工作内容，违规将受到严厉惩罚。</strong>
+                            </p>
+                        </div>
+
+                        <!-- Law 2 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-emerald-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                MECE 原则与路由条件精确化
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-1.5">
+                                <strong>痛点：</strong> Router 靠猜测，两个分支的转移条件语义重叠。<br>
+                                <strong>调优：</strong> 转移条件必须符合 <strong>MECE 原则</strong>（相互独立，完全穷尽）。在 Coze 中尽可能使用精确匹配逻辑，例如：提取意图实体，只有 <code>intent == "refund"</code> 才走财务，杜绝模糊的自然语言连线描述。
+                            </p>
+                        </div>
+
+                        <!-- Law 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                沉淀黄金测试集 (Golden Test Cases)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                <strong>痛点：</strong> 自己测了 3 句话觉得没问题就上线，用户一用就翻车。<br>
+                                <strong>调优：</strong> 收集 100 条最刁钻、最容易混淆的历史高危客诉。每次修改 Prompt 或底层大模型升级后，在 Coze 工作台中一键批量跑回归测试，保证准确率不下跌。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-vial text-sm"></i>
+                            <span class="text-xs">Prompt 与路由调优模拟实验室</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">READY FOR TUNING</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击执行各项调优测试，观察对系统性能的直观影响：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateTuning('prompt')" class="py-2.5 px-3 rounded-lg border border-blue-700/50 bg-blue-950/40 hover:bg-blue-900/60 text-blue-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-compress w-4 text-center"></i>
+                                <span>测试 1：冗长自然语言 vs 结构化极简 Prompt 耗时对比</span>
+                            </button>
+                            <button onclick="simulateTuning('route')" class="py-2.5 px-3 rounded-lg border border-emerald-700/50 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-code-compare w-4 text-center"></i>
+                                <span>测试 2：模糊自然语言条件 vs 精确表达式 (MECE) 路由</span>
+                            </button>
+                            <button onclick="simulateTuning('testcase')" class="py-2.5 px-3 rounded-lg border border-indigo-700/50 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-list-check w-4 text-center"></i>
+                                <span>测试 3：一键运行 100 条高压黄金测试集 (回归测试)</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">调优对比与测试报告 (Tuning Output):</span>
+                            </div>
+                            <div id="tuningConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待发起系统调优与压测...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-emerald-600 font-bold">Slide 17 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[85%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="16.html" title="上一页：翻车现场排查" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-emerald-700">18. 单元作业布置</strong>
+            </span>
+            <a href="18.html" title="下一页：单元作业布置" class="px-3 py-1.5 md:py-2 rounded-lg border border-emerald-100 bg-emerald-600 text-white hover:bg-emerald-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是体现大家是不是一个‘高级 AI 架构师’的分水岭。新手写 Prompt 喜欢写小作文，长篇大论，不仅消耗大量的 Input Token（这都是钱），还会导致模型处理变慢，甚至把前面的关键指令给忘了。<br><br>
+                    真正的工程化做法是：第一，用 Markdown 格式极其精简地定义结构；第二，把红线（如绝不乱发脾气）写在 Prompt 的最后一句，强化模型记忆；第三，不要迷信你自己的两次测试，上线前必须跑一遍几百条的测试集，算一下准确率是不是达到了 95% 以上！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “点击右侧第三个‘回归测试’按钮。向学员展示在真正的生产环境中，我们是如何一次性验证 100 条刁钻输入，并输出成功率报告的。这种工业级的数据验证感能极大提升系统信任度。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyCheatSheet() {
+            const text = "生产环境稳定性调优检查清单：\n1. Prompt 是否已瘦身？已移除无意义的情感铺垫，转换为结构化 Markdown。\n2. 安全红线是否置底？“绝对禁止违规”等指令是否放置在 Prompt 最末尾。\n3. Router 路由是否 MECE？各分支转移条件是否做到“相互独立，完全穷尽”。\n4. 是否通过黄金测试集压测？回归测试准确率是否达到上线标准。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("调优检查清单已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulateTuning(type) {
+            const out = document.getElementById('tuningConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            if (type === 'prompt') {
+                badge.innerText = "PROMPT OPTIMIZATION";
+                badge.className = "text-[10px] bg-blue-900 text-blue-300 border border-blue-600 px-2 py-0.5 rounded";
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">[冗长 Prompt] (字数: 850)</span>: 首字响应时间 2.1s，越界失控率 8.5%</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in bg-blue-950/50 p-2 rounded border border-blue-900 mt-2">
+    <div class="text-blue-400 font-bold mb-1"><i class="fa-solid fa-compress"></i> 瘦身与结构化编译后...</div>
+    <div class="text-slate-300 text-[10px] font-mono leading-relaxed">
+        <span class="text-emerald-400 font-bold">[精简 Markdown Prompt] (字数: 120)</span>:<br>
+        首字响应时间降至 <span class="text-emerald-300 font-bold">0.6s</span><br>
+        Token 消耗降低 <span class="text-emerald-300 font-bold">85%</span><br>
+        因指令清晰且红线置底，越界失控率降至 <span class="text-emerald-300 font-bold">0.1%</span>
+    </div>
+</div>`;
+                    showToast("Prompt 瘦身压测完成！效果显著。");
+                }, 1000));
+
+            } else if (type === 'route') {
+                badge.innerText = "ROUTE PRECISION";
+                badge.className = "text-[10px] bg-emerald-900 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">[模糊自然语言路由]</span>: 条件为“关于钱的问题”。对于句子“修这机器要花多少钱”发生路由冲突，被错误分发给了财务。</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in bg-emerald-950/50 p-2 rounded border border-emerald-900 mt-2">
+    <div class="text-emerald-400 font-bold mb-1"><i class="fa-solid fa-code-compare"></i> 切换为逻辑表达式精确路由后...</div>
+    <div class="text-slate-300 text-[10px] font-mono leading-relaxed">
+        条件 A: intent == "refund" OR intent == "invoice"<br>
+        条件 B: intent == "repair" OR intent == "tech_support"<br>
+        <span class="text-emerald-300 font-bold">Result: 基于大模型先提取 intent 枚举值，再通过表达式硬路由。歧义派单率降低至 0%。</span>
+    </div>
+</div>`;
+                    showToast("精确路由条件测试通过！");
+                }, 1000));
+
+            } else if (type === 'testcase') {
+                badge.innerText = "REGRESSION TESTING";
+                badge.className = "text-[10px] bg-indigo-900 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-indigo-300 mb-1.5"><span class="text-indigo-400 font-bold">🚀 批量运行黄金测试集:</span> 加载 100 条包含错别字、口音、脏话的极值客诉...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    let progress = 0;
+                    const progressEl = document.createElement('div');
+                    progressEl.className = 'text-slate-400 font-mono text-[10px] log-slide-in mb-2';
+                    out.appendChild(progressEl);
+                    
+                    const interval = setInterval(() => {
+                        progress += 10;
+                        progressEl.innerText = `执行进度: [${'#'.repeat(progress/10)}${'.'.repeat(10-progress/10)}] ${progress}%`;
+                        if (progress >= 100) {
+                            clearInterval(interval);
+                            out.innerHTML += `
+<div class="log-slide-in bg-indigo-950/50 p-2 rounded border border-indigo-900 mt-2">
+    <div class="text-indigo-400 font-bold mb-1"><i class="fa-solid fa-chart-pie"></i> 回归测试报告 (Regression Report)</div>
+    <div class="text-slate-300 text-[10px] font-mono leading-relaxed">
+        测试总数: 100 | 耗时: 12.5s<br>
+        - 路由准确率: 98% (2 条需优化表达)<br>
+        - 知识库召回率: 95%<br>
+        - 越界安全拦截: 100% 成功阻断<br>
+        <span class="text-emerald-400 font-bold">系统整体健康度达标，批准发布上线 (Go-Live)!</span>
+    </div>
+</div>`;
+                            showToast("自动化黄金测试集跑通，允许投产！");
+                        }
+                    }, 100);
+                }, 800));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

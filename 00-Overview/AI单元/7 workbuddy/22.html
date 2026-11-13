@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 22 - 多步复杂业务流编排：从单一条件到多分支、循环迭代与人工确认机制</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .flow-card { transition: all 0.3s ease; }
+        .flow-card:hover { transform: translateY(-3px); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 5: 进阶拓展 —— 多步复杂业务流编排与安全护栏
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadWorkflowPolicy()" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-bold text-purple-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-code text-purple-600"></i>
+                <span>下载编排策略示例 (.json)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-5">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                    <span>Complex Workflow & Human-in-the-Loop · 多步复杂业务流编排</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    多步复杂业务流编排：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">条件分支、循环迭代与人工确认机制</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    将散落的工具串联为企业级自动化流水线。引入条件判断、循环迭代及高危操作的 Human-in-the-loop 二次确认，确保智能体安全可控。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Pipeline Simulation Window -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                    <div>
+                        <div class="flex items-center justify-between mb-2 border-b border-slate-800 pb-2 text-purple-400 font-bold">
+                            <span><i class="fa-solid fa-route mr-2"></i>Workflow Pipeline (Execution Engine)</span>
+                            <span class="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded">AWAITING APPROVAL</span>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-700 text-[11px] text-slate-300 space-y-2">
+                            <div>1. <code class="text-purple-300">query_metrics()</code> <span class="text-emerald-400">→ [Found 2 Anomalies]</span></div>
+                            <div>2. <code class="text-indigo-300">generate_email_draft()</code> <span class="text-emerald-400">→ [Draft Ready]</span></div>
+                            <div class="bg-amber-950/60 p-2 rounded border border-amber-700/50 text-[10px] text-amber-200">
+                                ⚠️ <strong>[Human-in-the-loop Gate]:</strong> 高危操作拦截。是否授权发送外部警报邮件给管理层？
+                                <div class="mt-1 flex gap-2">
+                                    <span class="bg-emerald-600 text-white px-2 py-0.5 rounded font-bold cursor-default">✔ Approve (批准)</span>
+                                    <span class="bg-slate-700 text-slate-300 px-2 py-0.5 rounded cursor-default">✖ Reject</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans">
+                        <i class="fa-solid fa-circle-check text-purple-400 mr-1"></i> 安全护栏：自动化流水线既要追求高效，也必须守住高危动作的人工确认红线。
+                    </div>
+                </div>
+
+                <!-- Right: Action Cards -->
+                <div class="lg:col-span-6 flex flex-col justify-between space-y-3">
+                    
+                    <div class="flow-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">多分支与循环迭代（Loop & Branch）</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">支持“若发现异常回款则自动生成邮件，否则归档日志”的复杂条件分支，循环扫描多个大区报表。</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0 font-bold">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">Human-in-the-loop 安全护栏</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">针对群发外部邮件、删除数据库或修改核心配置等高危动作，智能体会自动挂起并等待人工二次确认。</p>
+                        </div>
+                    </div>
+
+                    <div class="flow-card bg-white border border-slate-200 rounded-xl p-3 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center text-sm shrink-0 font-bold">3</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">企业级自动化流水线大成</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">将孤立的 AI 提示词升级为严密可控的企业级数字员工业务流，全面实现降本增效与风险可控的平衡。</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Advanced Slide <span class="text-purple-600 font-bold">22</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-full transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="21.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-purple-500"></i>第七单元进阶：圆满收官
+            </span>
+             <a href="23.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 第二十二页收官要点：</span>
+                    “各位同学，这是我们进阶拓展的最后一页！当我们需要编排复杂的企业业务流时，不仅要有条件分支和循环迭代，更核心的是引入 Human-in-the-loop（人工确认机制）！高危操作如外部发邮件必须经过人工批准才能放行。至此，第七单元进阶拓展圆满收官！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>编排策略策略文件已下载成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function downloadWorkflowPolicy() {
+            const policyJson = `{\n  "workflow_name": "Risk_Audit_Pipeline",\n  "steps": [\n    {\n      "id": "step_1",\n      "action": "query_department_metrics",\n      "on_success": "step_2"\n    },\n    {\n      "id": "step_2",\n      "condition": "has_anomalies == true",\n      "true_branch": "step_3_alert",\n      "false_branch": "step_3_archive"\n    },\n    {\n      "id": "step_3_alert",\n      "action": "send_executive_alert",\n      "require_human_confirmation": true\n    }\n  ]\n}`;
+            try {
+                const blob = new Blob([policyJson], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'workbuddy_workflow_policy.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("工作流编排策略策略文件已下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') window.location.href = '21.html';
+            else if (e.key === 'ArrowRight') window.location.href = '23.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

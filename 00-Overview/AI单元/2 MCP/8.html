@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 8 - 悬崖勒马：安全红线与只读约束</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            900: '#312e81',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        
+        .danger-pulse {
+            animation: dangerPulse 2s infinite;
+        }
+        @keyframes dangerPulse {
+            0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4); border-color: rgba(244, 63, 94, 0.8); }
+            70% { box-shadow: 0 0 0 15px rgba(244, 63, 94, 0); border-color: rgba(244, 63, 94, 0.2); }
+            100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); border-color: rgba(244, 63, 94, 0.8); }
+        }
+
+        .safe-shield {
+            animation: shieldFloat 4s ease-in-out infinite;
+        }
+        @keyframes shieldFloat {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+            100% { transform: translateY(0); }
+        }
+
+        .glitch-text {
+            position: relative;
+        }
+        .glitch-text::before, .glitch-text::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+        }
+        .glitch-text::before {
+            left: 2px;
+            text-shadow: -1px 0 red;
+            clip: rect(24px, 550px, 90px, 0);
+            animation: glitch-anim-2 3s infinite linear alternate-reverse;
+        }
+        @keyframes glitch-anim-2 {
+            0% { clip: rect(12px, 9999px, 8px, 0); }
+            20% { clip: rect(32px, 9999px, 24px, 0); }
+            40% { clip: rect(54px, 9999px, 12px, 0); }
+            60% { clip: rect(8px, 9999px, 64px, 0); }
+            80% { clip: rect(42px, 9999px, 32px, 0); }
+            100% { clip: rect(2px, 9999px, 16px, 0); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 安全红线 —— 给 AI 套上缰绳
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 right-10 w-[400px] h-[400px] bg-rose-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 left-10 w-[400px] h-[400px] bg-amber-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                    <span>Security & Guardrails · 安全红线</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    能力越大，<span class="text-rose-600 relative inline-block mx-1">破坏力越大<svg class="absolute -bottom-2 w-full h-3 text-rose-300/50" viewBox="0 0 100 20" preserveAspectRatio="none"><path d="M0,10 Q50,20 100,10" stroke="currentColor" stroke-width="4" fill="none"/></svg></span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    刚才查数据很爽对吧？但如果你的表达有歧义，AI 可能会瞬间清空你的业务表。<br>在使用 MCP 连接核心数据时，必须学会<strong class="text-slate-700">“上双重锁”</strong>。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: The Disaster Scenario -->
+                <div class="bg-slate-900 border-2 border-rose-900/50 rounded-2xl flex flex-col overflow-hidden danger-pulse relative group">
+                    <div class="absolute inset-0 bg-rose-500/5 mix-blend-overlay"></div>
+                    <div class="bg-slate-800/80 border-b border-rose-900/50 p-3 flex items-center justify-between z-10">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-skull-crossbones text-rose-500"></i>
+                            <span class="text-sm font-bold text-slate-200">恐怖故事：一条随意的指令</span>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 flex-1 flex flex-col gap-4 z-10">
+                        <!-- Bad Prompt -->
+                        <div class="bg-slate-800 rounded-lg p-4 border border-slate-700 shadow-inner">
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-slate-600 flex items-center justify-center text-white text-xs shrink-0 mt-0.5"><i class="fa-solid fa-user"></i></div>
+                                <div class="font-mono text-xs text-slate-300 leading-relaxed">
+                                    "这个月退款的订单太多了看着心烦，<span class="text-rose-400 font-bold border-b border-rose-400">帮我把退款的数据处理掉吧</span>。"
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Execution (Disaster) -->
+                        <div class="flex flex-col gap-2 pl-9 border-l-2 border-rose-900/50 ml-3">
+                            <div class="text-[10px] text-slate-500 font-mono">AI 的理解逻辑：处理掉 = 删除</div>
+                            <div class="bg-black p-3 rounded text-xs font-mono text-rose-500 border border-rose-900/50 shadow-inner glitch-text" data-text="> DELETE FROM orders WHERE is_refunded = 1;">
+                                > DELETE FROM orders WHERE is_refunded = 1;
+                            </div>
+                            <div class="mt-2 bg-rose-950/30 p-2 rounded text-xs text-rose-400 flex items-center gap-2">
+                                <i class="fa-solid fa-check-circle"></i> "老板，已为您永久删除所有退款记录！"
+                            </div>
+                        </div>
+                        
+                        <div class="mt-auto pt-4 text-center">
+                            <span class="inline-block bg-rose-900/40 text-rose-300 text-[10px] px-3 py-1 rounded-full border border-rose-800/50 font-bold">
+                                恭喜你，达成“删库跑路”成就！
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: The Guardrails -->
+                <div class="bg-white border border-amber-200 rounded-2xl flex flex-col overflow-hidden soft-shadow relative">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-amber-400"></div>
+                    <div class="bg-amber-50 border-b border-amber-100 p-3 flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-amber-500 safe-shield"></i>
+                        <span class="text-sm font-bold text-amber-900">架构师心法：双重防呆锁</span>
+                    </div>
+                    
+                    <div class="p-6 flex flex-col gap-5 h-full justify-center">
+                        
+                        <!-- Lock 1: Prompt Constraint -->
+                        <div class="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                            <h4 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                <span class="w-5 h-5 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-[10px]">第一把锁</span>
+                                提示词卡扣 (PACT 约束)
+                            </h4>
+                            <p class="text-[10px] text-slate-500 mb-2">每次涉及敏感数据，必须在 Prompt 中加入免死金牌：</p>
+                            <div class="bg-slate-800 text-emerald-400 text-[10px] font-mono p-2 rounded">
+                                &lt;安全约束&gt;<br>
+                                1. 绝对不要对数据库执行 INSERT, UPDATE, DELETE 操作。<br>
+                                2. 本次任务仅限只读查询 (SELECT)。<br>
+                                &lt;/安全约束&gt;
+                            </div>
+                        </div>
+
+                        <!-- Lock 2: Configuration Constraint -->
+                        <div class="border border-amber-200 rounded-xl p-4 bg-amber-50/30">
+                            <h4 class="text-xs font-bold text-amber-900 mb-2 flex items-center gap-2">
+                                <span class="w-5 h-5 rounded bg-amber-200 text-amber-700 flex items-center justify-center text-[10px]">第二把锁</span>
+                                MCP 物理隔离 (推荐)
+                            </h4>
+                            <p class="text-[10px] text-slate-600 mb-2">最好的防御是不给它刀。在配置 MCP 时，很多组件支持直接开启 <strong class="text-rose-500">Read-Only (只读)</strong> 模式：</p>
+                            <div class="bg-white border border-amber-200 text-slate-700 text-[10px] font-mono p-2 rounded shadow-sm relative">
+                                "env": {<br>
+                                &nbsp;&nbsp;"SQLITE_DEFAULT_PATH": "/Users/...",<br>
+                                &nbsp;&nbsp;<span class="bg-amber-100 font-bold border-b border-amber-300">"SQLITE_READ_ONLY": "true"</span><br>
+                                }
+                                <div class="absolute top-2 right-2 text-emerald-500"><i class="fa-solid fa-lock"></i></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-slate-800 rounded-xl p-5 mt-8 max-w-4xl mx-auto flex items-center gap-4 shadow-xl border border-slate-700">
+                <div class="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-amber-400 shrink-0 text-xl border border-slate-600">
+                    <i class="fa-solid fa-traffic-light"></i>
+                </div>
+                <div>
+                    <h4 class="text-amber-400 font-bold text-sm md:text-base mb-1">永远保持敬畏心</h4>
+                    <p class="text-slate-300 text-xs md:text-sm leading-relaxed">
+                        大模型就像一个极其勤奋但不通人情世故的实习生。当你把它接入公司真实业务数据时，<strong class="text-white border-b border-rose-500">先备份、给只读权限、加严格约束</strong>，是每位合格的“AI 产品经理”必修的基本功。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-rose-600 font-bold">8</span> / 9
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- 8 / 9 = ~88.9% -->
+                <div class="bg-rose-500 h-full w-[88.9%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="7.html" title="上一页：连接本地数据库" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-shield-halved mr-1 text-amber-500"></i>模块四：安全红线
+            </span>
+            <a href="9.html" title="下一页：单元总结与作业" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">⚠️ 敲黑板，重点警示：</span>
+                    “刚刚体验完查数据的同学，是不是觉得很爽？但请大家看左边的大屏！如果你平时说话随意惯了，跟 AI 说‘这批退款数据处理掉’。AI 不懂人类的职场潜台词，它理解的‘处理掉’就是数据库里的 `DELETE` 命令。这在现实中是极其恐怖的！”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">💡 强调双重锁的概念：</span>
+                    “所以我们在玩 MCP 连外部数据时，一定要有架构师的防呆思维。第一把锁，是在 Prompt 里死死咬住‘绝不修改’（对应上一单元的 PACT 里的 Constraints）。第二把锁，是物理断绝，在配置环境变量时，给组件传一个只读参数（部分优秀组件支持），直接没收它手里的刀。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 单元收尾：</span>
+                    “懂得了连接，又懂得了安全防范。我们在 MCP 这一块就已经算是出师了！下一页，我们将对本单元进行总复盘，并布置一个非常有挑战性的打卡作业。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '9.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '7.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

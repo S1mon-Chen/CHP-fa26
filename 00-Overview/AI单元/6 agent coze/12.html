@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 12 - 建立 Worker 1 (售后专员 Bot)：专属人设与挂载订单插件</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-cyan-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyWorkerPrompt()" class="px-3 py-1.5 rounded-lg border border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-xs font-bold text-cyan-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-cyan-600"></i>
+                <span class="hidden sm:inline">复制 Worker 人设提示词</span>
+                <span class="sm:hidden">复制 Prompt</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-wrench text-cyan-600"></i>
+                <span>Module 3 · 多智能体 (Multi-Agent) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                建立 Worker 1 (售后专员)：<span class="text-cyan-600">配置专属人设与挂载订单 API 插件</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在多智能体架构中，<strong>Worker (执行节点)</strong> 才是真正干活的数字员工。我们将为售后专员配置明确的系统提示词（System Prompt），并挂载“订单查询 API”插件，让它拥有实时查单的超能力，而不是瞎编乱造。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Configuration vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-user-gear text-cyan-600"></i>
+                            Worker 节点配置指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-cyan-600 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded">UI GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-cyan-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                设定专属售后人设 (Persona)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                在 Worker 的提示词中，明确其工作边界，防止它回答与售后无关的问题（如被套话去写代码）。
+                            </p>
+                            <div class="relative bg-slate-900 p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-cyan-300 leading-relaxed">
+你是电商金牌售后专员。你的核心职责是：<br>
+1. 接收用户的订单号，调用插件查询最新的物流与发货状态。<br>
+2. 处理用户的退换货咨询，语气必须耐心、专业、充满安抚感。<br>
+警告：绝不回答任何非售后类的闲聊或技术问题。
+                                <button onclick="copyWorkerPrompt()" class="absolute top-2 right-2 text-slate-400 hover:text-white"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-cyan-50 border border-cyan-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-cyan-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-cyan-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                挂载业务系统插件 (Plugins)
+                            </h4>
+                            <p class="text-cyan-700/80 leading-relaxed mb-2">
+                                大模型本身没有你的订单数据。在节点的“插件”面板，添加内部开发的 <strong>订单 ERP 查询 API</strong>。
+                            </p>
+                            <div class="bg-white/70 p-2 rounded border border-cyan-100 font-sans text-[10px] text-slate-700 flex items-center gap-2">
+                                <i class="fa-solid fa-plug text-cyan-500"></i>
+                                <code class="bg-white px-1 py-0.5 rounded border border-slate-200">Order_ERP.check_status(order_id)</code>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                测试单兵作战能力
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                在将 Worker 接入主控 Router 之前，先在右侧沙箱单独测试它能否正确理解参数并成功调用插件。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-cyan-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-headset text-sm"></i>
+                            <span class="text-xs">售后 Bot 独立调用与插件响应沙箱</span>
+                        </span>
+                        <span id="workerBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">AWAITING INPUT</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">直接向 Worker 发送诉求，测试它能否自主使用插件：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateWorkerRun('query')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2 shadow-sm">
+                                <i class="fa-solid fa-user text-slate-400 mt-0.5 w-4"></i>
+                                <span>“帮我查一下尾号是 8890 的订单，大概什么时候能发货啊？”</span>
+                            </button>
+                            <button onclick="simulateWorkerRun('out_of_bounds')" class="py-2.5 px-3 rounded-lg border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 text-xs text-left transition flex items-start gap-2 shadow-sm border-dashed">
+                                <i class="fa-solid fa-user-ninja text-rose-500 mt-0.5 w-4"></i>
+                                <span>“你能帮我用 Python 写一段贪吃蛇的代码吗？”</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">Worker 内部执行流 (Tool Call Trace):</span>
+                            </div>
+                            
+                            <div id="workerConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 点击上方按钮，触发售后 Bot 单兵响应...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-cyan-600 font-bold">Slide 12 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-500 h-full w-[60%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="11.html" title="上一页：创建 Router" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 hover:border-cyan-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-cyan-700">13. 挂载知识库建立技术 Bot</strong>
+            </span>
+            <a href="13.html" title="下一页：建立 Worker 2 (技术 Bot)" class="px-3 py-1.5 md:py-2 rounded-lg border border-cyan-100 bg-cyan-600 text-white hover:bg-cyan-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 重点强调大模型的工具调用 (Tool Calling)：</span>
+                    “在单体智能体里，我们说要克制，就是因为如果你给一个机器人配了 10 把刀，它很容易砍错人。现在我们在多智能体架构下，售后专员只需要一把刀：订单查询插件。<br><br>
+                    大家要注意，大模型本身是不知道订单状态的。当它收到带有‘8890’的问句时，它的推理逻辑是：暂停回答 -> 生成一段调用 API 的 JSON 发给系统 -> 系统返回结果 -> 大模型再把结果包装成温柔的人话回答客户。这就是所谓的 Tool Calling！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “点击第二个‘越界’测试按钮。向学员展示，因为我们在人设中写了‘绝不回答非售后闲聊’，所以这个 Worker 会拒绝写代码。这种‘专职专责’的边界感，是企业级应用不出大乱子的底线保障！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-cyan-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-cyan-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyWorkerPrompt() {
+            const text = "你是电商金牌售后专员。你的核心职责是：\n1. 接收用户的订单号，调用插件查询最新的物流与发货状态。\n2. 处理用户的退换货咨询，语气必须耐心、专业、充满安抚感。\n警告：绝不回答任何非售后类的闲聊或技术问题。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Worker 人设提示词已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulateWorkerRun(type) {
+            const out = document.getElementById('workerConsole');
+            const badge = document.getElementById('workerBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            badge.innerText = "WORKING...";
+            badge.className = "text-[10px] bg-cyan-900/60 text-cyan-300 border border-cyan-600 px-2 py-0.5 rounded";
+
+            if (type === 'query') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">🧠 模型思考:</span> 提取到订单号实体 "8890"，需调用外部系统核实状态。</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-blue-300 border-l-2 border-blue-500 pl-2 mb-1.5">
+    <span class="text-blue-400 font-bold">🛠️ 触发插件 (Tool Call):</span> Order_ERP.check_status<br>
+    <span class="text-slate-400 pl-4">-> 入参: { "order_id": "*8890" }</span><br>
+    <span class="text-slate-400 pl-4"><- 返回: { "status": "已打包", "est_dispatch": "今日 18:00" }</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-cyan-300 border-l-2 border-cyan-500 pl-2 mb-1.5">
+    <span class="text-cyan-400 font-bold">💬 最终回复包装:</span><br>
+    <span class="text-slate-200 italic">"亲亲您好，让您久等啦！帮您核实了尾号为 8890 的订单，目前仓库小哥已经为您打包完毕咯，预计今天下午 18:00 左右就会交给快递发出，请您耐心等待一下下哦~ 📦✨"</span>
+</div>`;
+                    badge.innerText = "COMPLETED";
+                    showToast("订单查询插件调用成功！");
+                }, 2500));
+
+            } else if (type === 'out_of_bounds') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">🧠 模型思考:</span> 用户意图为[编写代码]。校验人设系统约束边界...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-rose-300 border-l-2 border-rose-500 pl-2 mb-1.5">
+    <span class="text-rose-400 font-bold">⛔ 触发边界拦截:</span><br>
+    <span class="text-slate-400 pl-4">命中规则：绝不回答任何非售后类的闲聊或技术问题。拒绝执行写代码任务。</span>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-cyan-300 border-l-2 border-cyan-500 pl-2 mb-1.5">
+    <span class="text-cyan-400 font-bold">💬 最终回复包装:</span><br>
+    <span class="text-slate-200 italic">"非常抱歉哦，我是专属的售后客服专员，主要为您解答订单、发货、退换货等问题。关于编写 Python 代码的技术问题，我这边暂时无法为您提供解答呢。如果您有订单方面的问题，随时告诉我哦~"</span>
+</div>`;
+                    badge.innerText = "REJECTED (SAFE)";
+                    showToast("越权问题已被人设护栏成功拦截！");
+                }, 2000));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '13.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '11.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

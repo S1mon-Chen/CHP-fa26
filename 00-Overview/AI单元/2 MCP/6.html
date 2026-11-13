@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 6 - 案例一：让 AI 替你查数据库</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            900: '#312e81',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 sql.js 用于在前端直接生成并下载真实的 SQLite 数据库文件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        
+        .db-pulse {
+            animation: dbPulse 2s infinite;
+        }
+        @keyframes dbPulse {
+            0% { transform: translateY(0); box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3); }
+            50% { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.4); }
+            100% { transform: translateY(0); box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3); }
+        }
+
+        .code-typing {
+            overflow: hidden;
+            border-right: .15em solid #10b981;
+            white-space: nowrap;
+            animation: typing 3s steps(40, end), blink-caret .75s step-end infinite;
+        }
+        @keyframes typing { from { width: 0 } to { width: 100% } }
+        @keyframes blink-caret { from, to { border-color: transparent } 50% { border-color: #10b981; } }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 实战一 —— 本地数据库直连
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-10 w-[400px] h-[400px] bg-blue-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-10 w-[400px] h-[400px] bg-sky-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-database text-blue-600"></i>
+                    <span>Live Case Study 1 · 实战演练</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    无代码查库：<span class="text-blue-600 border-b-4 border-blue-200 mx-1">直接对话本地数据库</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    刚才我们在第 5 页配置好了 SQLite 插件。现在，是时候验收成果了。<br>不用排队求开发小哥写 SQL，<strong class="text-slate-700">用大白话直接下达查询指令</strong>。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Environment Setup & Sample DB -->
+                <div class="bg-white border border-slate-200 rounded-2xl flex flex-col overflow-hidden soft-shadow relative p-6">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-server text-blue-500"></i> 1. 准备本地数据弹药
+                        </h3>
+                        <button onclick="downloadSQLiteDB()" id="downloadBtn" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5 db-pulse">
+                            <i class="fa-solid fa-download"></i> 生成并下载真实 DB
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 flex flex-col">
+                        <p class="text-xs text-slate-600 mb-3">点击上方按钮，即可在本地生成一个真实的 <code class="bg-slate-100 px-1 rounded text-blue-600">2024财务数据.db</code> 文件。请确保它的存放路径与您在第 5 页配置的路径一致！里面包含如下数据：</p>
+                        
+                        <!-- Table Preview -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg overflow-hidden text-[10px] font-mono shadow-inner flex-1">
+                            <div class="bg-slate-200 text-slate-600 font-bold p-2 border-b border-slate-300 grid grid-cols-5">
+                                <div>order_id</div>
+                                <div>product_name</div>
+                                <div>category</div>
+                                <div>amount</div>
+                                <div>is_refunded</div>
+                            </div>
+                            <div class="p-2 border-b border-slate-100 grid grid-cols-5 text-slate-500">
+                                <div>1001</div>
+                                <div>人体工学椅</div>
+                                <div>办公</div>
+                                <div>1299.00</div>
+                                <div class="text-rose-500">1 (退款)</div>
+                            </div>
+                            <div class="p-2 border-b border-slate-100 grid grid-cols-5 text-slate-500">
+                                <div>1002</div>
+                                <div>机械键盘</div>
+                                <div>数码</div>
+                                <div>599.00</div>
+                                <div class="text-emerald-500">0 (正常)</div>
+                            </div>
+                            <div class="p-2 grid grid-cols-5 text-slate-400 bg-slate-100/50">
+                                <div>...</div><div>...</div><div>...</div><div>...</div><div>...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: The Prompt & AI Magic -->
+                <div class="bg-slate-900 border border-slate-700 rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
+                    <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+                    <div class="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-slate-400"></i>
+                            <span class="text-sm font-bold text-slate-200 font-mono">2. 指挥 AI 查水表</span>
+                        </div>
+                        <button onclick="copyPrompt()" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] px-2.5 py-1 rounded border border-blue-500 transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-regular fa-copy"></i> 复制指令
+                        </button>
+                    </div>
+                    
+                    <div class="p-5 flex-1 flex flex-col gap-4">
+                        <!-- User Prompt -->
+                        <div class="bg-slate-800 rounded-lg p-4 border border-slate-600 shadow-inner">
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs shrink-0 mt-0.5"><i class="fa-solid fa-user"></i></div>
+                                <div class="font-mono text-xs text-slate-300 leading-relaxed">
+                                    <span class="text-blue-400">[P]</span> 你是资深数据分析师。<br>
+                                    <span class="text-indigo-400">[A]</span> 不要让我写 SQL。请直接通过 MCP 连接本地的 <span class="bg-blue-900/50 px-1 rounded text-white">2024财务数据.db</span>。<br>
+                                    <span class="text-emerald-400">[C]</span> 找出退款率最高（is_refunded=1）的3个产品。<br>
+                                    <span class="text-amber-400">[T]</span> 用人类大白话告诉我结果，并给出分析建议。
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Internal Thought Process (The Magic) -->
+                        <div class="flex flex-col gap-2 pl-9 border-l-2 border-slate-700 ml-3 relative">
+                            <div class="absolute -left-[9px] top-2 w-4 h-4 rounded-full bg-slate-900 border-2 border-slate-700"></div>
+                            <div class="text-[10px] text-slate-500 font-mono flex items-center gap-2">
+                                <i class="fa-solid fa-gears fa-spin"></i> AI 正在悄悄把人话翻译成 SQL 并执行...
+                            </div>
+                            <div class="bg-black/50 p-2 rounded text-[9px] font-mono text-emerald-400 code-typing border border-slate-700 max-w-full">
+                                > SELECT product_name, COUNT(*) as total...
+                            </div>
+                            
+                            <div class="mt-2 bg-blue-900/20 p-3 rounded-lg border border-blue-900/50">
+                                <div class="flex items-center gap-2 text-xs font-bold text-blue-300 mb-1">
+                                    <i class="fa-solid fa-robot"></i> 汇报结果：
+                                </div>
+                                <p class="text-[11px] text-slate-300">
+                                    老板，我已经通过 MCP 查完数据库了。退款重灾区前三名是：<br>
+                                    1. <strong>人体工学椅</strong> (退款率 35%)<br>
+                                    2. <strong>机械键盘</strong> (退款率 20%)<br>
+                                    3. <strong>无线鼠标</strong> (退款率 12%)<br>
+                                    <span class="text-slate-400 italic">建议排查人体工学椅的近期品控或发货包装问题。</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-blue-600 font-bold">6</span> / 9
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-blue-600 h-full w-[66%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="5.html" title="上一页：零代码配置 MCP" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-database mr-1 text-blue-500"></i>模块三：实战演练
+            </span>
+            <a href="7.html" title="下一页：连接云端知识库" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎯 趁热打铁，完美承接：</span>
+                    “各位同学，上一页我们刚刚装好了 SQLite 的转接头。这一页，我们直接来跑通它！请大家先点击左侧按钮，下载一个真实的数据库文件。保证它存放的位置，和你刚才在配置文件里填的路径一致。”
+                </div>
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">💡 拆解右侧的魔术：</span>
+                    “大家复制右边的指令去 Trae 试一下。仔细看 Trae 的反馈：你没有写任何一行 SELECT 语句，但 AI 自动识别了数据库表结构，自己跑了代码，并给你返回了大白话报告。这就是 MCP 赋能后的智能工作流！”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">⏭️ 引出下一页：</span>
+                    “连本地数据库大家学会了。那如果数据在别人的网站上呢？下一页，我们将安装一个超级实用的『网页抓取』MCP，让 AI 去网上读规章制度！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Component -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-2xl text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50 flex items-center gap-3 border border-slate-700">
+        <div id="toastIcon"><i class="fa-solid fa-circle-notch fa-spin text-blue-400"></i></div>
+        <span id="toastMessage">正在初始化 SQLite...</span>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast(message, isSuccess = false, isError = false) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const msg = document.getElementById('toastMessage');
+            
+            msg.textContent = message;
+            
+            if (isSuccess) {
+                icon.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i>';
+                toast.classList.add('border-emerald-700');
+            } else if (isError) {
+                icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-rose-400"></i>';
+                toast.classList.add('border-rose-700');
+            } else {
+                icon.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-blue-400"></i>';
+                toast.classList.remove('border-emerald-700', 'border-rose-700');
+            }
+
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            
+            if (isSuccess || isError) {
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+                }, 4000);
+            }
+        }
+
+        function copyPrompt() {
+            const promptText = `你是资深数据分析师。
+不要让我写 SQL。请直接通过 MCP 连接本地的 2024财务数据.db。
+找出退款率最高（is_refunded=1）的3个产品。
+用人类大白话告诉我结果，并给出分析。`;
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast("指令已复制，请前往 Trae 粘贴运行！", true);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                showToast("复制失败，请手动选中复制。", false, true);
+            }
+        }
+
+        async function downloadSQLiteDB() {
+            const btn = document.getElementById('downloadBtn');
+            btn.disabled = true;
+            btn.classList.add('opacity-70', 'cursor-not-allowed');
+            showToast("正在下载依赖并生成数据库...");
+
+            try {
+                const SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                const db = new SQL.Database();
+                
+                db.run(`
+                    CREATE TABLE orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_name TEXT,
+                        category TEXT,
+                        sales_amount REAL,
+                        is_refunded INTEGER,
+                        order_date TEXT
+                    );
+                `);
+
+                const insertStmt = db.prepare("INSERT INTO orders (product_name, category, sales_amount, is_refunded, order_date) VALUES (?, ?, ?, ?, ?)");
+                
+                const mockData = [
+                    ["A款人体工学椅", "办公家具", 1299.00, 1, "2024-10-01"],
+                    ["A款人体工学椅", "办公家具", 1299.00, 0, "2024-10-02"],
+                    ["A款人体工学椅", "办公家具", 1299.00, 1, "2024-10-02"],
+                    ["B款无线鼠标", "电子产品", 199.00, 0, "2024-10-03"],
+                    ["B款无线鼠标", "电子产品", 199.00, 0, "2024-10-04"],
+                    ["C款机械键盘", "电子产品", 599.00, 1, "2024-10-05"],
+                    ["C款机械键盘", "电子产品", 599.00, 0, "2024-10-06"],
+                    ["D款显示器支架", "办公配件", 259.00, 0, "2024-10-07"],
+                    ["A款人体工学椅", "办公家具", 1299.00, 1, "2024-10-08"],
+                    ["E款降噪耳机", "数码影音", 1599.00, 0, "2024-10-09"]
+                ];
+
+                for (let i = 0; i < mockData.length; i++) {
+                    insertStmt.run(mockData[i]);
+                }
+                insertStmt.free();
+
+                const data = db.export();
+                const blob = new Blob([data], { type: "application/x-sqlite3" });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "2024财务数据.db";
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showToast("数据库生成成功！请在 MCP 配置中确认它的路径。", true);
+
+            } catch (err) {
+                console.error("生成数据库失败:", err);
+                showToast("生成失败，请确保网络能正常加载组件。", false, true);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '7.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '5.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

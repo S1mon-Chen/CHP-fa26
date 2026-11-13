@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkBuddy 核心机制解析：Connector（连接器）怎么用？原理与实战指南</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#10b981',
+                            600: '#059669',
+                            900: '#064e3b',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                WorkBuddy 核心功能实操：Connector（连接器）配置与企业外部系统打通
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadConnectorCheatSheet()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-emerald-600"></i>
+                <span>下载 Connector 配置速查表 (.md)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-center p-5 md:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-plug text-emerald-600"></i>
+                <span>Bridge to Enterprise SaaS · 让 AI 连接外部世界的数据桥梁</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                Connector（连接器）怎么用？<span class="text-emerald-600">打通企业真实业务系统的一键插头</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                普通 AI 只能读你手动拖进去的本地文件；而 <strong>Connector（连接器）</strong> 是经过安全授权的“标准数据插座”。只需 1 次授权（OAuth/API Key），AI 即可直接读写 <strong>GitHub、Notion、Jira、MySQL、飞书/钉钉</strong> 等企业现有系统，彻底告别“人工下载再上传”的低效流程。
+            </p>
+        </div>
+
+        <!-- 3 Core Steps + Simulator Grid -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <!-- Left 7 Cols: 3-Step Setup Guide & One-Click Prompt -->
+            <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-emerald-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-network-wired text-sm"></i>
+                            <span class="text-xs">Connector 零代码配置与使用三步法</span>
+                        </span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">ZERO CODE</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300 font-sans">
+                        <!-- Step 1 -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-1 font-mono">
+                                步骤 1：打开 Connectors 市场并选择服务
+                            </span>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">
+                                点击 WorkBuddy 侧边栏 <strong>「Settings / Integrations」</strong> → 选择 <strong>「Connectors」</strong>。<br>
+                                找到你要连接的系统（例如：<strong class="text-emerald-400">GitHub、Notion、Jira、MySQL、飞书</strong>）。
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-1 font-mono">
+                                步骤 2：一键授权绑定 (OAuth 登录或填入 API Token)
+                            </span>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">
+                                点击 <strong>「Connect」</strong>，在弹窗中完成授权（如通过浏览器登录 GitHub 或填入 Notion Token），系统显示 <span class="bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.2 rounded text-[10px] font-mono">CONNECTED</span> 绿灯即表示通道打通。
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Copyable Prompt -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1 mt-1 font-mono">
+                                <span class="text-emerald-300 font-bold">
+                                    步骤 3：在对话框直接用自然语言调度：
+                                </span>
+                                <button onclick="copyConnectorPrompt()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold flex items-center gap-1 font-sans">
+                                    <i class="fa-solid fa-copy"></i> 复制调用指令
+                                </button>
+                            </div>
+
+                            <div id="connectorPromptText" class="text-[11px] text-slate-200 bg-slate-950 p-3 rounded-xl border border-slate-800 leading-relaxed font-sans">
+请使用 @GitHub_Connector 读取仓库 'org/order-service' 中最近 3 天标有 'bug' 标签的 Issue，将它们按紧急程度分类，并自动把汇总报告同步写入到我的 @Notion_Connector '2026年Q2研发缺陷追踪' 页面中。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800/90 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-lock text-emerald-400 mr-1"></i> 密钥均保存在本地系统凭证链中，支持随时一键断开。</span>
+                    <button onclick="copyConnectorPrompt()" class="copy-btn text-emerald-400 hover:text-emerald-300 underline font-bold">一键复制</button>
+                </div>
+            </div>
+
+            <!-- Right 5 Cols: Live Interactive Sandbox & Verification -->
+            <div class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-laptop-code text-emerald-600"></i>
+                            <span>Connector 跨系统打通模拟沙箱</span>
+                        </span>
+                        <span id="connStatusBadge" class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-mono">2 CONNECTORS READY</span>
+                    </div>
+
+                    <div class="space-y-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">选择要模拟的跨系统协同场景：</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="simulateConnector('dev')" class="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-emerald-800 text-xs py-2 rounded font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-brands fa-github text-slate-800"></i> GitHub + Notion
+                            </button>
+                            <button onclick="simulateConnector('biz')" class="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-blue-800 text-xs py-2 rounded font-bold transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-database text-blue-600"></i> MySQL + 钉钉/飞书
+                            </button>
+                        </div>
+
+                        <!-- Live Simulator Output Box -->
+                        <div class="space-y-1.5 mt-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-slate-500 font-mono">跨系统执行流 (Cross-System Execution):</span>
+                                <span class="text-[10px] text-emerald-600 font-mono font-bold">AUTONOMOUS</span>
+                            </div>
+
+                            <div id="connectorOutput" class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 font-mono space-y-1 min-h-[140px] leading-relaxed">
+                                <div class="text-emerald-400 font-bold">🔌 [@GitHub_Connector 已触发]</div>
+                                <div>├── 📡 API GET: repos/org/order-service/issues?label=bug</div>
+                                <div>├── 📦 获取成功: 抓取到 4 个未关闭 Bug（P0: 1个, P1: 3个）</div>
+                                <div class="text-blue-300">🔌 [@Notion_Connector 已握手]</div>
+                                <div>├── 📝 创建页面: '2026年Q2研发缺陷追踪'</div>
+                                <div>├── 📊 自动同步: 4 个 Issues 已渲染为结构化数据库表格</div>
+                                <div class="text-emerald-300 font-bold">✨ [Done]: 跨系统双向数据搬运完成，全程耗时 1.2 秒！</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i> 无需编写爬虫或数据同步脚本，即插即用。</span>
+                    <button onclick="downloadConnectorCheatSheet()" class="copy-btn bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-1 rounded font-bold border border-emerald-200">
+                        下载速查表
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Matrix: How Connector, Skill & Expert Work Together -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mt-4 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-cubes text-emerald-600"></i>
+                <span>黄金三角协同概念：Expert、Skill 与 Connector 到底怎么配合？</span>
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+                <div class="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-200">
+                    <strong class="text-emerald-900 block mb-1">👤 Expert（专家智能体 / Who）</strong>
+                    <span class="text-slate-600">“有岗位的数字员工”，负责制定业务策略与思考逻辑（如：SRE 运维专家、财务审计主管）。</span>
+                </div>
+                <div class="p-2.5 rounded-lg bg-blue-50/50 border border-blue-200">
+                    <strong class="text-blue-900 block mb-1">🛠️ Skill（能力插件 / How）</strong>
+                    <span class="text-slate-600">“手里的通用工具函数”，负责单点运算与格式处理（如：发票核验算法、Word 排版生成器）。</span>
+                </div>
+                <div class="p-2.5 rounded-lg bg-purple-50/50 border border-purple-200">
+                    <strong class="text-purple-900 block mb-1">🔌 Connector（连接器 / Where）</strong>
+                    <span class="text-slate-600">“通往外部系统的数据通道”，负责提供真实数据进出的管道（如：GitHub、MySQL、Notion、Jira）。</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                WorkBuddy Practice: <span class="text-emerald-600 font-bold">Connector Architecture & Usage</span>
+            </div>
+            <div class="w-24 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[100%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-graduation-cap mr-1 text-emerald-500"></i>企业级 AI 架构师全栈进阶研修
+            </span>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 讲师教学通俗话术：</span>
+                    “各位同学，如果说 <strong>Expert 是人</strong>，<strong>Skill 是计算器或螺丝刀</strong>，那么 <strong>Connector 就是通往外部仓库的专用通道或插头</strong>！<br><br>
+                    在没有 Connector 之前，AI 只能读你手动拖到桌面上的零散文件；有了 Connector，只要在设置里授权一次，AI 就能自己去 GitHub 抓 Bug、去 MySQL 读账目、去 Notion 写文档，完全不需要你来回当搬运工！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 常见企业支持连接器：</span>
+                    - <strong>代码与开发</strong>：GitHub, GitLab, Jira<br>
+                    - <strong>文档与知识管理</strong>：Notion, Confluence, 飞书云文档<br>
+                    - <strong>数据源</strong>：MySQL, PostgreSQL, Snowflake<br>
+                    - <strong>沟通与协同</strong>：Slack, 飞书机器人, 钉钉机器人
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyConnectorPrompt() {
+            const text = document.getElementById('connectorPromptText').innerText.trim();
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Connector 调用指令已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        function simulateConnector(type) {
+            const out = document.getElementById('connectorOutput');
+            const badge = document.getElementById('connStatusBadge');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-2"></i> 正在安全通道握手并执行跨系统数据交换...';
+            
+            setTimeout(function() {
+                if (type === 'dev') {
+                    badge.innerText = "GITHUB + NOTION CONNECTED";
+                    out.innerHTML = `
+<div class="text-emerald-400 font-bold">🔌 [@GitHub_Connector 已触发]</div>
+<div>├── 📡 API GET: repos/org/order-service/issues?label=bug</div>
+<div>├── 📦 获取成功: 抓取到 4 个未关闭 Bug（P0: 1个, P1: 3个）</div>
+<div class="text-blue-300">🔌 [@Notion_Connector 已握手]</div>
+<div>├── 📝 创建页面: '2026年Q2研发缺陷追踪'</div>
+<div>├── 📊 自动同步: 4 个 Issues 已渲染为结构化数据库表格</div>
+<div class="text-emerald-300 font-bold">✨ [Done]: 跨系统双向数据搬运完成，耗时 1.2 秒！</div>
+                    `;
+                    showToast("GitHub + Notion 跨系统调用模拟成功！");
+                } else {
+                    badge.innerText = "MYSQL + DINGTALK CONNECTED";
+                    out.innerHTML = `
+<div class="text-blue-400 font-bold">🔌 [@MySQL_Connector 已连接]</div>
+<div>├── 🔍 执行只读 SQL: SELECT COUNT(*), SUM(amt) FROM orders WHERE status='FAILED'</div>
+<div>├── 📊 数据提取: 发现 12 笔掉单与支付超时流水 (总额 ￥84,200)</div>
+<div class="text-amber-300">🔌 [@DingTalk_Connector 已就绪]</div>
+<div>├── ⚠️ 生成风控告警卡片并推送到《核心交易监控群》</div>
+<div class="text-emerald-300 font-bold">✨ [Done]: 数据库直连查询与告警推送闭环完成！</div>
+                    `;
+                    showToast("MySQL + 钉钉告警跨系统调用模拟成功！");
+                }
+            }, 450);
+        }
+
+        function downloadConnectorCheatSheet() {
+            const mdContent = `# WorkBuddy Connector（连接器）使用速查手册\n\n## 一、 什么是 Connector？\nConnector 是 WorkBuddy 连接外部企业 SaaS 软件与数据库的标准数据插座（基于 OAuth / API Token 授权）。\n\n## 二、 黄金三角概念区别\n1. **Expert（数字员工）**：负责业务决策与岗位思考（Who）。\n2. **Skill（工具函数）**：负责本地代码计算与格式渲染（How）。\n3. **Connector（外部通道）**：负责跨系统实时读取与写入真实业务数据（Where）。\n\n## 三、 常用使用指令\n- **读取 GitHub 并同步 Notion**：\`请使用 @GitHub_Connector 读取最近提交并写入 @Notion_Connector 对应周报页面。\`\n- **查询只读数据库并推送群聊**：\`请通过 @MySQL_Connector 查询昨日掉单数据，并通过 @Feishu_Connector 推送告警。\`\n\n## 四、 安全规范\n所有 Token 与密码保存在本地系统凭据保险库中，支持在界面中随时一键断开授权。`;
+
+            try {
+                const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'workbuddy_connector_guide.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("Connector 速查手册下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

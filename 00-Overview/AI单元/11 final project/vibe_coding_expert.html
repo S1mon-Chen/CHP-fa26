@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中航机载实战：Expert+Skill 智能体 Vibe Coding 演练</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        avic: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .tab-btn { transition: all 0.2s ease; }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .console-text { animation: typeIn 0.3s ease-out forwards; }
+        @keyframes typeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-sky-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                中航机载场景实战：<span class="text-sky-600">合同交付产能智能匹配与风险评估系统</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">讲师授课指南</span>
+            </button>
+            <button onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-sky-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-blue-100/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-sky-50 border border-sky-200 text-sky-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-plane-departure text-sky-600"></i>
+                <span>Vibe Coding · Agentic Architecture</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                以业务为核心：一句话指挥 AI 搭建 <span class="text-sky-600">Expert + Skill</span> 企业智能体
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-5xl leading-relaxed">
+                基于第五组的真实痛点：<strong>“合同评审缺少研判手段，需求与产能错配”</strong>。本实验将带您演示架构的跃升——不再画流水线，而是定义一个 <strong>Expert（专家大脑）</strong>，给它配发 <strong>Skill（产能计算器）</strong>，让 AI 自主触发工具 (Tool Calling)，并在风险发生时在企微/飞书群内弹出审批卡片 (HITL)。
+            </p>
+        </div>
+
+        <!-- 4 Step Tabs -->
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full mb-4">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono font-semibold">
+                <button onclick="switchTab(1)" id="tabBtn1" class="tab-btn p-3 rounded-xl border border-sky-500 bg-sky-600 text-white shadow-sm flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] opacity-80 uppercase">Step 01</span>
+                    <span>1. 极简测试数据准备</span>
+                </button>
+                <button onclick="switchTab(2)" id="tabBtn2" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 02</span>
+                    <span>2. 打造专属确定性 Skill</span>
+                </button>
+                <button onclick="switchTab(3)" id="tabBtn3" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 03</span>
+                    <span>3. 设定 Expert 大脑</span>
+                </button>
+                <button onclick="switchTab(4)" id="tabBtn4" class="tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition">
+                    <span class="text-[10px] text-slate-400 uppercase">Step 04</span>
+                    <span>4. Tool Calling 与 HITL 卡片</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Dynamic Workspace (Split View) -->
+        <div class="relative z-10 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Vibe Coding Instructions & Prompts -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow h-[400px]">
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3 text-sky-400 font-bold shrink-0">
+                        <span class="flex items-center gap-2 text-sm">
+                            <i id="stepIcon" class="fa-solid fa-layer-group"></i>
+                            <span id="stepTitle">步骤标题</span>
+                        </span>
+                        <span id="stepBadge" class="text-[10px] bg-sky-950 text-sky-300 border border-sky-800 px-2 py-0.5 rounded tracking-wider">PHASE</span>
+                    </div>
+
+                    <div id="stepInstructionBody" class="font-sans overflow-y-auto flex-1 pr-2">
+                        <!-- Dynamic Content Injected -->
+                    </div>
+                </div>
+
+                <div class="mt-4 bg-slate-800/90 p-2.5 rounded-lg border border-slate-700 text-[11px] text-slate-400 font-sans flex items-center justify-between shrink-0">
+                    <span id="stepFooterTip"><i class="fa-solid fa-circle-check text-sky-400 mr-1"></i> 将指令发给 WorkBuddy 即可自动生成架构代码。</span>
+                    <button id="btnCopyPrompt" onclick="copyCurrentPrompt()" class="copy-btn text-sky-400 hover:text-sky-300 underline font-bold">一键复制 Prompt</button>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Live Simulator (Code Gen & Execution) -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-4 md:p-5 soft-shadow flex flex-col justify-between h-[400px]">
+                
+                <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs shrink-0">
+                    <span class="flex items-center gap-2">
+                        <i class="fa-solid fa-bolt text-sky-600"></i>
+                        <span id="simulatorTitle">WorkBuddy 沙箱终端实时构建日志</span>
+                    </span>
+                    <span id="simStatusBadge" class="text-[10px] bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded font-mono font-bold">AWAITING PROMPT</span>
+                </div>
+
+                <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col overflow-hidden relative font-mono text-[11px] leading-relaxed">
+                    
+                    <div id="consoleBox" class="flex-1 overflow-y-auto space-y-2 text-slate-300 pb-12 pr-2">
+                        <div class="text-slate-500"># 准备就绪。点击下方按钮模拟向 WorkBuddy 发送当前步骤指令。</div>
+                    </div>
+                    
+                    <div class="absolute bottom-3 right-3 flex justify-end pt-3 bg-gradient-to-t from-slate-950 to-transparent">
+                        <button onclick="runStepSimulation()" id="btnRunSim" class="bg-sky-600 hover:bg-sky-500 text-white text-[10px] px-4 py-2 rounded font-bold transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-play"></i> <span>发送执行指令</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>讲师授课与避坑指南</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div id="speakerNotesContent" class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <!-- Dynamically injected notes -->
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-sky-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        let currentTab = 1;
+        let activeTimeouts = [];
+
+        function clearTimeouts() {
+            activeTimeouts.forEach(clearTimeout);
+            activeTimeouts = [];
+        }
+
+        const stepsConfig = {
+            1: {
+                title: "步骤 1：初始化工作区与极简测试数据准备",
+                badge: "MOCK DATA",
+                icon: "fa-solid fa-database",
+                prompt: "请帮我初始化工作区。 \n1. 创建文件 `contract_sample.txt`，内容为：“需方拟采购 A-102 型航空传感器 500 台，要求合同签订后 2 个月内完成交付。” \n2. 创建 `capacity_db.json`，内容模拟当前工厂产能：A-102 型传感器目前库存 100 台，工厂月产能为 150 台。",
+                html: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 mb-3">
+                        <strong class="text-sky-300 block mb-1 font-mono">宏观讲解：</strong>
+                        <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            开发系统的第一步是准备“测试数据（Mock Data）”。为了快速验证概念，我们不需要去连接真实的涉密 ERP 系统，而是让大模型帮我们瞬间生成一份**虚拟合同**和一个反映产线状态的**虚拟 JSON 数据库**。
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <strong class="text-sky-300 block mb-1 font-mono">Vibe Coding 提示词：</strong>
+                        <div class="text-[10px] text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-sans leading-relaxed">
+请帮我初始化工作区。 <br>
+1. 创建文件 \`contract_sample.txt\`，内容为：“需方拟采购 A-102 型航空传感器 500 台，要求合同签订后 2 个月内完成交付。” <br>
+2. 创建 \`capacity_db.json\`，内容模拟当前工厂产能：A-102 型传感器目前库存 100 台，工厂月产能为 150 台。
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-sky-50 border border-sky-200">
+                        <span class="font-bold text-sky-900 block mb-1">⚠️ 授课注意事项：</span>
+                        向学员强调 <strong>“MVP（最小可行性产品）”</strong> 思维。不要一上来就搞宏大的系统对接，先用简单的 text 和 json 跑通业务逻辑（合同量 > 产能），证明 AI 能解决问题，再去谈真实系统打通。
+                    </div>
+                `,
+                runLogs: [
+                    ">> 发送工作区初始化与 Mock 数据生成指令...",
+                    "🛠️ [WorkBuddy Copilot] 开始创建本地资源...",
+                    "├── 📄 写入文件: contract_sample.txt (模拟采购合同)",
+                    "├── 📊 写入文件: capacity_db.json",
+                    "│   └── 内容: { \"product\": \"A-102\", \"stock\": 100, \"monthly_capacity\": 150 }",
+                    "✅ 测试数据准备完毕，系统基础环境就绪。"
+                ]
+            },
+            2: {
+                title: "步骤 2：添加 Skill (确定性产能核算器)",
+                badge: "WORKBUDDY SKILL",
+                icon: "fa-solid fa-toolbox",
+                prompt: "@WorkBuddy 请帮我添加一个 Skill，命名为 `capacity_calculator`。\n这是一个 Python 技能，入参为 `(product_id: str, demand: int, months: int)`。\n逻辑：读取工作区的 `capacity_db.json`，计算: 可用总产能 = 库存 + (月产能 * months)。\n返回数据：{'is_safe': bool, 'gap': int, 'max_supply': int}。\n注册完成后请保存，稍后我们将把它发配给专家。",
+                html: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 mb-3">
+                        <strong class="text-sky-300 block mb-1 font-mono">宏观讲解：</strong>
+                        <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            绝不让大模型做数学题！算产能、算差额必须交给理科生。在 WorkBuddy 中，我们通过原生指令 <strong>“添加 Skill”</strong>，把确定性的 Python 逻辑注册为一把标准的工具武器，彻底解决 AI 的数学幻觉问题。
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <strong class="text-sky-300 block mb-1 font-mono">Vibe Coding 提示词：</strong>
+                        <div class="text-[10px] text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-sans leading-relaxed">
+@WorkBuddy 请帮我添加一个 Skill，命名为 \`capacity_calculator\`。<br>
+这是一个 Python 技能，入参为 \`(product_id: str, demand: int, months: int)\`。<br>
+逻辑：读取工作区的 \`capacity_db.json\`，计算: 可用总产能 = 库存 + (月产能 * months)。<br>
+返回数据：{'is_safe': bool, 'gap': int, 'max_supply': int}。<br>
+注册完成后请保存，稍后我们将把它发配给专家。
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-sky-50 border border-sky-200">
+                        <span class="font-bold text-sky-900 block mb-1">⚠️ 授课注意事项：</span>
+                        向学员强调 <strong>WorkBuddy 原生开发范式</strong>。告诉他们不需要手动建文件写代码，只要对 WorkBuddy 喊出“添加 Skill”，系统就会自动在底层创建标准化的能力模块，供后续的所有 Agent 随时调用。
+                    </div>
+                `,
+                runLogs: [
+                    ">> 发送添加 Skill 指令给 WorkBuddy...",
+                    "🛠️ [WorkBuddy 引擎] 正在注册新技能...",
+                    "├── 🐍 初始化 Skill 模块: capacity_calculator",
+                    "├── ⚙️ [逻辑注入]: max_supply = stock + (months * capacity_per_month)",
+                    "├── 📝 自动生成 OpenAPI 标准 Schema 描述",
+                    "✅ Skill [capacity_calculator] 成功添加到您的工作区技能库！"
+                ]
+            },
+            3: {
+                title: "步骤 3：添加 Expert 大脑 (挂载产能计算器)",
+                badge: "WORKBUDDY EXPERT",
+                icon: "fa-solid fa-user-tie",
+                prompt: "@WorkBuddy 请帮我添加一个 Expert，命名为 `Capacity_Auditor`。\n系统提示词设定为：\n“你是一位严谨的航空制造业产能风控专家。当收到合同意向时：\n1. 阅读文本，提炼型号、数量、周期。\n2. 必须自主调用技能 `capacity_calculator` 进行产能核算。\n3. 根据返回的数值，撰写风控报告并要求特批。”\n请将刚刚创建的 `capacity_calculator` Skill 挂载给这个 Expert。",
+                html: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 mb-3">
+                        <strong class="text-sky-300 block mb-1 font-mono">宏观讲解：</strong>
+                        <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            武器造好了，现在该“招兵买马”了！我们使用 WorkBuddy 的 <strong>“添加 Expert”</strong> 语义，直接建立一个产能风控专员，并<strong>把刚才写好的 Skill 直接勾选/挂载给它</strong>。大脑负责阅读，手脚负责计算。
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <strong class="text-sky-300 block mb-1 font-mono">Vibe Coding 提示词：</strong>
+                        <div class="text-[10px] text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-sans leading-relaxed">
+@WorkBuddy 请帮我添加一个 Expert，命名为 \`Capacity_Auditor\`。<br>
+系统提示词设定为：<br>
+“你是一位严谨的航空制造业产能风控专家。当收到合同意向时：<br>
+1. 阅读文本，提炼型号、数量、周期。<br>
+2. 必须自主调用技能 \`capacity_calculator\` 进行产能核算。<br>
+3. 根据返回的数值，撰写风控报告并要求特批。”<br>
+请将刚刚创建的 \`capacity_calculator\` Skill 挂载给这个 Expert。
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-sky-50 border border-sky-200">
+                        <span class="font-bold text-sky-900 block mb-1">⚠️ 授课注意事项：</span>
+                        请务必向学员指出，在 WorkBuddy 里 <strong>“Expert = System Prompt + Skills (Tools)”</strong> 的黄金公式。这种封装彻底隔离了业务逻辑与大模型推理，是企业级应用能稳定落地的核心。
+                    </div>
+                `,
+                runLogs: [
+                    ">> 发送添加 Expert 指令给 WorkBuddy...",
+                    "🛠️ [WorkBuddy 引擎] 正在构建数字员工...",
+                    "├── 🧠 创建 Expert: Capacity_Auditor",
+                    "├── 💬 注入 System Prompt 设定业务边界",
+                    "├── 🔗 [挂载执行]: 将工作区中的 Skill [capacity_calculator] 绑定至此 Expert",
+                    "✅ Expert 大脑装配成功，已佩戴专属技能武器，随时可以投入实战。"
+                ]
+            },
+            4: {
+                title: "步骤 4：新建任务运行，触发 Tool Calling 与 HITL 卡片",
+                badge: "NEW TASK & RUN",
+                icon: "fa-solid fa-paper-plane",
+                prompt: "@Capacity_Auditor 请阅读当前工作区里的 `contract_sample.txt`。\n要求：展示你自主调用 `capacity_calculator` 的思考过程。当确认有缺口时，触发 HITL 人工拦截网关，并在控制台渲染出一张高保真的飞书/钉钉风格「履约高风险预警 - 审批挂起」交互式卡片！",
+                html: `
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 mb-3">
+                        <strong class="text-sky-300 block mb-1 font-mono">宏观讲解：</strong>
+                        <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                            造物（Mock数据）、打铁（Skill）、招人（Expert）都完成了！现在，我们在生成 Mock 数据的**当前工作区下，点击“新建任务 (New Task)”**，直接 <strong>@Capacity_Auditor</strong> 去干活。我们将见证它自主阅读、调用工具，并在遇到风险时触发 <strong>HITL (人工审批网关)</strong> 弹出卡片。
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                        <strong class="text-sky-300 block mb-1 font-mono">Vibe Coding 提示词：</strong>
+                        <div class="text-[10px] text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-sans leading-relaxed">
+@Capacity_Auditor 请阅读当前工作区里的 \`contract_sample.txt\`。<br>
+要求：展示你自主调用 \`capacity_calculator\` 的思考过程。当确认有缺口时，触发 HITL 人工拦截网关，并在控制台渲染出一张高保真的飞书/钉钉风格「履约高风险预警 - 审批挂起」交互式卡片！
+                        </div>
+                    </div>
+                `,
+                speakerNotes: `
+                    <div class="p-3 rounded-lg bg-sky-50 border border-sky-200">
+                        <span class="font-bold text-sky-900 block mb-1">⚠️ 授课注意事项：</span>
+                        <strong>1. 强调“新建任务”概念：</strong>告诉大家在 WorkBuddy 中，环境数据是全局的，而任务是独立的。我们在同一个工作区新建任务，专家就能直接读到第一步造好的假合同。<br>
+                        <strong>2. 重点展示审批卡片：</strong>让学员直观感受到，用一句话搭建的智能体，是可以直接化身为业务群里的“数字风控审核员”的。
+                    </div>
+                `,
+                runLogs: [
+                    ">> 在当前工作区新建任务，并发送执行指令...",
+                    "🧠 <span class='text-sky-300'>[Capacity_Auditor 思考中]</span>: 正在读取工作区文件 contract_sample.txt...",
+                    "🧠 <span class='text-sky-300'>[Capacity_Auditor 思考中]</span>: 提取要素完成。型号: A-102，需求: 500台，周期: 2个月。我需要核算产能。",
+                    "⚡ <span class='text-amber-400 font-bold'>[Tool Calling 触发]</span> 正在调用技能: capacity_calculator(product_id='A-102', demand=500, months=2)",
+                    "🧮 <span class='text-slate-400'>[Skill 执行]</span> 100 + (150 * 2) = 400。返回结果: {\"is_safe\": false, \"max_supply\": 400, \"gap\": 100}",
+                    "🧠 <span class='text-sky-300'>[Capacity_Auditor 思考中]</span>: 产能不足！需求 500 大于可用产能 400。必须立刻发起拦截告警！",
+                    "<span class='text-rose-500 font-bold'>🚨 [Warning] Expert 判定：履约高风险！触发 HITL 安全审批网关。</span>",
+                    "<span class='text-emerald-400 font-bold'>⏸️ [API 推送成功] 正在向业务群推送钉钉/飞书交互卡片...</span>",
+                    `
+                    <div class="mt-3 mb-2 bg-slate-800 border border-slate-600 rounded-lg overflow-hidden shadow-2xl mx-1 font-sans">
+                        <div class="bg-rose-500/20 border-b border-rose-500/30 px-3 py-2 flex items-center gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-rose-400"></i>
+                            <span class="text-rose-300 font-bold text-xs">合同履约高风险预警 - 审批挂起</span>
+                        </div>
+                        <div class="p-3 text-[11px]">
+                            <div class="flex justify-between border-b border-slate-700 pb-2 mb-2">
+                                <span class="text-slate-400">采购产品</span>
+                                <span class="text-slate-200 font-bold">A-102 航空传感器</span>
+                            </div>
+                            <div class="flex justify-between border-b border-slate-700 pb-2 mb-2">
+                                <span class="text-slate-400">需求 / 可用产能</span>
+                                <span class="text-rose-400 font-bold">500台 / 400台 (缺口 100台)</span>
+                            </div>
+                            <div class="flex justify-between mb-4">
+                                <span class="text-slate-400">智能体建议</span>
+                                <span class="text-amber-400 font-bold">⚠️ 产能严重不足，存在违约风险</span>
+                            </div>
+                            <div class="flex gap-2 justify-end">
+                                <button class="px-3 py-1.5 rounded border border-slate-600 hover:bg-slate-700 text-slate-300 font-bold transition">拒绝接单</button>
+                                <button class="px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold transition flex items-center gap-1.5"><i class="fa-solid fa-lock text-[10px]"></i> 特批强制接单</button>
+                            </div>
+                        </div>
+                    </div>
+                    `
+                ]
+            }
+        };
+
+        function switchTab(num) {
+            currentTab = num;
+            const data = stepsConfig[num];
+            clearTimeouts();
+
+            // Update Tabs UI
+            for (let i = 1; i <= 4; i++) {
+                const btn = document.getElementById(`tabBtn${i}`);
+                if (i === num) {
+                    btn.className = "tab-btn p-3 rounded-xl border border-sky-500 bg-sky-600 text-white shadow-sm flex flex-col items-start gap-1 text-left transition";
+                } else {
+                    btn.className = "tab-btn p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 flex flex-col items-start gap-1 text-left transition";
+                }
+            }
+
+            // Update Left Panel Content
+            document.getElementById('stepTitle').innerText = data.title;
+            document.getElementById('stepBadge').innerText = data.badge;
+            document.getElementById('stepIcon').className = data.icon + " text-sm";
+            document.getElementById('stepInstructionBody').innerHTML = data.html;
+            
+            // Update Speaker Notes
+            document.getElementById('speakerNotesContent').innerHTML = data.speakerNotes;
+
+            // Reset Right Console
+            const consoleBox = document.getElementById('consoleBox');
+            consoleBox.innerHTML = '<div class="text-slate-500"># 准备就绪。点击下方按钮模拟向 WorkBuddy 发送当前步骤指令。</div>';
+            
+            const badge = document.getElementById('simStatusBadge');
+            badge.innerText = "AWAITING PROMPT";
+            badge.className = "text-[10px] bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded font-mono font-bold";
+
+            const runBtn = document.getElementById('btnRunSim');
+            runBtn.disabled = false;
+            runBtn.innerHTML = `<i class="fa-solid fa-play"></i> <span>发送执行指令</span>`;
+        }
+
+        function copyCurrentPrompt() {
+            const promptText = stepsConfig[currentTab].prompt;
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = promptText;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("Vibe Coding 提示词已成功复制，可直接粘贴！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+
+        function runStepSimulation() {
+            const data = stepsConfig[currentTab];
+            const consoleBox = document.getElementById('consoleBox');
+            const badge = document.getElementById('simStatusBadge');
+            const runBtn = document.getElementById('btnRunSim');
+
+            clearTimeouts();
+            runBtn.disabled = true;
+            consoleBox.innerHTML = '';
+            
+            badge.innerText = currentTab === 4 ? "EXECUTING SANDBOX..." : "AI CODING...";
+            badge.className = "text-[10px] bg-sky-100 text-sky-700 border border-sky-300 px-2 py-0.5 rounded font-mono font-bold";
+
+            let delay = 300;
+            data.runLogs.forEach((log, index) => {
+                activeTimeouts.push(setTimeout(() => {
+                    const div = document.createElement('div');
+                    div.className = 'console-text';
+                    div.innerHTML = log;
+                    consoleBox.appendChild(div);
+                    consoleBox.scrollTop = consoleBox.scrollHeight;
+
+                    // On last log
+                    if (index === data.runLogs.length - 1) {
+                        badge.innerText = currentTab === 4 ? "HITL PAUSED" : "GENERATION SUCCESS";
+                        badge.className = currentTab === 4 
+                            ? "text-[10px] bg-amber-100 text-amber-700 border border-amber-300 px-2 py-0.5 rounded font-mono font-bold"
+                            : "text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-300 px-2 py-0.5 rounded font-mono font-bold";
+                        runBtn.disabled = false;
+                        runBtn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> <span>重新演示</span>`;
+                        showToast(`步骤 ${currentTab} 演示完成！`);
+                    }
+                }, delay));
+                delay += (currentTab === 4 && index > 3) ? 800 : 500; 
+            });
+        }
+
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerHTML = `<i class="fa-solid fa-check text-sky-400 mr-2"></i>${msg}`;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none'); }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => { switchTab(1); });
+    </script>
+</body>
+</html>

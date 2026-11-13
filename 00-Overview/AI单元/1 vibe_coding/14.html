@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 实战案例二：杂乱文件自动归类</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- 引入 JSZip 用于在浏览器打包生成测试文件压缩包 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .file-icon {
+            transition: transform 0.2s;
+        }
+        .file-icon:hover {
+            transform: scale(1.1) rotate(-5deg);
+        }
+        .copy-button {
+            transition: all 0.2s ease;
+        }
+        .copy-button:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 实战演练 —— 让 AI 替你干活
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-1/4 w-[400px] h-[400px] bg-amber-100/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[500px] h-[500px] bg-orange-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-folder-tree text-amber-600"></i>
+                    <span>Live Action 2 · 进阶实战</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    案例二：杂乱文件一键归类 <span class="text-xl md:text-2xl text-amber-600">(并给 AI 套上缰绳)</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    当我们需要 AI 帮我们“移动”或“删除”文件时，风险极高。<br>这次我们将学习 Vibe Coding 中的核心防御技巧：<strong class="text-slate-700">Dry-Run (防呆预览)</strong>。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-6">
+                
+                <!-- Left: Scenario Visual -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-6 soft-shadow flex flex-col">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-desktop text-slate-400"></i>
+                            你的“下载”文件夹现状
+                        </h3>
+                        <!-- 添加一键下载测试包按钮 -->
+                        <button onclick="downloadTestZip()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg shadow-sm transition-colors flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-zipper"></i> 下载测试包
+                        </button>
+                    </div>
+                    
+                    <div class="bg-slate-100 rounded-xl p-4 flex-1 border border-slate-200 relative">
+                        <div class="absolute inset-0 bg-white/50 backdrop-blur-[1px] rounded-xl flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity z-10">
+                            <span class="bg-slate-900 text-white px-4 py-2 rounded-lg font-bold shadow-xl">我们需要把它们按类型装进不同的文件夹</span>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-3 justify-center">
+                            <!-- Messy files -->
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-pdf text-rose-500 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">发票.pdf</span>
+                            </div>
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-image text-blue-500 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">截图1.png</span>
+                            </div>
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-word text-blue-700 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">合同.docx</span>
+                            </div>
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-pdf text-rose-500 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">简历.pdf</span>
+                            </div>
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-excel text-green-600 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">报表.xlsx</span>
+                            </div>
+                            <div class="file-icon bg-white p-3 rounded shadow-sm border border-slate-200 flex flex-col items-center gap-1 w-20">
+                                <i class="fa-solid fa-file-image text-amber-500 text-2xl"></i>
+                                <span class="text-[9px] text-slate-500 truncate w-full text-center">照片.jpg</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: The Prompt (With Safety Constraint) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-xl">
+                    <div class="bg-slate-800 border-b border-slate-700 p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                            <span class="text-sm font-bold text-slate-200">带“安全卡扣”的 Prompt</span>
+                        </div>
+                        <button onclick="copyPrompt()" class="copy-button bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-regular fa-copy"></i> 一键复制指令
+                        </button>
+                    </div>
+                    
+                    <div class="p-6 font-mono text-sm leading-relaxed overflow-y-auto text-slate-300">
+                        <div class="text-slate-400 mb-3">你是一个精通 Python 的系统级自动化专家。</div>
+                        
+                        <div class="text-blue-400 font-bold">&lt;具体任务&gt;</div>
+                        <div class="pl-4">- 读取当前目录下的所有文件。</div>
+                        <div class="pl-4">- 根据文件后缀名创建对应的文件夹（如：PDF文件夹、图片文件夹、Word文件夹等）。</div>
+                        <div class="pl-4">- 将对应文件移动到新建的文件夹中。</div>
+                        <div class="text-blue-400 font-bold">&lt;/具体任务&gt;</div>
+                        <br>
+                        <div class="text-amber-400 font-bold">&lt;安全红线规则&gt;</div>
+                        <div class="pl-4">- 忽略 Python 脚本文件自身，不要移动它。</div>
+                        <div class="pl-4 bg-amber-900/40 text-amber-200 border-l-2 border-amber-400 px-2 py-1 my-1">
+                            - 绝对不要立刻移动文件！<br>
+                            - 必须先在终端打印出“准备移动的计划列表”（比如 X 文件将移动到 Y 文件夹）。<br>
+                            - 打印完成后，通过 input() 询问我：“是否确认执行？(y/n)”。只有我输入 y，才执行移动！
+                        </div>
+                        <div class="text-amber-400 font-bold">&lt;/安全红线规则&gt;</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-amber-50 rounded-xl p-5 border-l-4 border-amber-500 flex items-center gap-4 soft-shadow mx-auto max-w-4xl">
+                <div class="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 shrink-0 text-xl">
+                    <i class="fa-solid fa-traffic-light"></i>
+                </div>
+                <div>
+                    <h4 class="text-amber-900 font-bold text-sm md:text-base mb-1">架构师心法：Dry-Run（空跑）机制</h4>
+                    <p class="text-slate-600 text-xs md:text-sm leading-relaxed">
+                        这就是 Vibe Coding 中极其重要的防呆设计。大模型偶尔会犯蠢，如果不加这道确认工序，它可能会把你桌面上重要的系统文件一并打包移走。<strong>先打印计划，再执行操作</strong>，是你驾驭 AI 的核心缰绳。
+                    </p>
+                </div>
+            </div>
+
+            <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+                <i class="fa-solid fa-check text-emerald-400 mr-2"></i>指令已复制，请在 Trae 中粘贴！
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Slide <span class="text-amber-600 font-bold">14</span> / 16
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 14 of 16 is 87.5% -->
+                <div class="bg-amber-500 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页：实战一运行与验收" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-play mr-1 text-amber-500"></i>模块四：实战演练
+            </span>
+            <a href="15.html" title="下一页：运行案例二与应对报错" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">📢 强调安全风险：</span>
+                    “各位，案例一是拆分表格，只是‘读取’，所以很安全。但案例二我们要让 AI ‘移动’文件。请大家想象一下，如果 AI 抽风了，把你桌面上的快捷方式全删了怎么办？”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">💡 拆解高亮区域：</span>
+                    “引导学员看右侧高亮的红线规则。告诉他们，以后只要让 AI 批量修改或移动东西，必须加上这句话：‘先打印列表让我看，我按 y 你再动’。这在程序员术语里叫 Dry-Run（干跑），这是不写代码的人保命的绝招。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">⏭️ 引出下一页：</span>
+                    “好，大家可以一键复制这个指令到 Trae 里去试试。下一页，我们将看看运行这个脚本时，如果你忘了装某个包，遇到满屏红字的 Error 报错时，该怎么从容应对。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function copyPrompt() {
+            const promptText = `你是一个精通 Python 的系统级自动化专家。
+
+<具体任务>
+- 读取当前目录下的所有文件。
+- 根据文件后缀名创建对应的文件夹（如：PDF文件夹、图片文件夹、Word文件夹等）。
+- 将对应文件移动到新建的文件夹中。
+</具体任务>
+
+<安全红线规则>
+- 忽略 Python 脚本文件自身，不要移动它。
+- 绝对不要立刻移动文件！
+- 必须先在终端打印出“准备移动的计划列表”（比如 X 文件将移动到 Y 文件夹）。
+- 打印完成后，通过 input() 询问我：“是否确认执行？(y/n)”。只有我输入 y，才真正执行移动！
+</安全红线规则>`;
+            
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = promptText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 2500);
+        }
+
+        async function downloadTestZip() {
+            try {
+                const zip = new JSZip();
+                
+                // 创建用来分类的模拟空文件 (内容不重要，脚本只认后缀名)
+                zip.file("发票.pdf", "这是一个模拟的 PDF 文件");
+                zip.file("截图1.png", "这是一个模拟的 PNG 图片");
+                zip.file("合同.docx", "这是一个模拟的 Word 文档");
+                zip.file("简历.pdf", "这是一个模拟的 PDF 简历");
+                zip.file("报表.xlsx", "这是一个模拟的 Excel 报表");
+                zip.file("照片.jpg", "这是一个模拟的 JPG 照片");
+                
+                // 生成压缩包并触发下载
+                const content = await zip.generateAsync({type:"blob"});
+                const url = window.URL.createObjectURL(content);
+                const a = document.createElement("a");
+                a.style.display = "none";
+                a.href = url;
+                a.download = "杂乱文件测试包.zip";
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                // 复用并修改 Toast 提示
+                const toast = document.getElementById('toast');
+                const originalHtml = toast.innerHTML;
+                toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>测试压缩包已下载！请解压后运行脚本。';
+                showToast();
+                setTimeout(() => { toast.innerHTML = originalHtml; }, 3000); // 恢复原提示文案
+                
+            } catch (err) {
+                console.error("生成压缩包失败:", err);
+                alert("下载失败，请确保网络畅通以加载打包组件。");
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

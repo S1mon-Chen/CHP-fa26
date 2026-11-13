@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>第九单元 Slide 1：Agent Harness 概念破局 —— 为什么生产级智能体必须戴上“马鞍与缰绳”？</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        harness: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            900: '#4c1d95',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-violet-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第九单元：Agent Harness 受控运行套具体系 <span class="text-violet-600 font-mono font-bold">(1/5)</span>
+            </h1>
+        </div>
+
+        <!-- Unified Series Navigation Tabs (5 Steps in Unit 9) -->
+        <nav class="hidden md:flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <a href="harness_slide1_intro.html" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white shadow-sm flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-shield-cat text-[11px]"></i>
+                <span>1. Harness概念</span>
+            </a>
+            <a href="harness_slide2_context.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-anchor text-[11px]"></i>
+                <span>2. 上下文缰绳</span>
+            </a>
+            <a href="harness_slide3_guardrails.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-ban text-[11px]"></i>
+                <span>3. 工具拦截</span>
+            </a>
+            <a href="harness_slide4_checkpoint.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-floppy-disk text-[11px]"></i>
+                <span>4. 状态快照</span>
+            </a>
+            <a href="harness_slide5_practice.html" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/70 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-wand-magic-sparkles text-[11px]"></i>
+                <span>5. 综合实战</span>
+            </a>
+        </nav>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadHarnessCheatSheet()" class="px-3 py-1.5 rounded-lg border border-violet-300 bg-violet-50 hover:bg-violet-100 text-xs font-bold text-violet-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-shield text-violet-600"></i>
+                <span class="hidden sm:inline">下载 Harness 架构手册 (.md)</span>
+                <span class="sm:hidden">架构手册</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-5 md:p-8 bg-white bg-grid-pattern">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-violet-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-fuchsia-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-shield-halved text-violet-600"></i>
+                <span>Agent Safety & Governance · 智能体生产级受控运行底座</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                从“裸奔的野马”到“带甲上阵”：揭秘企业级 <span class="text-violet-600">Agent Harness（受控套具）</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在实验室跑通 Demo 只需要 5 分钟，但让 Agent 真正接入企业生产内网，它就是一匹不可预测的“野马”——可能因逻辑死循环刷爆几十万 Token、误删主库数据、或因外部脏数据注入而遗忘原则。<strong>Agent Harness 不改变大模型本身的推理机制，而是在模型外包裹一层确定性安全套具！</strong>
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Left (Architectural Concept) & Right (Interactive Sandbox) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Harness Anatomy & Comparison -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-violet-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-cubes text-sm"></i>
+                            <span class="text-xs">受控套具剖析：Harness 赋予智能体的 4 大工业级护甲</span>
+                        </span>
+                        <span class="text-[10px] bg-violet-950 text-violet-300 border border-violet-800 px-2 py-0.5 rounded">HARNESS ARMOR</span>
+                    </div>
+
+                    <!-- Horse vs Harness Metaphor -->
+                    <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700 mb-3 font-sans leading-relaxed text-[11px] text-slate-300">
+                        <div class="flex items-center gap-2 text-violet-300 font-bold mb-1">
+                            <i class="fa-solid fa-horse"></i>
+                            <span>通俗类比：马鞍、缰绳与护甲哲学</span>
+                        </div>
+                        <div>
+                            • <strong>Agent 大模型</strong> = <span class="text-amber-300">烈马</span>（推理能力极强，但随时可能狂奔脱轨）<br>
+                            • <strong>Skill / Tools</strong> = <span class="text-blue-300">马蹄铁与车轮</span>（提供奔跑与计算的物理能力）<br>
+                            • <strong>Agent Harness</strong> = <span class="text-violet-300">马鞍、缰绳、眼罩与刹车制动器</span>（界定方向、限制速度、紧急熔断）
+                        </div>
+                    </div>
+
+                    <!-- 4 Layers of Protection -->
+                    <div class="space-y-2 text-[11px] text-slate-300 font-sans">
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-start gap-2">
+                            <div class="w-5 h-5 rounded bg-violet-950 border border-violet-800 text-violet-400 flex items-center justify-center shrink-0 font-bold font-mono text-[10px]">1</div>
+                            <div>
+                                <strong class="text-white">资源预算沙盒 (Budget Guard)</strong>：硬编码单次会话最大步数与 Token 消耗上限，杜绝账单被死循环刷爆。
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-start gap-2">
+                            <div class="w-5 h-5 rounded bg-violet-950 border border-violet-800 text-violet-400 flex items-center justify-center shrink-0 font-bold font-mono text-[10px]">2</div>
+                            <div>
+                                <strong class="text-white">上下文动态缰绳 (Context Steering)</strong>：核心红线规则强行物理置顶钉扎（Pinning），不随长文本稀释。
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-start gap-2">
+                            <div class="w-5 h-5 rounded bg-violet-950 border border-violet-800 text-violet-400 flex items-center justify-center shrink-0 font-bold font-mono text-[10px]">3</div>
+                            <div>
+                                <strong class="text-white">确定性工具网关 (Tool Interceptor)</strong>：高危 Shell/SQL 指令一票否决，大额操作自动挂起进入人工审批。
+                            </div>
+                        </div>
+
+                        <div class="p-2 rounded-lg bg-slate-800 border border-slate-700 flex items-start gap-2">
+                            <div class="w-5 h-5 rounded bg-violet-950 border border-violet-800 text-violet-400 flex items-center justify-center shrink-0 font-bold font-mono text-[10px]">4</div>
+                            <div>
+                                <strong class="text-white">状态持久化快照 (State Checkpoints)</strong>：每跑一步离散存盘，意外崩溃秒级断点续跑，零重复算力开销。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 bg-slate-800/90 p-2.5 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-circle-check text-violet-400 mr-1"></i> 不改模型本身，通过宿主运行套具构建零信任受控环。</span>
+                    <button onclick="downloadHarnessCheatSheet()" class="copy-btn text-violet-400 hover:text-violet-300 underline font-bold">下载架构规范</button>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Live Comparison Simulator (Naked Agent vs Harness-Governed Agent) -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5 text-slate-800 font-bold text-xs">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-gamepad text-violet-600"></i>
+                            <span>生产事故模拟演练：裸奔智能体 vs Harness 受控智能体</span>
+                        </span>
+                        <span id="harnessModeBadge" class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-mono font-bold">UNCONSTRAINED MODE</span>
+                    </div>
+
+                    <div class="space-y-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">
+                            场景触发：当 Agent 处理一份包含脏数据格式错误的账单，且由于无法自愈而陷入递归重试：
+                        </label>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="simulateRun('naked')" id="btnNaked" class="py-2 px-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                                <span>模式 A：裸奔 Agent（无套具）</span>
+                            </button>
+                            <button onclick="simulateRun('harness')" id="btnHarness" class="py-2 px-3 rounded-xl border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-800 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-shield-halved text-violet-600"></i>
+                                <span>模式 B：Harness 受控 Agent</span>
+                            </button>
+                        </div>
+
+                        <!-- Live Simulator Output Console -->
+                        <div class="space-y-1.5 mt-2">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-slate-500 font-mono">运行监控轨迹 (Runtime Execution Trace):</span>
+                                <span id="traceStatus" class="text-[10px] text-slate-500 font-mono">READY</span>
+                            </div>
+
+                            <div id="simOutputConsole" class="bg-slate-900 p-3.5 rounded-xl border border-slate-800 text-[11px] text-slate-300 font-mono space-y-1 min-h-[175px] leading-relaxed">
+                                <div class="text-slate-400"># 点击上方按钮运行对比演练...</div>
+                                <div class="text-slate-500">├── 输入数据: dirty_reconciliation_chunk_09.csv (格式破损)</div>
+                                <div class="text-slate-500">└── 待测指标: 步数预算、Token 消耗阈值、异常熔断表现</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield text-violet-600 mr-1"></i> 工业界法则：绝对不要信任大模型自己的“安全保证”。</span>
+                    <button onclick="simulateRun('harness')" class="copy-btn bg-violet-50 hover:bg-violet-100 text-violet-800 text-[10px] px-2.5 py-1 rounded font-bold border border-violet-200">
+                        体验 Harness 熔断
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Matrix Summary of 4 Harness Pillars -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-6 bg-white border border-slate-200 rounded-2xl p-4 soft-shadow">
+            <h3 class="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-table-list text-violet-600"></i>
+                <span>工业级 Agent Harness 四大核心支柱与功能速查</span>
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-[11px]">
+                <div class="p-3 rounded-xl bg-violet-50/60 border border-violet-200">
+                    <strong class="text-violet-900 block mb-1">1. Budget Guard (配额沙盒)</strong>
+                    <span class="text-slate-600">严格限制单次任务最大步数（如 8 步）与 Token 预算（如 10k），超时或超支物理熔断。</span>
+                </div>
+                <div class="p-3 rounded-xl bg-indigo-50/60 border border-indigo-200">
+                    <strong class="text-indigo-900 block mb-1">2. Context Steering (上下文缰绳)</strong>
+                    <span class="text-slate-600">不可篡改的 System Rule 强行钉扎，对抗间接注入攻击（Prompt Injection）与注意力冲淡。</span>
+                </div>
+                <div class="p-3 rounded-xl bg-purple-50/60 border border-purple-200">
+                    <strong class="text-purple-900 block mb-1">3. Tool Guardrail (工具拦截器)</strong>
+                    <span class="text-slate-600">只读通道隔离，高危指令（删除/大额划扣）确定性阻断，自动触发人工确认网关。</span>
+                </div>
+                <div class="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200">
+                    <strong class="text-emerald-900 block mb-1">4. State Checkpoint (步骤快照)</strong>
+                    <span class="text-slate-600">任务离散落盘，每步保存内存快照，服务器宕机或网络中断支持秒级断点自愈。</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 9 Suite: <span class="text-violet-600 font-bold">Step 1 of 5 (Harness Intro)</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-violet-600 h-full w-[20%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <span class="p-2 rounded-lg border border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed flex items-center justify-center" title="已经是本单元第一页">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </span>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-violet-700">2. 上下文动态缰绳 (Context Steering)</strong>
+            </span>
+            <a href="harness_slide2_context.html" title="下一页：上下文动态缰绳" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一节: 上下文缰绳</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-violet-50 border border-violet-200">
+                    <span class="font-bold text-violet-900 block mb-1">🎯 讲师教学要点与通俗话术：</span>
+                    “各位同学，我们在 Unit 6 认识了 Agent，在 Unit 7 玩转了 WorkBuddy，在 Unit 8 做完了 Capstone 实战。但大家回到企业真正要上线时，架构师或 CTO 往往会问一句：‘这玩意万一半夜陷入死循环把公有云额度刷爆怎么办？万一删除了数据库或者把工资条群发了谁负责？’<br><br>
+                    这就是为什么必须要有第九单元 —— <strong>Agent Harness</strong>！大模型是烈马，Harness 是马鞍与缰绳。我们用外部确定性的代码层把模型关在铁笼子里，给它设定步数上限、高危拦截和断点恢复，这才是工业级交付的终极护甲！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 工业界为什么叫 Harness？</span>
+                    Harness 在英文中原指马具、安全吊带（攀岩或高空作业用的安全绳套具）。在软件工程中，Test Harness 指测试脚手架；而在智能体领域，<strong>Agent Harness</strong> 指将智能体约束在安全范围内、提供环境隔离与事务恢复的受控运行底座。
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-violet-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-violet-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function simulateRun(mode) {
+            const out = document.getElementById('simOutputConsole');
+            const badge = document.getElementById('harnessModeBadge');
+            const status = document.getElementById('traceStatus');
+
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-violet-400 mr-2"></i> 正在启动任务，监控执行轨迹...';
+            status.innerText = "RUNNING...";
+
+            setTimeout(function() {
+                if (mode === 'naked') {
+                    badge.className = "text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded font-mono font-bold";
+                    badge.innerText = "NAKED AGENT (UNCONSTRAINED)";
+                    status.innerText = "CRASHED / RUNAWAY";
+                    status.className = "text-[10px] text-rose-600 font-mono font-bold";
+
+                    out.innerHTML = `
+<div class="text-rose-400 font-bold">⚠️ [警告] 裸奔 Agent 启动，未挂载受控 Harness！</div>
+<div class="text-slate-400">├── [Step 01] 解析数据表遭遇格式异常 (CSV missing header)</div>
+<div class="text-amber-300">├── [Step 02] Agent 尝试自主修复，递归重试 query_db()...</div>
+<div class="text-amber-300">├── [Step 08] 异常无法自愈，模型进入幻觉递归循环...</div>
+<div class="text-rose-500 font-bold">├── [Step 42] 递归调用失控！已执行 42 次，Token 消耗 118,400+</div>
+<div class="text-rose-400 bg-rose-950/80 p-2 rounded border border-rose-800 mt-1">
+    💥 [FATAL CRASH]: 上下文溢出崩溃！产生无意义账单扣费，系统主进程假死！
+</div>
+                    `;
+                    showToast("事故模拟：裸奔 Agent 死循环刷爆 11 万 Token 并崩溃！");
+                } else {
+                    badge.className = "text-[10px] bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded font-mono font-bold";
+                    badge.innerText = "HARNESS GOVERNED (ACTIVE)";
+                    status.innerText = "CIRCUIT BREAKER HIT";
+                    status.className = "text-[10px] text-violet-600 font-mono font-bold";
+
+                    out.innerHTML = `
+<div class="text-violet-400 font-bold">🛡️ [WorkBuddy Harness] 智能体受控载体就绪</div>
+<div class="text-slate-400">├── [Budget Setup] Step Budget: 5 | Max Tokens: 8,000 | Guardrail: STRICT</div>
+<div>├── [Step 01] 解析数据表遭遇格式异常 (CSV missing header)</div>
+<div>├── [Step 02] 监测到第 2 次重复失败，Harness 启动步数节流阀</div>
+<div class="text-amber-400 font-bold">├── [Step 04] 达到循环检测阈值 (Repeated Pattern Detected)</div>
+<div class="text-violet-300 bg-violet-950/80 p-2 rounded border border-violet-800 mt-1">
+    ⚡ [Circuit Breaker Triggered]: Harness 自动触发断路熔断保护！<br>
+    💾 立即落盘检查点 checkpoint_step4.json，暂停任务并向钉钉群推送告警卡片。<br>
+    ✨ 避免了 10 万+ Token 浪费，核心系统零污染安全挂起！
+</div>
+                    `;
+                    showToast("防护成功：Harness 成功阻断死循环并触发安全熔断！");
+                }
+            }, 450);
+        }
+
+        function downloadHarnessCheatSheet() {
+            const mdContent = `# 第九单元：Agent Harness（智能体受控运行套具体系）核心架构白皮书\n\n## 一、 为什么工业级智能体必须戴上 Harness？\n- **野马困境 (Wild Horse Problem)**：裸奔的 Agent 缺乏边界控制，易因死循环刷爆 Token、因误解清空数据库、或被注入攻击篡改原则。\n- **Harness 定位**：包裹在 LLM 核心推理外层的确定性受控执行载体，提供配额预算、上下文动态钉扎、工具拦截与状态持久化。\n\n## 二、 Harness 四大核心支柱\n1. **Budget Guard (资源配额沙盒)**：硬编码执行步数与 Token 上限，超时超量自动熔断。\n2. **Context Steering (上下文缰绳)**：物理置顶钉扎（System Rule Pinning），抗注意力冲淡。\n3. **Tool Interceptor (工具调用拦截器)**：高危指令只读隔离，大额敏感动作触发 HITL 网关。\n4. **State Checkpoints (状态持久化快照)**：离散状态机落盘，断电崩溃支持秒级断点自愈。\n\n## 三、 生产落地收益\n- 将不可预测的模型概率输出，束缚在确定性可控的软件工程轨道中。`;
+
+            try {
+                const blob = new Blob([mdContent], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'unit9_harness_architecture_overview.md';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("Harness 架构手册下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = 'harness_slide2_context.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

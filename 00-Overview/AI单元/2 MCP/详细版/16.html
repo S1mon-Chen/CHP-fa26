@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - 专属配置：接入 Puppeteer 网页抓取</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+
+        /* Syntax Highlighting */
+        .json-block {
+            font-family: 'JetBrains Mono', monospace;
+            white-space: pre;
+            line-height: 1.6;
+            tab-size: 2;
+        }
+        .jh-brace { color: #94a3b8; }
+        .jh-key { color: #7dd3fc; } 
+        .jh-string { color: #fca5a5; } 
+        .jh-colon { color: #64748b; }
+        
+        .copy-btn {
+            transition: all 0.2s;
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        .highlight-glow {
+            animation: pulse-emerald 2s infinite;
+        }
+        @keyframes pulse-emerald {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 4: 实战演练二 —— 云网联动与自动化审核
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-1/4 right-0 w-[400px] h-[400px] bg-emerald-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-1/4 w-[500px] h-[500px] bg-teal-50/60 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-3 soft-shadow">
+                    <i class="fa-solid fa-globe text-emerald-600"></i>
+                    <span>Configuration · 专属配置</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    赋予 AI 冲浪能力：接入 <span class="text-emerald-600 border-b-4 border-emerald-300 mx-1 pb-1">Puppeteer 抓取器</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    我们不用官方容易报错的 Fetch，直接换上更强大的“无头浏览器”。<br>好消息是：这次连“填空题”都不用做了！
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: JSON Code Block -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="bg-slate-900 rounded-2xl flex flex-col overflow-hidden shadow-2xl border border-slate-800 h-full relative">
+                        <!-- Header -->
+                        <div class="bg-slate-800 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fa-brands fa-chrome text-emerald-400"></i>
+                                <span class="text-xs text-slate-300 font-mono">config.json (Puppeteer MCP)</span>
+                            </div>
+                            <button onclick="copyConfig()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                                <i class="fa-regular fa-copy"></i> 一键复制
+                            </button>
+                        </div>
+                        
+                        <!-- Code -->
+                        <div class="json-block p-6 text-sm flex-1 bg-[#0f172a] text-slate-300 overflow-x-auto" id="configCode">
+<span class="jh-brace">{</span>
+  <span class="jh-key">"mcpServers"</span><span class="jh-colon">:</span> <span class="jh-brace">{</span>
+    <span class="jh-key">"全能网页抓取"</span><span class="jh-colon">:</span> <span class="jh-brace">{</span>
+      <span class="jh-key">"command"</span><span class="jh-colon">:</span> <span class="jh-string">"npx"</span><span class="jh-colon">,</span>
+      <span class="jh-key">"args"</span><span class="jh-colon">:</span> <span class="jh-brace">[</span>
+        <span class="jh-string">"-y"</span><span class="jh-colon">,</span>
+        <span class="jh-string">"@modelcontextprotocol/server-puppeteer"</span>
+      <span class="jh-brace">]</span>
+    <span class="jh-brace">}</span>
+  <span class="jh-brace">}</span>
+<span class="jh-brace">}</span></div>
+                        <!-- Notice Alert -->
+                        <div class="bg-amber-900/40 p-3 border-t border-amber-900 flex items-start gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5 text-xs"></i>
+                            <p class="text-[10px] text-amber-200 leading-relaxed font-mono">
+                                // 如果你的 config 里已经有了刚才的 sqlite，请注意用英文逗号 <code>,</code> 将两个配置隔开。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Step-by-Step Guide -->
+                <div class="lg:col-span-5 flex flex-col space-y-4">
+                    
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 soft-shadow flex items-start gap-4">
+                        <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-sm shrink-0"><i class="fa-solid fa-lightbulb"></i></div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm mb-1">学以致用：为什么要换插头？</h4>
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                还记得我们在避坑指南里讲的吗？官方的 <code>Fetch</code> 插件底层依赖 Python，容易报 <code>404 Not Found</code>。我们直接换成 Node.js 驱动的 <strong>Puppeteer</strong>，免除编译烦恼！
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 soft-shadow flex items-start gap-4 relative overflow-hidden highlight-glow">
+                        <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0"><i class="fa-solid fa-face-smile"></i></div>
+                        <div>
+                            <h4 class="font-bold text-emerald-900 text-sm mb-1">这次没有烦人的“填空题”</h4>
+                            <p class="text-xs text-emerald-700 leading-relaxed">
+                                抓取网页不需要读取你本地的文件，所以你<strong>完全不需要配置本地路径 (env)</strong>。复制左侧代码，直接粘贴保存即可！
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 soft-shadow flex items-start gap-4">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">3</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm mb-1">保存并确认绿灯</h4>
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                保存 <code>config.json</code>，在 Trae 设置中等待状态变为 <span class="text-emerald-500 font-bold"><i class="fa-solid fa-circle text-[8px] mx-1"></i>Connected</span>，你的 AI 就能上网冲浪了！
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 2 - Slide <span class="text-emerald-600 font-bold">16</span> / 22
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 16 of 22 is ~72.7% -->
+                <div class="bg-emerald-500 h-full w-[73%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="15.html" title="上一页：场景设定与弹药准备" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-globe mr-1 text-emerald-500"></i>模块四：实战演练二
+            </span>
+            <a href="17.html" title="下一页：跨网缝合指令" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🔧 呼应前面的“避坑指南”：</span>
+                    “大家还记得我们在第 9 页讲过，如果官方插件装不上怎么办？直接换！官方的 Fetch 插件要配 Python，很容易报 404。所以在这个实战里，我们直接给大家上更强的——Node.js 驱动的 Puppeteer 无头浏览器。它不仅能抓普通网页，还能抓动态网页！”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">🎉 减轻心理负担：</span>
+                    “好消息是，配置这个抓取器非常简单！因为它是去网上抓数据，不涉及你本地的文件，所以你连‘绝对路径’都不用改。直接复制粘贴，保存就行了。”
+                </div>
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">⚠️ JSON 语法提醒（非常关键）：</span>
+                    “唯一要注意的坑：如果大家的配置里还留着刚才的 `我的业务数据库`，一定要记得在数据库的大括号 `}` 后面加一个英文逗号 `,`，再粘贴这段代码。不懂的随时举手，或者让 AI 帮你检查 JSON 语法。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>Puppeteer 抓取器代码已复制！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyConfig() {
+            const configText = `{
+  "mcpServers": {
+    "全能网页抓取": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ]
+    }
+  }
+}`;
+            
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = configText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textArea);
+                showToast();
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        // Intra-unit keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

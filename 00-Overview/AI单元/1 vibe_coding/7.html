@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - 核心心法：区分 Chat 与 Builder 模式</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            900: '#134e4a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .mode-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .mode-card:hover {
+            transform: translateY(-4px);
+        }
+        .builder-glow {
+            animation: builderPulse 3s infinite;
+        }
+        @keyframes builderPulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 2: 工具准备 —— 打造智能工作台
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-12 bg-white bg-grid-pattern overflow-y-auto">
+        <!-- Decorative background elements -->
+        <div class="absolute top-1/4 left-10 w-72 h-72 bg-blue-50/50 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-1/4 right-10 w-96 h-96 bg-emerald-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-5xl mx-auto w-full">
+            
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-4 soft-shadow">
+                    <i class="fa-solid fa-toggle-on text-emerald-600"></i>
+                    <span>Core Modes · 核心心法</span>
+                </div>
+                <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-4">
+                    工具的灵魂开关：<span class="text-slate-400 line-through mr-1">Chat</span> <span class="text-emerald-600">Builder</span>
+                </h2>
+                <p class="text-slate-500 text-sm md:text-base max-w-2xl mx-auto">
+                    初学者最容易犯的错，就是用错了模式。<br>请记住：一个是只动嘴的“军师”，另一个是能接管键盘的“包工头”。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                
+                <!-- Chat Mode Card -->
+                <div class="mode-card bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col h-full opacity-80 hover:opacity-100">
+                    <div class="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-lg shrink-0">
+                                <i class="fa-regular fa-comments"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-slate-700">Chat (问答模式)</h3>
+                        </div>
+                        <span class="px-2.5 py-1 bg-slate-200 text-slate-600 text-xs font-bold rounded-full">军师顾问</span>
+                    </div>
+                    
+                    <div class="flex-1 space-y-4">
+                        <p class="text-sm text-slate-600 leading-relaxed font-medium">
+                            就像网页版的 ChatGPT，它只能把答案显示在聊天框里。它<strong>不会</strong>自动帮你新建文件，也<strong>不能</strong>直接修改你的本地数据。
+                        </p>
+                        
+                        <div class="bg-white rounded-lg p-3 border border-slate-200">
+                            <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">适用场景</h4>
+                            <ul class="text-sm text-slate-600 space-y-2">
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-info-circle text-slate-400 mt-1"></i> 解释一段你不懂的代码或报错</li>
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-lightbulb text-slate-400 mt-1"></i> 跟你头脑风暴解决问题的思路</li>
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-ban text-red-400 mt-1"></i> <span class="text-slate-500 line-through">写好代码并帮你运行</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Builder Mode Card (Highlighted) -->
+                <div class="mode-card bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-6 flex flex-col h-full soft-shadow builder-glow relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 text-emerald-500/10 text-8xl group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-hammer"></i>
+                    </div>
+                    
+                    <div class="relative z-10 flex items-center justify-between border-b border-emerald-200 pb-4 mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center text-lg shrink-0 shadow-md">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-emerald-900">Builder (建造者模式)</h3>
+                        </div>
+                        <span class="px-2.5 py-1 bg-emerald-200 text-emerald-800 text-xs font-bold rounded-full border border-emerald-300">干活的包工头</span>
+                    </div>
+                    
+                    <div class="relative z-10 flex-1 space-y-4">
+                        <p class="text-sm text-emerald-800 leading-relaxed font-bold">
+                            Vibe Coding 的真正灵魂！下达指令后，它会接管你的键盘，自动在左侧创建文件、写入代码，甚至帮你点击运行终端。
+                        </p>
+                        
+                        <div class="bg-white/80 backdrop-blur-sm rounded-lg p-3 border border-emerald-200 shadow-sm">
+                            <h4 class="text-xs font-bold text-emerald-600 uppercase mb-2">适用场景</h4>
+                            <ul class="text-sm text-emerald-900 space-y-2 font-medium">
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-check-circle text-emerald-500 mt-1"></i> “帮我写一个处理 Excel 的 Python 脚本”</li>
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-check-circle text-emerald-500 mt-1"></i> “把刚才写的代码报错修好，然后重新运行”</li>
+                                <li class="flex items-start gap-2"><i class="fa-solid fa-check-circle text-emerald-500 mt-1"></i> “在这个文件夹下新建 5 个测试文件”</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-slate-900 rounded-xl p-5 border-l-4 border-emerald-500 flex items-center gap-4 soft-shadow mx-auto max-w-3xl">
+                <div class="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 text-xl">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                    <h4 class="text-white font-bold text-sm mb-1">铁律：杜绝手动“复制粘贴”</h4>
+                    <p class="text-slate-400 text-xs md:text-sm leading-relaxed">
+                        如果你发现自己还在用鼠标高亮代码，然后 <code>Ctrl+C</code>、<code>Ctrl+V</code>，说明你用错了模式。<strong>立刻切换到 Builder！</strong> 点一下 "Accept" (接受)，代码就会自动贴到正确的地方。
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Slide <span class="text-emerald-600 font-bold">07</span> / 16
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <!-- Progress at Slide 7 of 16 is 43.75% -->
+                <div class="bg-emerald-500 h-full w-[43.75%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页：界面导览" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-wrench mr-1 text-emerald-500"></i>模块二：工具准备
+            </span>
+            <a href="8.html" title="下一页：指令工程模块介绍" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 重点纠偏：</span>
+                    “在座的各位很多可能用过 Kimi 或者网页版 ChatGPT，习惯了在里面问问题，然后把代码复制出来。在这个软件（Trae）里，右上角有两个标签：Chat 和 Builder。请大家务必牢记，<strong>以后只要是干活，就点开 Builder</strong>。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200">
+                    <span class="font-bold text-slate-700 block mb-1">🎭 生动比喻：</span>
+                    “Chat 就像是你打电话问场外顾问：‘老王啊，这个报错是什么意思？’ 他会给你解释。但 Builder 不一样，Builder 是老王直接飞过来坐在你工位上，抢过你的键盘说：‘起开，我来帮你改！’ 我们当然希望老王帮我们打工对吧？所以用 Builder！”
+                </div>
+                <div class="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span class="font-bold text-blue-900 block mb-1">⏭️ 承上启下：</span>
+                    “讲完这一页，标志着模块二（工具准备）正式结束。接下来引出模块三：‘现在包工头（Builder）已经就位了，但包工头不会自己瞎干，他需要你给他图纸。下一章，我们就来学怎么写图纸（指令工程）。’”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        // Intra-unit keyboard navigation strictly using numerical filenames
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

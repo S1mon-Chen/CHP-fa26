@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 实战演练：Python 确定性对账引擎与差额异常标记实战</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .step-box { transition: all 0.3s ease; }
+        .step-box:hover { transform: translateY(-2px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 3: 端到端实战 —— Python 确定性对账引擎与异常标记实操
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="downloadSampleReconCsv()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-csv text-emerald-600"></i>
+                <span>下载对账输入样例数据集 (.csv)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-4">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                <i class="fa-solid fa-scale-balanced text-emerald-600"></i>
+                <span>Capstone 02 · 确定性对账内核与防幻觉机制</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-2">
+                实战第二步：严禁大模型算账！Python 确定性对账内核与差额异常标记实操
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在财务对账中，<strong>绝对不能让大模型直接参与金额加减运算</strong>，否则极易产生概率幻觉。正确的架构是：由大模型理解对账诉求并生成策略，再交由底层 Python 脚本进行确定性的精确匹配与差额标记。点击右上角即可下载我们的<strong class="text-emerald-700">对账输入样例数据集 CSV 文件</strong>供脚本处理！
+            </p>
+        </div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2 text-emerald-400 font-bold">
+                        <span><i class="fa-solid fa-terminal mr-2"></i>Vibe Coding 实践执行四步法</span>
+                        <span class="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">WORKFLOW</span>
+                    </div>
+
+                    <div class="space-y-2.5 text-[11px] text-slate-300">
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">1. 在 WorkBuddy 聊天框发送提示词：</span>
+                            <div class="text-[10px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-700 mt-1 flex items-center justify-between gap-2">
+                                <span id="promptText">"请编写一个确定性对账脚本 reconcile_engine.py，读取 reconciliation_sample_data.csv，精确计算银行流水与第三方支付差额，并将差额绝对值大于 0.01 元的交易标记为 [ANOMALY_DISCREPANCY]。"</span>
+                                <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold shrink-0">
+                                    <i class="fa-solid fa-copy mr-1"></i> 复制提示词
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">2. AI 自动生成计算源码：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                WorkBuddy 在后台自动新建 <code class="text-emerald-300">reconcile_engine.py</code>，内置 Pandas 精确对账与阈值判定逻辑。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">3. 自动调起沙箱终端 (Sandbox)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                AI 自动在沙箱中执行运行命令：<code class="text-emerald-300">python reconcile_engine.py --input reconciliation_sample_data.csv</code>，验证核算准确性。
+                            </div>
+                        </div>
+
+                        <div class="step-box bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="text-emerald-300 font-bold block mb-0.5">4. 检验对账结果 (Verification)：</span>
+                            <div class="text-[10px] text-slate-300 mt-0.5">
+                                终端输出完全对齐的平账记录与精准拦截的异常差额列表，验证确定性内核完美生效！
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                    <span><i class="fa-solid fa-wand-magic-sparkles text-emerald-400 mr-1"></i> 确定性内核：拒绝大模型幻觉，财务计算必须 100% 精确！</span>
+                    <button onclick="copyPromptText()" class="copy-btn bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded font-bold">一键复制完整提示词</button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2 text-slate-800 font-bold text-xs">
+                        <span><i class="fa-solid fa-play text-emerald-600 mr-2"></i>模拟沙箱确定性对账实时验证 (Live Reconciliation Demo)</span>
+                        <span class="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">ONLINE</span>
+                    </div>
+
+                    <!-- Sandbox Input & Trigger -->
+                    <div class="space-y-2 mb-3">
+                        <label class="text-[11px] text-slate-600 block font-medium">选择对账比对模式：</label>
+                        <div class="flex gap-2">
+                            <select id="reconModeSelect" class="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500">
+                                <option value="balanced">正常平账比对 (输入数据集无差额，总额完全一致)</option>
+                                <option value="discrepancy">异常差额比对 (输入数据集包含多付手续费与错漏)</option>
+                            </select>
+                            <button onclick="runReconSandbox()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded font-bold transition flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-rotate text-[10px]"></i> 运行对账计算
+                            </button>
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button onclick="setReconMode('balanced')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-emerald-700 px-2 py-0.5 rounded border border-slate-200">标准平账测试</button>
+                            <button onclick="setReconMode('discrepancy')" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-rose-700 px-2 py-0.5 rounded border border-slate-200">异常差额拦截测试</button>
+                        </div>
+                    </div>
+
+                    <!-- Sandbox Output Console -->
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <div class="text-slate-400 text-[10px] font-mono"># 终端沙箱 Python 确定性对账输出：</div>
+                        <div id="routerOutput" class="text-emerald-300 font-mono text-[11px] bg-slate-950 p-2.5 rounded border border-slate-800 min-h-[60px] flex items-center">
+                            [Reconciliation Engine] 正在读取 reconciliation_sample_data.csv 并对比银行流水与支付账单。<br>✅ [Balanced]: 双方金额总额完全一致 (￥1,245,800.00)，0 笔异常！
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+                    <span><i class="fa-solid fa-shield-halved text-emerald-600 mr-1"></i> 确定性防线：底层 Python 算术比对，杜绝大模型数字幻觉。</span>
+                    <button onclick="downloadSampleReconCsv()" class="copy-btn bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2.5 py-1 rounded font-bold">下载输入样例数据</button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 8 - Slide <span class="text-emerald-600 font-bold">14</span> / 20
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-full w-[70%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="13.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-emerald-500"></i>第八单元：端到端业务系统实战
+            </span>
+            <span class="p-2 rounded-lg border border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed flex items-center justify-center" title="下一页即将生成">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </span>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 第十四页实战要点：</span>
+                    “各位同学，在做企业级财务系统时，千万别让大模型去加减乘除！大模型负责理解意图和生成规则，真正的加减计算必须由 Python 确定性内核来读取输入数据集并完成计算！点击右上角即可下载我们的对账输入样例数据集 `reconciliation_sample_data.csv`！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-emerald-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-emerald-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function setReconMode(val) {
+            document.getElementById('reconModeSelect').value = val;
+            runReconSandbox();
+        }
+        function runReconSandbox() {
+            const val = document.getElementById('reconModeSelect').value;
+            const out = document.getElementById('routerOutput');
+            out.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-emerald-400 mr-2"></i> 正在沙箱中运行 Python 确定性算术对账...';
+            setTimeout(function() {
+                if (val === 'balanced') {
+                    out.innerHTML = '[Reconciliation Engine] 正在读取 reconciliation_sample_data.csv 并对比银行流水与支付账单。<br>✅ [Balanced]: 双方金额总额完全一致 (￥1,245,800.00)，0 笔异常！';
+                } else {
+                    out.innerHTML = '[Reconciliation Engine] 正在读取 reconciliation_sample_data.csv 并对比银行流水与支付账单。<br>⚠️ [ANOMALY_DISCREPANCY]: 发现 3 笔差额记录（累计差额 ￥1,200.00），已成功标记并挂起至异常处理队列！';
+                }
+                showToast("确定性对账沙箱验证成功！");
+            }, 400);
+        }
+        function copyPromptText() {
+            const text = document.getElementById('promptText').innerText.replace(/^"|"$/g, '');
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("对账引擎提示词已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+        function downloadSampleReconCsv() {
+            const csvData = "transaction_id,bank_amount,payment_amount,status,date\nTXN20260601001,1500.00,1500.00,BALANCED,2026-06-01\nTXN20260601002,328.50,328.50,BALANCED,2026-06-01\nTXN20260601003,12500.00,13700.00,ANOMALY_DISCREPANCY,2026-06-02\nTXN20260601004,89.00,89.00,BALANCED,2026-06-02\n";
+
+            try {
+                const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'reconciliation_sample_data.csv';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                showToast("对账输入样例数据集 reconciliation_sample_data.csv 下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') window.location.href = '15.html';
+            else if (e.key === 'ArrowLeft') window.location.href = '13.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

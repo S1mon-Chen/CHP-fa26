@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 14 - 跨端集成与一键发布：将组装好的多智能体发布至企业渠道</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-purple-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyIntegrationGuide()" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-bold text-purple-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-purple-600"></i>
+                <span class="hidden sm:inline">复制跨端集成指南</span>
+                <span class="sm:hidden">复制指南</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-pink-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-paper-plane text-purple-600"></i>
+                <span>Module 3 · 多智能体 (Multi-Agent) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                跨端集成与一键发布：<span class="text-purple-600">让多智能体系统走出实验室，直达业务一线</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在 Coze 中编排好强大的多智能体路由与工作流后，真正的业务价值产生于“触达用户”。Coze 提供了“一键发布”功能，无需研发人员编写复杂的 Webhook 鉴权代码，即可将数字员工无缝集成到飞书、企业微信或钉钉，立刻投入生产！
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Configuration vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-satellite-dish text-purple-600"></i>
+                            Coze 一键发布与渠道配置指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">UI GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-purple-50 border border-purple-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-purple-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-purple-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                准备发布并配置变更日志 (Publish)
+                            </h4>
+                            <p class="text-purple-700/80 leading-relaxed mb-2">
+                                点击 Coze 工作台右上角的 <strong>“发布 (Publish)”</strong> 按钮。在弹出的面板中，填写本次迭代的更新日志（例如：“v1.2: 增加硬件故障知识库与多路路由分诊能力”）。
+                            </p>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                勾选分发渠道并授权 (Channels)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                Coze 预置了国民级协同软件的免代码对接通道。只需勾选需要的平台，按提示填入您企业内部申请好的应用凭证，Coze 会在后台全自动处理加密与打通：
+                            </p>
+                            <div class="space-y-1.5 font-mono text-[10px] text-slate-700">
+                                <div class="bg-white p-2 rounded border border-slate-200 flex items-center gap-2">
+                                    <i class="fa-brands fa-weixin text-emerald-500 text-sm w-4"></i> 
+                                    <strong>企业微信 / 微信服务号</strong>: 需填入 AppID, Secret
+                                </div>
+                                <div class="bg-white p-2 rounded border border-slate-200 flex items-center gap-2">
+                                    <i class="fa-solid fa-paper-plane text-blue-500 text-sm w-4"></i> 
+                                    <strong>飞书 (Feishu)</strong>: 需填入 App ID, App Secret
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-pink-50 border border-pink-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-pink-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-pink-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                开放为 API 供自研系统调用 (可选)
+                            </h4>
+                            <p class="text-pink-700/80 leading-relaxed">
+                                如果您的公司有自建的 ERP 或原生 App，可以勾选“发布为 API”。Coze 会自动生成一个安全的 Bearer Token 与 RESTful 接口文档，您的后端程序员几行代码即可将其接入自有系统。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-purple-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-tower-broadcast text-sm"></i>
+                            <span class="text-xs">一键跨端发布与通道握手沙箱</span>
+                        </span>
+                        <span id="publishBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">UNPUBLISHED</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击选择要部署的企业渠道，观察 Coze 的自动化鉴权与上线流程：</label>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 font-sans">
+                            <button onclick="simulatePublish('feishu')" class="py-2.5 px-2 rounded-lg border border-blue-500/50 bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 text-xs font-bold transition flex flex-col items-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-paper-plane text-blue-400 text-base"></i>
+                                <span>发布至飞书</span>
+                            </button>
+                            <button onclick="simulatePublish('wecom')" class="py-2.5 px-2 rounded-lg border border-emerald-500/50 bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-200 text-xs font-bold transition flex flex-col items-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-brands fa-weixin text-emerald-400 text-base"></i>
+                                <span>发布至企业微信</span>
+                            </button>
+                            <button onclick="simulatePublish('api')" class="py-2.5 px-2 rounded-lg border border-purple-500/50 bg-purple-900/40 hover:bg-purple-800/60 text-purple-200 text-xs font-bold transition flex flex-col items-center gap-1.5 shadow-sm text-center">
+                                <i class="fa-solid fa-code text-purple-400 text-base"></i>
+                                <span>发布为内部 API</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">部署与鉴权日志 (Deployment Trace):</span>
+                            </div>
+                            
+                            <div id="publishConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待发起渠道部署测试...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-purple-600 font-bold">Slide 14 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-[70%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="13.html" title="上一页：建立 Worker 2 (技术 Bot)" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-purple-700">15. 综合运行演示与验证</strong>
+            </span>
+            <a href="15.html" title="下一页：运行演示与效果验证" class="px-3 py-1.5 md:py-2 rounded-lg border border-purple-100 bg-purple-600 text-white hover:bg-purple-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 重点强调“零代码部署”的震撼感：</span>
+                    “各位同学，作为科技管理者，大家一定知道以前把一个 AI 接入企业微信有多麻烦。后端工程师需要去企微后台建应用、看文档、写消息加解密算法、处理 Webhook 签名认证，最后还要买个服务器专门跑这些代码！没有一两个礼拜根本下不来。<br><br>
+                    但是现在在 Coze 里，**这一切只需要 1 分钟！** 你只要把现成的 AppID 和 Secret 填进去，Coze 在云端把所有的消息加解密、鉴权和服务器负载均衡全都包了！点击发布，你的多智能体直接就在飞书群或企微里秒上线响应了，这就是云端全托管平台的降维打击！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyIntegrationGuide() {
+            const text = "Coze 跨端一键发布指南：\n1. 确保所有 Bot 节点测试无误，点击右上角【发布】。\n2. 填写清晰的版本更新日志 (如 v1.0.0 初次发布)。\n3. 在【渠道配置】中，勾选目标平台（如飞书、企业微信）。\n4. 按照平台提示，填入企业管理员提供的 AppID 与 App Secret。\n5. 点击确认，系统将全自动完成 Webhook 绑定与加密对接。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("跨端集成配置指南已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulatePublish(platform) {
+            const out = document.getElementById('publishConsole');
+            const badge = document.getElementById('publishBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            badge.innerText = "DEPLOYING...";
+            badge.className = "text-[10px] bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded";
+
+            if (platform === 'feishu') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-blue-300 mb-1.5"><span class="text-blue-400 font-bold">🚀 发起部署:</span> 正在与飞书开放平台 (Feishu Open Platform) 握手...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-slate-300 border-l-2 border-blue-500 pl-2 mb-1.5">
+    <span class="text-blue-400 font-bold">🔐 鉴权与绑定:</span><br>
+    <span class="text-slate-400 pl-4">-> 校验 App ID 与 App Secret... OK</span><br>
+    <span class="text-slate-400 pl-4">-> 自动注入消息事件 Webhook URL... OK</span><br>
+    <span class="text-slate-400 pl-4">-> 配置 AES 消息加解密协议... OK</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-blue-300 border-l-2 border-blue-500 pl-2 mb-1.5">
+    <span class="text-blue-400 font-bold">✨ 发布成功:</span> 您的多智能体客服已成功上线至飞书！用户可以直接在飞书客户端搜索该应用进行对话。
+</div>`;
+                    badge.innerText = "PUBLISHED TO FEISHU";
+                    badge.className = "text-[10px] bg-blue-900 text-blue-300 border border-blue-600 px-2 py-0.5 rounded";
+                    showToast("飞书端一键集成发布成功！");
+                }, 2200));
+
+            } else if (platform === 'wecom') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-300 mb-1.5"><span class="text-emerald-400 font-bold">🚀 发起部署:</span> 正在与企业微信 (WeCom) 后台握手...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-slate-300 border-l-2 border-emerald-500 pl-2 mb-1.5">
+    <span class="text-emerald-400 font-bold">🔐 鉴权与绑定:</span><br>
+    <span class="text-slate-400 pl-4">-> 获取 CorpID 与 Secret... OK</span><br>
+    <span class="text-slate-400 pl-4">-> 自动向企微后台请求获取 access_token... OK</span><br>
+    <span class="text-slate-400 pl-4">-> 同步微信客服消息接收服务器配置... OK</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-emerald-300 border-l-2 border-emerald-500 pl-2 mb-1.5">
+    <span class="text-emerald-400 font-bold">✨ 发布成功:</span> 智能售前/售后客服已挂载至企业微信侧边栏与微信客服号，可立即接待外部客户。
+</div>`;
+                    badge.innerText = "PUBLISHED TO WECOM";
+                    badge.className = "text-[10px] bg-emerald-900 text-emerald-300 border border-emerald-600 px-2 py-0.5 rounded";
+                    showToast("企业微信通道对接完毕！");
+                }, 2200));
+
+            } else if (platform === 'api') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-purple-300 mb-1.5"><span class="text-purple-400 font-bold">🚀 发起部署:</span> 正在为您生成专属的云端 RESTful API 接口...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-slate-300 border-l-2 border-purple-500 pl-2 mb-1.5">
+    <span class="text-purple-400 font-bold">⚙️ 接口配置:</span><br>
+    <span class="text-slate-400 pl-4">-> 生成 Bot 唯一标识 ID: 74902148293</span><br>
+    <span class="text-slate-400 pl-4">-> 签发安全 Bearer Token: pat_xxxxxxxxxxxxx</span><br>
+    <span class="text-slate-400 pl-4">-> 配置 HTTPS 高并发端点... OK</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-purple-300 border-l-2 border-purple-500 pl-2 mb-1.5">
+    <span class="text-purple-400 font-bold">✨ 发布成功:</span> API 已经就绪！您公司的后端系统现在可以直接通过 HTTP POST 请求调用这套强大的多智能体系统了。
+</div>`;
+                    badge.innerText = "PUBLISHED AS API";
+                    badge.className = "text-[10px] bg-purple-900 text-purple-300 border border-purple-600 px-2 py-0.5 rounded";
+                    showToast("专属 API 接口已生成，支持自建系统调用！");
+                }, 2200));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '15.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '13.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

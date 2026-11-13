@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - Plan 模式实战演练：合并多个销售 Excel 并生成图表与 Word 报告</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            500: '#a855f7',
+                            600: '#9333ea',
+                            900: '#581c87',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .plan-card { transition: all 0.3s ease; }
+        .plan-card:hover { transform: translateY(-3px); }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                Module 6: Plan 模式与规格驱动开发 —— 真实办公场景实战演练
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <!-- Download Sample Excel Buttons -->
+            <div class="flex items-center gap-1.5 bg-purple-50 border border-purple-200 rounded-lg p-1">
+                <button onclick="downloadExcel('jan')" class="px-2 py-1 bg-white hover:bg-purple-100 text-purple-800 text-[11px] font-bold rounded shadow-sm transition flex items-center gap-1">
+                    <i class="fa-solid fa-file-excel text-purple-600"></i> 销售_1月.xlsx
+                </button>
+                <button onclick="downloadExcel('feb')" class="px-2 py-1 bg-white hover:bg-purple-100 text-purple-800 text-[11px] font-bold rounded shadow-sm transition flex items-center gap-1">
+                    <i class="fa-solid fa-file-excel text-purple-600"></i> 销售_2月.xlsx
+                </button>
+                <button onclick="downloadExcel('mar')" class="px-2 py-1 bg-white hover:bg-purple-100 text-purple-800 text-[11px] font-bold rounded shadow-sm transition flex items-center gap-1">
+                    <i class="fa-solid fa-file-excel text-purple-600"></i> 销售_3月.xlsx
+                </button>
+            </div>
+
+            <button onclick="downloadPlanScenarioReport()" class="px-3 py-1.5 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-bold text-purple-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-file-shield text-purple-600"></i>
+                <span>下载 Plan 实战复盘手册 (.md)</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 relative flex flex-col justify-center p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-0 right-0 w-[500px] h-[500px] bg-purple-50/60 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-indigo-50/50 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full">
+            
+            <div class="text-center mb-4">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-bold tracking-wider uppercase mb-2 soft-shadow">
+                    <i class="fa-solid fa-file-excel text-purple-600"></i>
+                    <span>Real-World Scenario · 合并多表与生成图表 Word 报告</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
+                    Plan 模式实战演练：<span class="text-purple-600 border-b-4 border-purple-300 mx-1 pb-1">合并销售 Excel 与生成月度报告</span>
+                </h2>
+                <p class="text-slate-500 text-xs md:text-sm max-w-2xl mx-auto">
+                    点击上方按钮下载 3 个月销售 Excel 测试样例，并直接复制下方实战提示词，亲身体验 Plan 模式从对齐、审阅到落盘的全流程。
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 max-w-5xl mx-auto items-stretch">
+                
+                <!-- Left: Plan Prompt & Blueprint Window -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                    <div>
+                        <div class="flex items-center justify-between mb-2 border-b border-slate-800 pb-2 text-purple-400 font-bold">
+                            <span><i class="fa-solid fa-list-check mr-2"></i>【实战需求与 Plan 蓝图预览】</span>
+                            <button onclick="copyPlanPrompt()" class="copy-btn bg-purple-600 hover:bg-purple-500 text-white text-[10px] px-2 py-0.5 rounded font-bold">复制提示词</button>
+                        </div>
+                        <div class="space-y-2 text-[11px] text-slate-300 font-mono bg-slate-800 p-3 rounded border border-slate-700">
+                            <div class="text-purple-300 font-bold">💬 输入提示词：</div>
+                            <div class="bg-slate-900 p-2.5 rounded border border-slate-700 text-slate-200 text-[10px]" id="planPromptText">
+                                工作区里有 3 个文件：销售_1月.xlsx、销售_2月.xlsx、销售_3月.xlsx。请把它们合并成一张总表，按「地区」汇总销售额，再画一张柱状图，最后输出一份 Word 月度分析报告到桌面。
+                            </div>
+                            <div class="text-slate-400 mt-2">【AI 确认 Plan 蓝图步骤】</div>
+                            <div class="pl-2 text-[10px] space-y-0.5 text-slate-300">
+                                <div>1. 读取 3 个 Excel，校验表头与「地区」「销售额」列</div>
+                                <div>2. 合并数据，清洗空值与异常行</div>
+                                <div>3. 按「地区」分组汇总，生成柱状图</div>
+                                <div>4. 撰写 Word 报告：概述 + 图表 + 分析结论并保存到桌面</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 bg-slate-800 p-2 rounded-lg border border-slate-700 text-[10px] text-slate-400 font-sans">
+                        <i class="fa-solid fa-circle-check text-purple-400 mr-1"></i> 先看方案再动手，改计划只需几十秒，避免方向错误带来的返工成本。
+                    </div>
+                </div>
+
+                <!-- Right: Action Cards (Scenario Steps) -->
+                <div class="lg:col-span-6 flex flex-col justify-between space-y-3">
+                    
+                    <div class="plan-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-sm shrink-0 font-bold">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">下载样例与开启 Plan 模式</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">下载上方 3 个 Excel 放入工作区。在 WorkBuddy 输入框左侧点 「+」→ 模式，打开 「计划 Plan」 开关。</p>
+                        </div>
+                    </div>
+
+                    <div class="plan-card bg-white border border-slate-200 rounded-xl p-3.5 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0 font-bold">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">发送需求与审阅蓝图</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">发送合并需求。审阅右侧弹出的执行步骤蓝图（确认不覆盖原文件、表头匹配规则），满意后点 「开始执行」。</p>
+                        </div>
+                    </div>
+
+                    <div class="plan-card bg-white border border-slate-200 rounded-xl p-3 soft-shadow flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center text-sm shrink-0 font-bold">3</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-800 mb-0.5">自动化执行与验收交付</h3>
+                            <p class="text-[11px] text-slate-500 leading-relaxed">助手自动读表、画图、写 Word 报告并稳稳保存在桌面。不满意可在对话中微调结论与图表样式！</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <header class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 7 - Advanced Slide <span class="text-purple-600 font-bold">25</span> / 25
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-purple-500 h-full w-full transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                <i class="fa-solid fa-flag-checkered mr-1 text-purple-500"></i>Plan 模式实战：圆满收官
+            </span>
+            <span class="p-2 rounded-lg border border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed flex items-center justify-center" title="已经是最后一张幻灯片">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </span>
+        </div>
+    </header>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">🎯 第二十五页压轴实战要点：</span>
+                    “各位同学，我们用真实办公场景来收官：点击上方按钮下载 3 个月的销售 Excel 样例！发送我们的实战提示词。通过开启 Plan 模式，AI 会先列出清晰的执行蓝图与风险确认。确认无误后一键执行， Word 报告稳稳落盘桌面！至此，我们的规格驱动开发与高级智能体课程圆满收官！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-purple-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); }
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(err));
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-purple-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+        function copyPlanPrompt() {
+            const text = document.getElementById('planPromptText').innerText.trim();
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("实战提示词已成功复制到剪贴板！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动复制");
+            }
+        }
+        function downloadExcel(month) {
+            let filename = '';
+            let csvContent = '';
+            if (month === 'jan') {
+                filename = '销售_1月.xlsx.csv';
+                csvContent = "地区,销售经理,销售额\n华东,张伟,350000\n华北,李娜,280000\n华南,王强,420000\n华西,赵敏,190000\n";
+            } else if (month === 'feb') {
+                filename = '销售_2月.xlsx.csv';
+                csvContent = "地区,销售经理,销售额\n华东,张伟,380000\n华北,李娜,310000\n华南,王强,450000\n华西,赵敏,210000\n";
+            } else if (month === 'mar') {
+                filename = '销售_3月.xlsx.csv';
+                csvContent = "地区,销售经理,销售额\n华东,张伟,410000\n华北,李娜,340000\n华南,王强,490000\n华西,赵敏,230000\n";
+            }
+            try {
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(filename + " 样例下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+        function downloadPlanScenarioReport() {
+            const reportMd = `# WorkBuddy Plan 模式实战复盘手册：合并多表与生成图表 Word 报告\n\n## 1. 业务场景介绍\n- 工作区文件：销售_1月.xlsx、销售_2月.xlsx、销售_3月.xlsx\n- 核心任务：合并总表、按地区汇总、生成柱状图、输出 Word 月度分析报告到桌面。\n\n## 2. Plan 模式操作四步法\n1. 开启 Plan 模式：点击输入框左侧 「+」-> 模式，打开 「计划 Plan」 开关。\n2. 发送需求：输入合并与报告生成指令。\n3. 方案审阅：确认 AI 给出的任务理解、文件范围、执行步骤与风险提示。\n4. 点击执行：满意后开始执行，实时观察后台进度并验收桌面 Word 报告。\n\n## 3. 高管落地心法\n- 目标明确、材料清晰、限制条件（不覆盖原文件）前置，确保 AI 一次性对齐方向，极大节省返工成本。`;
+            try {
+                const blob = new Blob([reportMd], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'plan_mode_sales_report_scenario.md';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast("Plan 实战复盘手册下载成功！");
+            } catch (err) {
+                console.error(err);
+                showToast("下载失败，请稍后重试");
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft') window.location.href = '24.html';
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 'n' || e.key === 'N') toggleSpeakerNotes();
+            else if (e.key === 'Escape') document.getElementById('speakerNotesDrawer').classList.add('hidden');
+        });
+    </script>
+</body>
+</html>

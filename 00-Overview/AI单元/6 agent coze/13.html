@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 13 - 建立 Worker 2 (技术支持 Bot)：构建 RAG 知识库大脑</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-500 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-indigo-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyWorkerPrompt()" class="px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-xs font-bold text-indigo-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-indigo-600"></i>
+                <span class="hidden sm:inline">复制技术 Bot 人设</span>
+                <span class="sm:hidden">复制 Prompt</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-database text-indigo-600"></i>
+                <span>Module 3 · 多智能体 (Multi-Agent) 编排实战</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                建立 Worker 2 (技术支持)：<span class="text-indigo-600">上传企业 PDF，构建 RAG 专属知识库大脑</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                面对产品硬件故障或深度的技术报错（如 Error 05），大模型极易“凭空捏造”维修方案。我们需要为其挂载 <strong>知识库 (Knowledge Base)</strong>。通过上传企业的官方维修手册 PDF，利用 RAG（检索增强生成）技术，让 Worker 2 做到“有据可查，不瞎编”。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Configuration vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Coze UI Operation Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-book-open-reader text-indigo-600"></i>
+                            Coze 知识库构建指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">RAG GUIDE</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Step 1 -->
+                        <div class="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                创建知识库并上传 PDF
+                            </h4>
+                            <p class="text-indigo-700/80 leading-relaxed mb-2">
+                                在 Coze 工作台的“知识库”专区，新建文本库，上传《智净 Max 扫地机内部排故手册.pdf》。平台将自动读取文档。
+                            </p>
+                            <div class="bg-white/70 p-2 rounded border border-indigo-100 font-sans text-[10px] text-slate-700 flex items-center gap-2">
+                                <i class="fa-solid fa-file-pdf text-rose-500"></i> 
+                                <span class="font-bold">智净Max_Troubleshooting_V2.pdf (2.4 MB)</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                配置分段与检索策略 (Chunk & Recall)
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed mb-2">
+                                将长文档切分为小块（Chunk），以便精准匹配。强烈建议选择 <strong>混合检索 (Hybrid Search)</strong>，结合向量语义和关键词，命中率最高。
+                            </p>
+                            <div class="bg-white p-2 rounded border border-slate-200 font-mono text-[10px] text-slate-600">
+                                策略: <span class="text-indigo-600 font-bold">Hybrid Search (向量+全文)</span> | Top K: <span class="text-indigo-600 font-bold">3</span>
+                            </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-slate-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                将大脑挂载给 Worker 2
+                            </h4>
+                            <p class="text-slate-600 leading-relaxed">
+                                回到智能体编排界面，在 Worker 2 (技术支持) 的配置面板中，点击添加知识库，选中刚才建好的手册。为该 Bot 注入“灵魂约束”提示词。
+                            </p>
+                            <div class="relative bg-slate-900 mt-2 p-2.5 rounded-lg border border-slate-700 font-mono text-[10px] text-indigo-300 leading-relaxed">
+你是资深的技术支持专员。必须优先查阅【知识库】进行解答，严禁编造不存在的故障代码或维修方案。
+                                <button onclick="copyWorkerPrompt()" class="absolute top-2 right-2 text-slate-400 hover:text-white"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Interactive Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-indigo-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            <span class="text-xs">RAG 知识库向量检索追踪沙箱</span>
+                        </span>
+                        <span id="workerBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">AWAITING QUERY</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">测试技术支持 Bot，观察其如何利用知识库 (RAG) 回答刁钻问题：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateWorkerRun('rag_query')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2 shadow-sm">
+                                <i class="fa-solid fa-user text-slate-400 mt-0.5 w-4"></i>
+                                <span>“机器开机报错 Error 05，然后扫地刷完全不转了，怎么解决？”</span>
+                            </button>
+                            <button onclick="simulateWorkerRun('unknown_query')" class="py-2.5 px-3 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs text-left transition flex items-start gap-2 shadow-sm border-dashed">
+                                <i class="fa-solid fa-user-secret text-slate-400 mt-0.5 w-4"></i>
+                                <span>“你们这个机器支持外接扩展机械臂配件吗？”</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">RAG 检索执行流 (Retrieval Trace):</span>
+                            </div>
+                            
+                            <div id="workerConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 点击上方按钮，触发技术 Bot 搜索知识库...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-indigo-600 font-bold">Slide 13 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-500 h-full w-[65%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="12.html" title="上一页：建立 Worker 1" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-indigo-700">14. 跨端集成与一键发布</strong>
+            </span>
+            <a href="14.html" title="下一页：跨端集成与发布" class="px-3 py-1.5 md:py-2 rounded-lg border border-indigo-100 bg-indigo-600 text-white hover:bg-indigo-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 重点强调 RAG 的价值：</span>
+                    “各位同学，这是企业最刚需的能力——RAG (检索增强生成)！<br><br>
+                    大模型的记忆是通用的。如果你问它某个具体的故障码‘Error 05’，如果没有知识库，它一定会靠猜测给出建议，这在维修领域是会出大事故的。<br>
+                    我们在 Coze 里只要传一个 PDF，它底层会自动做文本切割（Chunking）、向量化（Embedding）。当用户提问时，它会先去 PDF 里搜到对应的段落，然后再根据段落回答。这就从根本上杜绝了知识幻觉！”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “点击第一个按钮，展示模型如何从大段文字中‘抽丝剥茧’出维修步骤。点击第二个‘越界’测试按钮，展示当知识库里没有相关内容时，由于人设约束，模型会诚实地回答‘不知道’，而不是瞎编，这正是我们要的严谨性！”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-indigo-400 mr-2"></i>操作成功！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-indigo-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyWorkerPrompt() {
+            const text = "你是资深的技术支持专员。必须优先查阅【知识库】进行解答，严禁编造不存在的故障代码或维修方案。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("技术支持 Bot 人设已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulateWorkerRun(type) {
+            const out = document.getElementById('workerConsole');
+            const badge = document.getElementById('workerBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            badge.innerText = "RETRIEVING...";
+            badge.className = "text-[10px] bg-indigo-900/60 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+
+            if (type === 'rag_query') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">🧠 意图解析:</span> 提取查询向量 "Error 05", "主刷不转"。准备检索关联知识库...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-emerald-300 border-l-2 border-emerald-500 pl-2 mb-1.5">
+    <span class="text-emerald-400 font-bold">📚 触发混合检索 (Hybrid Search):</span> 智净Max_Troubleshooting_V2.pdf<br>
+    <span class="text-slate-400 pl-4">-> 命中 Chunk #42 (相似度 0.92):</span><br>
+    <span class="text-slate-500 pl-4 italic">"故障码 Error 05: 主刷异常缠绕。解决方案：1. 翻转机器；2. 按下主刷罩卡扣取下主刷；3. 使用附赠鸟刀清理两端缠绕毛发后装回。"</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-indigo-300 border-l-2 border-indigo-500 pl-2 mb-1.5">
+    <span class="text-indigo-400 font-bold">💬 知识增强回复 (RAG Synthesis):</span><br>
+    <span class="text-slate-200 italic">"您好，Error 05 表示主刷被异物缠绕了。您可以按以下步骤排查：<br>1. 将机器翻转，按下主刷罩的卡扣。<br>2. 取出主刷，使用清理小工具（鸟刀）割断并清理两端毛发。<br>清理完毕后装回即可恢复正常。如果还有问题随时联系我哦！"</span>
+</div>`;
+                    badge.innerText = "ANSWERED (RAG)";
+                    showToast("知识库精准命中并生成标准解答！");
+                }, 2500));
+
+            } else if (type === 'unknown_query') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-slate-400 mb-1.5"><span class="text-slate-300 font-bold">🧠 意图解析:</span> 提取查询向量 "外接扩展机械臂配件"。检索知识库...</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-rose-300 border-l-2 border-rose-500 pl-2 mb-1.5">
+    <span class="text-rose-400 font-bold">⚠️ 知识库未命中:</span><br>
+    <span class="text-slate-400 pl-4">相似度得分均低于阈值 (0.4)。手册中未提及任何关于“机械臂”的配件信息。</span>
+</div>`;
+                }, 1200));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in text-indigo-300 border-l-2 border-indigo-500 pl-2 mb-1.5">
+    <span class="text-indigo-400 font-bold">💬 诚实回复拦截 (Honest Fallback):</span><br>
+    <span class="text-slate-200 italic">"非常抱歉，根据我掌握的官方产品手册，该型号目前不支持外接机械臂等扩展配件。由于我不能为您提供未经官方证实的信息，建议您关注我们的后续新品发布！"</span>
+</div>`;
+                    badge.innerText = "HONEST FALLBACK";
+                    showToast("知识库未命中，AI 恪守护栏拒绝瞎编！");
+                }, 2000));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '14.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '12.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

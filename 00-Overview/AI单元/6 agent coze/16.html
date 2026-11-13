@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 16 - 自动化编排常见翻车现场：排查与避坑指南</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coze: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .copy-btn { transition: all 0.2s; }
+        .copy-btn:active { transform: scale(0.95); }
+        .log-slide-in { animation: slideIn 0.3s ease-out forwards; opacity: 0; transform: translateX(-10px); }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800 font-sans flex flex-col justify-between select-none">
+
+    <!-- Top Navigation Header -->
+    <header class="h-16 border-b border-slate-200 bg-white/95 backdrop-blur-md px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky top-0 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-rose-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                第六单元：AI 智能体与自动化工作流 <span class="text-rose-600 font-mono font-bold">(Coze 云端免部署编排实战)</span>
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="copyCheatSheet()" class="px-3 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-xs font-bold text-rose-800 transition flex items-center gap-2">
+                <i class="fa-solid fa-copy text-rose-600"></i>
+                <span class="hidden sm:inline">复制排障速查表</span>
+                <span class="sm:hidden">速查表</span>
+            </button>
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-500"></i>
+                <span class="hidden sm:inline">演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-start p-4 md:p-6 lg:p-8 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-rose-100/40 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-3">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 font-mono text-xs font-bold tracking-wider uppercase mb-1.5 soft-shadow">
+                <i class="fa-solid fa-car-burst text-rose-600"></i>
+                <span>Module 4 · 工程避坑与生产调优</span>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight mb-1.5">
+                自动化编排常见翻车现场：<span class="text-rose-600">路由失效、插件超时与 RAG 智障排查</span>
+            </h2>
+            
+            <p class="text-xs md:text-sm font-medium text-slate-600 w-full max-w-4xl leading-relaxed">
+                在实验室里跑通了 Demo 不叫成功，上了生产环境才是真正的考验。大模型是概率驱动的，插件依赖外部网络，知识库依赖切片质量。作为科技管理者，必须掌握系统“翻车”时的望闻问切，通过 Trace 日志精准定位并修复问题。
+            </p>
+        </div>
+
+        <!-- 2 Columns Layout: Troubleshooting Guide vs Sandbox -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch mb-5">
+            
+            <!-- Left 6 Cols: Troubleshooting Guide -->
+            <div class="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-5 soft-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4 border-b border-slate-100 pb-2.5">
+                        <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-stethoscope text-rose-600"></i>
+                            三大经典翻车现场与排障指南
+                        </h3>
+                        <span class="text-[10px] font-mono text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">TROUBLESHOOTING</span>
+                    </div>
+
+                    <div class="space-y-4 text-xs">
+                        
+                        <!-- Scene 1 -->
+                        <div class="bg-amber-50 border border-amber-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-amber-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-amber-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">1</span>
+                                意图路由失败 (Router Fail)
+                            </h4>
+                            <p class="text-amber-700/80 leading-relaxed mb-1.5">
+                                <strong>现象：</strong> 用户明明问的是“退款”，Router 却把问题派给了“技术 Bot”，或者干脆兜底说“我不懂”。<br>
+                                <strong>病因：</strong> 转移条件（Condition）写得太重叠，大模型无法区分边界。<br>
+                                <strong>药方：</strong> 加入明确的互斥关键词（如：<em>包含“退钱、发票”时，绝对转给财务</em>），并必须设置 Fallback 兜底。
+                            </p>
+                        </div>
+
+                        <!-- Scene 2 -->
+                        <div class="bg-rose-50 border border-rose-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-rose-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-rose-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">2</span>
+                                插件调用报错或超时 (Plugin Error)
+                            </h4>
+                            <p class="text-rose-700/80 leading-relaxed mb-1.5">
+                                <strong>现象：</strong> 系统卡顿很久，最后直接报错。查看 Trace 发现 API 返回 HTTP 400 或 500。<br>
+                                <strong>病因：</strong> 大模型提取参数产生了幻觉（把订单号提取成了带中文字符的格式），导致接口校验失败。<br>
+                                <strong>药方：</strong> 在 LLM 参数提取后，加一个 Code 节点进行强正则清洗，确保传给插件的参数绝对合法。
+                            </p>
+                        </div>
+
+                        <!-- Scene 3 -->
+                        <div class="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl">
+                            <h4 class="font-bold text-indigo-800 mb-1.5 flex items-center gap-1.5">
+                                <span class="bg-indigo-600 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">3</span>
+                                知识库检索“智障” (RAG Miss)
+                            </h4>
+                            <p class="text-indigo-700/80 leading-relaxed">
+                                <strong>现象：</strong> 知识库里明明有答案，AI 却回答“没找到”。<br>
+                                <strong>病因：</strong> 使用了纯向量检索（Vector Search），对料号、专有名词（如 Error 05）极其不敏感。<br>
+                                <strong>药方：</strong> 必须切换为 <strong>混合检索 (Hybrid Search)</strong>，并适当调大召回数量 (Top K=5)。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 6 Cols: Sandbox -->
+            <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-2xl p-5 text-white font-mono text-xs flex flex-col justify-between soft-shadow">
+                <div>
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5 text-rose-400 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-bug text-sm"></i>
+                            <span class="text-xs">生产事故模拟与 Trace 日志诊断室</span>
+                        </span>
+                        <span id="sandboxBadge" class="text-[10px] bg-slate-800 text-slate-300 border border-slate-700 px-2 py-0.5 rounded">DEBUG MODE</span>
+                    </div>
+
+                    <div class="space-y-3 text-[11px] text-slate-300">
+                        <label class="block text-slate-400 font-sans">点击模拟线上故障，学习如何通过日志定位根因：</label>
+                        
+                        <div class="grid grid-cols-1 gap-2 font-sans">
+                            <button onclick="simulateError('router')" class="py-2.5 px-3 rounded-lg border border-amber-700/50 bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-code-branch w-4 text-center"></i>
+                                <span>事故 A：客服派单乱套 (路由失效)</span>
+                            </button>
+                            <button onclick="simulateError('plugin')" class="py-2.5 px-3 rounded-lg border border-rose-700/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-plug-circle-xmark w-4 text-center"></i>
+                                <span>事故 B：订单插件崩溃 (参数异常)</span>
+                            </button>
+                            <button onclick="simulateError('rag')" class="py-2.5 px-3 rounded-lg border border-indigo-700/50 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-200 text-xs text-left transition flex items-center gap-2 shadow-sm">
+                                <i class="fa-solid fa-database w-4 text-center"></i>
+                                <span>事故 C：手册查不到 (RAG 检索为空)</span>
+                            </button>
+                        </div>
+
+                        <!-- Console Output -->
+                        <div class="space-y-1 mt-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-slate-500">Trace 日志诊断分析 (Diagnosis Log):</span>
+                            </div>
+                            <div id="executionConsole" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 min-h-[160px] leading-relaxed overflow-y-auto">
+                                <div class="text-slate-500"># 等待发起故障注入模拟...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Bottom Footer (Navigation Controls) -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between z-20 shrink-0 sticky bottom-0 shadow-inner">
+        <div class="flex items-center space-x-3 md:space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                Unit 6: Coze Orchestration: <span class="text-rose-600 font-bold">Slide 16 of 20</span>
+            </div>
+            <div class="w-20 md:w-36 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-rose-500 h-full w-[80%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Sequence Step Pagination -->
+        <div class="flex items-center space-x-2 md:space-x-3">
+            <a href="15.html" title="上一页：运行演示与验证" class="px-3 py-1.5 md:py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+                <span>上一页</span>
+            </a>
+            <span class="text-xs font-mono text-slate-600 font-bold hidden md:inline">
+                下一节：<strong class="text-rose-700">17. 生产环境稳定性调优</strong>
+            </span>
+            <a href="17.html" title="下一页：生产调优" class="px-3 py-1.5 md:py-2 rounded-lg border border-rose-100 bg-rose-600 text-white hover:bg-rose-500 transition flex items-center gap-1.5 text-xs font-bold shadow-sm">
+                <span>下一页</span>
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师备课备注</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                    <span class="font-bold text-rose-900 block mb-1">🎯 讲师讲解要点：</span>
+                    “各位同学，这是我们整个编排课程里最具有‘实战价值’的一页。在公司里，做个能跑的 Demo 很容易，但应对各种奇葩的用户输入，系统不出错，才是真本事。<br><br>
+                    大家一定要养成看 Trace 的习惯。比如插件报错，你不要去怪网络不好，点开日志看看大模型传了什么参数进去！很多时候大模型会自作主张加个引号或者中文字符，导致后端 API 崩溃。这就是为什么我们强调用 Code 节点去做清洗的原因。”
+                </div>
+                <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <span class="font-bold text-slate-800 block mb-1">💡 沙箱演示提示：</span>
+                    “依次点击右侧的三个事故按钮，让学员直观地看到日志里是怎么暴露问题的。重点讲解药方：如何通过‘混合检索’解决 RAG 智障，如何通过‘互斥描述’解决路由失效。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50">
+        <i class="fa-solid fa-check text-rose-400 mr-2"></i>提示信息已更新！
+    </div>
+
+    <script>
+        function toggleSpeakerNotes() { 
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden'); 
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (msg) toast.innerHTML = '<i class="fa-solid fa-check text-rose-400 mr-2"></i>' + msg;
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            setTimeout(function() {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+            }, 3000);
+        }
+
+        function copyCheatSheet() {
+            const text = "自动化编排排障速查表：\n1. 路由失效：检查 Condition 是否有重叠，是否缺少 Fallback 兜底路线。\n2. 插件报错/超时：检查 LLM 生成的入参。必须加 Code 节点做强正则校验（如订单号必须纯数字）。\n3. 知识库回答不知道：将检索策略从 Vector 切换为 Hybrid（混合检索），提高 Top K 值。";
+            try {
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+                showToast("排障速查表已复制！");
+            } catch (err) {
+                console.error(err);
+                showToast("复制失败，请手动选择复制");
+            }
+        }
+
+        let simTimeouts = [];
+
+        function simulateError(type) {
+            const out = document.getElementById('executionConsole');
+            const badge = document.getElementById('sandboxBadge');
+            
+            simTimeouts.forEach(clearTimeout);
+            simTimeouts = [];
+            out.innerHTML = '';
+
+            badge.innerText = "ANALYZING TRACE...";
+            badge.className = "text-[10px] bg-slate-700 text-slate-300 border border-slate-600 px-2 py-0.5 rounded";
+
+            if (type === 'router') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-amber-300 mb-1.5"><span class="text-amber-400 font-bold">🔍 发现异常:</span> 客户输入："退货，另外怎么保养？"</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in bg-amber-950/50 p-2 rounded border border-amber-900 mt-2">
+    <div class="text-amber-400 font-bold mb-1"><i class="fa-solid fa-code-branch"></i> [Router 节点] 诊断报告</div>
+    <div class="text-slate-400 text-[10px] font-mono leading-relaxed">
+        Trace: 命中【技术 Bot】条件（包含"保养"）<br>
+        Trace: 命中【财务 Bot】条件（包含"退货"）<br>
+        <span class="text-amber-300 font-bold">Error: 条件冲突，系统随机降级分配给【技术 Bot】。导致客户退款诉求被无视。</span>
+    </div>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-400 font-bold mt-2 pt-2 border-t border-slate-800">✅ 修复方案：修改 Router 转移条件，明确退款优先级最高，或允许双流转。</div>`;
+                    badge.innerText = "ROUTER DIAGNOSED";
+                    badge.className = "text-[10px] bg-amber-900 text-amber-300 border border-amber-600 px-2 py-0.5 rounded";
+                }, 2000));
+
+            } else if (type === 'plugin') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-rose-300 mb-1.5"><span class="text-rose-400 font-bold">🔍 发现异常:</span> 客户输入："查一下订单，大概是 8890"</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in bg-rose-950/50 p-2 rounded border border-rose-900 mt-2">
+    <div class="text-rose-400 font-bold mb-1"><i class="fa-solid fa-plug-circle-xmark"></i> [Plugin 节点] 诊断报告</div>
+    <div class="text-slate-400 text-[10px] font-mono leading-relaxed">
+        Trace: LLM 提取参数 -> { "order_id": "大概是 8890" } <br>
+        Trace: Request 插件 API -> Order_ERP.check_status<br>
+        <span class="text-rose-300 font-bold">HTTP 400 Bad Request: Invalid order_id format (Must be Integer).</span>
+    </div>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-400 font-bold mt-2 pt-2 border-t border-slate-800">✅ 修复方案：在 LLM 提取后加一个 Code 节点，用正则提取纯数字传给插件。</div>`;
+                    badge.innerText = "PLUGIN DIAGNOSED";
+                    badge.className = "text-[10px] bg-rose-900 text-rose-300 border border-rose-600 px-2 py-0.5 rounded";
+                }, 2000));
+
+            } else if (type === 'rag') {
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-indigo-300 mb-1.5"><span class="text-indigo-400 font-bold">🔍 发现异常:</span> 客户输入："X-299 模块连不上 Wi-Fi"</div>`;
+                }, 300));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `
+<div class="log-slide-in bg-indigo-950/50 p-2 rounded border border-indigo-900 mt-2">
+    <div class="text-indigo-400 font-bold mb-1"><i class="fa-solid fa-database"></i> [Knowledge Base] 诊断报告</div>
+    <div class="text-slate-400 text-[10px] font-mono leading-relaxed">
+        Trace: 提取查询向量 -> [x-299, 模块, wifi, 连接失败]<br>
+        Trace: 执行 Vector Search (纯向量匹配)...<br>
+        <span class="text-indigo-300 font-bold">Result: 匹配得分为 0.35 (低于 0.6 阈值)，召回失败。因为模型将 X-299 拆词理解，无法匹配专有名词。</span>
+    </div>
+</div>`;
+                }, 1000));
+
+                simTimeouts.push(setTimeout(() => {
+                    out.innerHTML += `<div class="log-slide-in text-emerald-400 font-bold mt-2 pt-2 border-t border-slate-800">✅ 修复方案：前往知识库设置，将检索策略改为 Hybrid Search (混合检索)，强制匹配关键字 X-299。</div>`;
+                    badge.innerText = "RAG DIAGNOSED";
+                    badge.className = "text-[10px] bg-indigo-900 text-indigo-300 border border-indigo-600 px-2 py-0.5 rounded";
+                }, 2000));
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '17.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '15.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
