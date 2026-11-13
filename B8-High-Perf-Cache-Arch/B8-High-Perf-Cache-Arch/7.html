@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - Memcached 与 Redis 全方位对比 (Memcached vs. Redis Comparison)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-scale-balanced text-cyan-600"></i>
+                <span>Part 01 · 缓存架构基础与缓存模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Memcached 与 Redis 全方位多维度硬核对比 (Memcached vs. Redis)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Data Structures, Persistence Mechanisms, Threading Models, Memory Overhead &amp; High-Availability Architecture
+            </p>
+        </div>
+
+        <!-- Content Grid: 6 Dimensions Comparison Table -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full my-1">
+            <div class="rounded-2xl border border-cyan-200 bg-white p-3.5 soft-shadow space-y-2">
+                <div class="flex items-center justify-between pb-1.5 border-b border-cyan-100">
+                    <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                        <i class="fa-solid fa-code-compare text-cyan-600"></i>
+                        <span>Memcached vs. Redis 核心维度全景选型矩阵</span>
+                    </h3>
+                    <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Feature Matrix</span>
+                </div>
+
+                <!-- Comparison Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse font-sans text-xs">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-900 text-slate-100 font-mono text-[10.5px]">
+                                <th class="py-2 px-3 font-bold w-1/5 text-cyan-300">对比维度 (Dimension)</th>
+                                <th class="py-2 px-3 font-bold w-2/5 text-slate-200 border-l border-slate-800">
+                                    <span class="flex items-center gap-1.5">
+                                        <i class="fa-solid fa-cube text-cyan-400"></i>
+                                        <span>Memcached</span>
+                                    </span>
+                                </th>
+                                <th class="py-2 px-3 font-bold w-2/5 text-teal-300 border-l border-slate-800">
+                                    <span class="flex items-center gap-1.5">
+                                        <i class="fa-solid fa-memory text-emerald-400"></i>
+                                        <span>Redis</span>
+                                    </span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-[10px] leading-relaxed">
+                            <!-- Data Structures -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">1. 数据结构支持</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-rose-700">仅纯 String (Key-Value)</span>
+                                    <p class="text-[9px] text-slate-500 mt-0.5">无原生复杂类型，复杂对象需客户端自定义序列化/反序列化。</p>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-teal-700">丰富数据结构库 (Data Structure Server)</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">String, Hash, List, Set, ZSet, Stream, Bitmap, GEO, Vector</p>
+                                </td>
+                            </tr>
+
+                            <!-- Persistence -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">2. 持久化支持</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-rose-700">不支持持久化</span>
+                                    <p class="text-[9px] text-slate-500 mt-0.5">纯内存存储，服务重启或断电后缓存数据全数丢失。</p>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-emerald-700">完善持久化 (RDB / AOF / 混合)</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">RDB 内存快照 (COW) + AOF 追加日志 + Redis 5.0+ 混合持久化。</p>
+                                </td>
+                            </tr>
+
+                            <!-- Threading Model -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">3. 线程与 I/O 模型</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-cyan-800">原生多线程 (Slab + Lock)</span>
+                                    <p class="text-[9px] text-slate-500 mt-0.5">基于多线程与细粒度锁，能高效跑满多核 CPU。</p>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-teal-800">单线程内核 + 多线程 I/O (Redis 6.0+)</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">命令执行绝对单线程无锁，网络 Socket 读写多线程并发加速。</p>
+                                </td>
+                            </tr>
+
+                            <!-- Memory Efficiency -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">4. 内存管理与利用率</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-slate-800">Slab 预分配 (无外部碎片)</span>
+                                    <p class="text-[9px] text-slate-500 mt-0.5">小数据空间利用率极高，绝无 OS GC 卡顿。</p>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-indigo-700">复杂结构带 Header 开销</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">用 ziplist/listpack、intset 等紧凑编码优化小数据内存。</p>
+                                </td>
+                            </tr>
+
+                            <!-- HA & Clustering -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">5. 高可用与集群</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-amber-700">无原生 Cluster（依赖客户端）</span>
+                                    <p class="text-[9px] text-slate-500 mt-0.5">节点间互不通信，依赖客户端一致性 Hash 算法分片。</p>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-emerald-700">原生 Sentinel 哨兵 + Cluster 集群</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">主从复制 + Sentinel 自动故障转移 + Cluster 16384 哈希槽切片。</p>
+                                </td>
+                            </tr>
+
+                            <!-- Enterprise Features -->
+                            <tr class="hover:bg-cyan-50/30 transition">
+                                <td class="py-2 px-3 font-mono font-bold text-slate-800 bg-slate-50/50">6. 高级扩展功能</td>
+                                <td class="py-2 px-3 text-slate-600 border-l border-slate-100">
+                                    <span class="font-bold text-slate-500">无 (仅纯粹 KV 存取)</span>
+                                </td>
+                                <td class="py-2 px-3 text-slate-800 border-l border-slate-100">
+                                    <span class="font-bold text-purple-700">极其丰富的高级生态</span>
+                                    <p class="text-[9px] text-slate-600 mt-0.5">Lua 脚本原子操作、Pub/Sub 发布订阅、事务、Redisson 分布式锁、AI 向量缓存。</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构选型启示 (Selection Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        如果只需要**极小简单 String 数据的超高频纯内存缓存**，Memcached 依然是极其轻量高效的选择；但在现代化微服务与高并发服务端架构中，凭借丰富数据结构、高可用 Cluster、持久化与分布式锁支持，**Redis 已成为绝对的行业事实标准**。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 7 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Memcached 与 Redis 全方位多维度硬核对比</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员透视 Memcached 与 Redis 的本质区别：</span>
+                    “向学员做解构说明：Memcached 是一个极其纯粹的 Key-Value 内存对象缓存；而 Redis 的定位则是 Data Structure Server（数据结构服务器）。在实际选型中，Redis 提供了 RDB/AOF 持久化、哨兵高可用与 Cluster 切片集群，已经全面主导了现代化分布式服务端架构。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 Redis 6.0+ 多线程 I/O 与单线程命令执行：</span>
+                    “请学员重点关注线程模型对比：很多人以为 Redis 是完全单线程的。要向学员澄清：Redis 的命令执行和内存操作始终保持单线程顺序执行（无锁化）；但在 Redis 6.0+ 中引入了多线程来加速网络 Socket 数据包的读取与解析！下一个 Slide 8 将探讨基于 Caffeine 与 Redis 的多级缓存架构。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

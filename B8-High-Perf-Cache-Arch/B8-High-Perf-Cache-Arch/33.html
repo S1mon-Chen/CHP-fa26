@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 33 - Spring Boot 整合 Redis：spring-boot-starter-data-redis 与 Lettuce vs. Jedis 驱动对比</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-plug text-emerald-600"></i>
+                <span>Part 05 · Spring Boot 缓存声明式实战与消息机制</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Boot 整合 Redis：`spring-boot-starter-data-redis` 与 Lettuce vs. Jedis 对比
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Auto-Configuration, Netty-based Non-blocking Connection Sharing, JedisPool Bottlenecks &amp; Production YAML Tuning
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Driver Comparison & Starter Architecture) vs Right Card (Production YAML Config & Tuning) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Lettuce vs. Jedis Architecture Comparison (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-network-wired text-emerald-600"></i>
+                            <span>1. 客户端驱动对比：Lettuce (默认) vs. Jedis</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Driver Architecture</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        <code class="font-mono text-emerald-900 font-bold">spring-boot-starter-data-redis</code> 默认集成了基于 Netty 的 **Lettuce** 客户端驱动。相比传统的 **Jedis**，其底层架构存在本质差异：
+                    </p>
+
+                    <!-- Driver Comparison Table -->
+                    <div class="rounded-xl border border-emerald-100 bg-white p-1.5 space-y-1 overflow-x-auto mb-1.5">
+                        <table class="w-full text-left border-collapse font-sans text-[8.5px]">
+                            <thead>
+                                <tr class="border-b border-emerald-100 bg-slate-50 font-mono text-[8px] text-slate-700">
+                                    <th class="py-1 px-1 font-bold">评估维度</th>
+                                    <th class="py-1 px-1 font-bold text-emerald-800">Lettuce (Spring Boot 默认)</th>
+                                    <th class="py-1 px-1 font-bold text-slate-700">Jedis (传统驱动)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8px]">
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">底层框架</td>
+                                    <td class="py-1 px-1 text-emerald-800 font-bold">Netty 响应式非阻塞框架</td>
+                                    <td class="py-1 px-1 text-slate-600">Java 原生 Socket / Blocking I/O</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">线程安全性</td>
+                                    <td class="py-1 px-1 text-emerald-800 font-bold">线程安全 (`StatefulRedisConnection`)</td>
+                                    <td class="py-1 px-1 text-rose-700 font-bold">非线程安全 (直连共享会导致并发错乱)</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">并发复用机制</td>
+                                    <td class="py-1 px-1 text-emerald-800 font-bold">多线程**共享单个连接**，零无谓开销</td>
+                                    <td class="py-1 px-1 text-rose-700">必须强制使用 `JedisPool` 物理连接池</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">高并发性能</td>
+                                    <td class="py-1 px-1 text-emerald-800 font-bold">极致吞吐，抗无锁高并发表现优异</td>
+                                    <td class="py-1 px-1 text-slate-600">高并发下池化竞争导致 Thread 阻塞</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Maven Dependency Snippet -->
+                    <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-emerald-900 font-mono">Maven 依赖导入 (`pom.xml`)</span>
+                            <span class="text-[8.5px] font-mono text-emerald-700 font-bold">Auto Configuration</span>
+                        </span>
+                        <div class="p-1.5 rounded bg-slate-900 text-slate-100 font-mono text-[8px] space-y-0.5 overflow-x-auto border border-slate-800">
+                            <div>&lt;<span class="text-amber-300">dependency</span>&gt;</div>
+                            <div class="pl-2">&lt;<span class="text-teal-300">groupId</span>&gt;org.springframework.boot&lt;/<span class="text-teal-300">groupId</span>&gt;</div>
+                            <div class="pl-2">&lt;<span class="text-teal-300">artifactId</span>&gt;<span class="text-emerald-300 font-bold">spring-boot-starter-data-redis</span>&lt;/<span class="text-teal-300">artifactId</span>&gt;</div>
+                            <div>&lt;/<span class="text-amber-300">dependency</span>&gt;</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>核心：Lettuce 基于 Netty 实现单个连接供全部业务线程无锁共享</span>
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Production YAML Configuration & Lettuce Pool Tuning (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-teal-600"></i>
+                            <span>2. 生产级 `application.yml` 配置与 Lettuce 连接池调优</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">YAML Config</span>
+                    </div>
+
+                    <!-- YAML Code Snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-0.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-cyan-400 font-bold"># application.yml 生产环境 Redis 参数配置</div>
+                        <div><span class="text-indigo-300 font-bold">spring</span>:</div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">data</span>:</div>
+                        <div class="pl-4"><span class="text-indigo-300 font-bold">redis</span>:</div>
+                        <div class="pl-6">host: <span class="text-emerald-300">127.0.0.1</span></div>
+                        <div class="pl-6">port: <span class="text-emerald-300">6379</span></div>
+                        <div class="pl-6">password: <span class="text-slate-400"># 你的物理密码</span></div>
+                        <div class="pl-6">database: <span class="text-emerald-300">0</span></div>
+                        <div class="pl-6">timeout: <span class="text-emerald-300">3000ms</span></div>
+                        <div class="pl-6"><span class="text-teal-300 font-bold">lettuce</span>:</div>
+                        <div class="pl-8"><span class="text-teal-300 font-bold">pool</span>:</div>
+                        <div class="pl-10">max-active: <span class="text-amber-300 font-bold">16</span> <span class="text-slate-500"># 最大连接数 (针对同步阻塞/大连接场景)</span></div>
+                        <div class="pl-10">max-idle: <span class="text-amber-300 font-bold">8</span>   <span class="text-slate-500"># 空闲连接数</span></div>
+                        <div class="pl-10">min-idle: <span class="text-amber-300 font-bold">2</span>   <span class="text-slate-500"># 最小空闲连接数</span></div>
+                        <div class="pl-10">max-wait: <span class="text-amber-300 font-bold">2000ms</span> <span class="text-slate-500"># 阻塞等待超时时间</span></div>
+                    </div>
+
+                    <!-- Lettuce Pool Tuning Notes -->
+                    <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-teal-900 font-mono">Lettuce 线程池（`commons-pool2`）何时需要开启？</span>
+                            <span class="text-[8.5px] font-mono text-teal-700 font-bold">Pool Tuning Tips</span>
+                        </span>
+                        <ul class="text-[9px] text-slate-600 space-y-0.5 font-sans leading-tight">
+                            <li>• **常规高并发场景**：Lettuce 的单个共享连接通过 Netty 管线化 (Pipelining) 已足够应对超高 QPS，无需配置连接池。</li>
+                            <li>• **特殊场景（开启连接池）**：当项目需要频繁执行**阻塞式指令（如 `BLPOP`, `BRPOP`）** 或事务指令时，避免单个共享连接被卡死，需引入 `commons-pool2` 开启连接池配置。</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 34 · `RedisTemplate` 序列化策略与 `StringRedisTemplate` 实战</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Lettuce Connection Pooling Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        从 Jedis 迁移至 Lettuce 是 Spring Boot 框架的划时代改进。借力 Netty 的**异步非阻塞复用能力**，多数情况下即使几千个业务并发线程共享单个 Lettuce 连接也不会发生阻塞，彻底省去了传统数据库连接池创建、校验与频繁握手的巨额物理开销。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 33 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">33</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[82.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (32.html <- 33.html -> 34.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="32.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Boot 整合 Redis：spring-boot-starter-data-redis 与 Lettuce vs. Jedis 对比</span>
+            <a href="34.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="32.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="34.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员对比 Lettuce 与 Jedis 的原理区别：</span>
+                    “向学员做解构说明：很多面试官喜欢问‘Spring Boot 2.x 之后为什么把默认驱动从 Jedis 换成了 Lettuce？’。关键在于 Jedis 的直连是不安全的，多线程并发必须建连接池 (JedisPool)，在高并发时线程会去抢连接；而 Lettuce 基于 Netty，单个 `StatefulRedisConnection` 是线程安全的，多线程可以共享同一个连接进行管线化复用。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 Lettuce 何时需要配置连接池：</span>
+                    “请学员注意右侧 YAML 配置：虽然 Lettuce 单连接性能极高，但在遇到阻塞指令（如 `BLPOP`、阻塞等待锁）时，如果大家共享同一个连接，会导致其他线程跟着被卡住。所以如果有阻塞消费需求，可以引入 `commons-pool2` 依赖并配置 Lettuce pool。下一个 Slide 34 将讲解 `RedisTemplate` 序列化方式配置与 `StringRedisTemplate` 的实战。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '34.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '32.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 38 - Spring Boot + Caffeine + Redis 二级缓存综合整合实战 (Multi-Level Cache Implementation)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-layer-group text-emerald-600"></i>
+                <span>Part 05 · Spring Boot 缓存声明式实战与消息机制</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Boot + Caffeine + Redis 二级缓存综合整合实战
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                L1 Caffeine Local Cache (Nanoseconds) + L2 Redis Distributed Cache (Microseconds) &amp; CompositeCacheManager Assembly
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (L1/L2 Architecture Pipeline) vs Right Card (MultiLevelCacheConfig Java Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: L1/L2 Architecture Pipeline (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap text-emerald-600"></i>
+                            <span>1. 二级缓存分层管线与配置参数</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">L1 + L2 Architecture</span>
+                    </div>
+
+                    <!-- Flow Diagram Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-cyan-400 font-bold">// 二级缓存查询执行管线 (Query Pipeline)</div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            1. 读请求 $\to$ <span class="text-emerald-300 font-bold">L1 Caffeine Cache</span> (JVM 进程内存)
+                            <div class="text-emerald-400 text-[8px] pl-3">├── Hit: 秒级返回 (~10ns, 零网络开销)</div>
+                            <div class="text-slate-400 text-[8px] pl-3">└── Miss: 继续下查 L2...</div>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            2. L1 Miss $\to$ <span class="text-teal-300 font-bold">L2 Redis Cluster</span> (集中式内存集群)
+                            <div class="text-teal-400 text-[8px] pl-3">├── Hit: 填补回 L1，返回结果 (~1ms)</div>
+                            <div class="text-slate-400 text-[8px] pl-3">└── Miss: 穿透至底层 RDBMS...</div>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            3. L2 Miss $\to$ <span class="text-amber-300 font-bold">L3 MySQL RDBMS</span> $\to$ 写入 L2 与 L1
+                        </div>
+                    </div>
+
+                    <!-- Configuration Spec Matrix -->
+                    <div class="rounded-xl border border-emerald-100 bg-white p-1.5 space-y-1 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-[8.5px]">
+                            <thead>
+                                <tr class="border-b border-emerald-100 bg-slate-50 font-mono text-[8px] text-slate-700">
+                                    <th class="py-1 px-1 font-bold">缓存层级</th>
+                                    <th class="py-1 px-1 font-bold text-emerald-800">L1 本地缓存 (Caffeine)</th>
+                                    <th class="py-1 px-1 font-bold text-teal-800">L2 分布式缓存 (Redis)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8px]">
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">存储位置</td>
+                                    <td class="py-1 px-1 text-slate-700">JVM 堆内内存 (Direct RAM)</td>
+                                    <td class="py-1 px-1 text-slate-700">Redis 集中式内存集群</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">TTL 策略</td>
+                                    <td class="py-1 px-1 text-amber-700 font-bold">短 TTL (如 10 秒) 降低数据漂移</td>
+                                    <td class="py-1 px-1 text-emerald-700 font-bold">长 TTL (如 30 分钟) 保护 DB</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1 font-mono font-bold text-slate-800">容量上限</td>
+                                    <td class="py-1 px-1 text-slate-600">受限于 JVM 堆容量 (如 10,000 项)</td>
+                                    <td class="py-1 px-1 text-slate-600">TB 级 (可集群横向扩容)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>配合 Pub/Sub 广播：写请求修改 DB 时发送广播擦除各节点的 L1 本地缓存</span>
+                    <i class="fa-solid fa-satellite-dish"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Complete MultiLevelCacheConfig.java Code (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code text-teal-600"></i>
+                            <span>2. 生产级 `MultiLevelCacheConfig.java` 组装代码</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">CompositeCacheManager</span>
+                    </div>
+
+                    <!-- Custom Java Code snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-0.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// MultiLevelCacheConfig.java 组合二级缓存管理器配置</div>
+                        <div><span class="text-indigo-300 font-bold">@Configuration</span></div>
+                        <div><span class="text-indigo-300 font-bold">@EnableCaching</span></div>
+                        <div><span class="text-indigo-300 font-bold">public class</span> <span class="text-emerald-300">MultiLevelCacheConfig</span> {</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 1. 装配 L1 CaffeineCacheManager Bean</div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">public</span> CaffeineCacheManager <span class="text-teal-300 font-bold">caffeineCacheManager</span>() {</div>
+                        <div class="pl-4">CaffeineCacheManager manager = <span class="text-indigo-300">new</span> CaffeineCacheManager();</div>
+                        <div class="pl-4">manager.setCaffeine(Caffeine.newBuilder()</div>
+                        <div class="pl-6">.maximumSize(<span class="text-amber-300">10_000</span>) <span class="text-slate-400">// 10000 条容量上限</span></div>
+                        <div class="pl-6">.expireAfterWrite(<span class="text-amber-300">10</span>, TimeUnit.SECONDS)); <span class="text-slate-400">// 10s 短过期防漂移</span></div>
+                        <div class="pl-4"><span class="text-amber-300">return</span> manager;</div>
+                        <div class="pl-2">}</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 2. 装配 L2 RedisCacheManager Bean</div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">public</span> RedisCacheManager <span class="text-teal-300 font-bold">redisCacheManager</span>(RedisConnectionFactory factory) {</div>
+                        <div class="pl-4">RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()</div>
+                        <div class="pl-6">.entryTtl(Duration.ofMinutes(<span class="text-amber-300">30</span>)) <span class="text-slate-400">// L2 30min 长过期</span></div>
+                        <div class="pl-6">.serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(<span class="text-indigo-300">new</span> StringRedisSerializer()))</div>
+                        <div class="pl-6">.serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(<span class="text-indigo-300">new</span> GenericJackson2JsonRedisSerializer()));</div>
+                        <div class="pl-4"><span class="text-amber-300">return</span> RedisCacheManager.builder(factory).cacheDefaults(config).build();</div>
+                        <div class="pl-2">}</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 3. 组合管理器 CompositeCacheManager (按声明顺序依次查找 L1 -> L2)</div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">@Bean</span> <span class="text-indigo-300 font-bold">@Primary</span></div>
+                        <div class="pl-2"><span class="text-indigo-300 font-bold">public</span> CompositeCacheManager <span class="text-teal-300 font-bold">compositeCacheManager</span>(CaffeineCacheManager l1, RedisCacheManager l2) {</div>
+                        <div class="pl-4"><span class="text-amber-300">return new</span> CompositeCacheManager(l1, l2); <span class="text-slate-400">// 列表首位为优先匹配层</span></div>
+                        <div class="pl-2">}</div>
+                        <div>}</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 39 · 第 8 讲课程总结与知识图谱全景</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Multi-Level Cache Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        利用 **`CompositeCacheManager`** 组合 Caffeine (L1) 与 Redis (L2)，既让 95%+ 的热点读请求在纳秒级直接从 JVM 进程内存返回，又依靠 Redis 集中式集群作为 100% 数据托底屏障，兼顾了极致性能吞吐与系统健壮性。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 38 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">38</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[95.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (37.html <- 38.html -> 39.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="37.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Boot + Caffeine + Redis 二级缓存综合整合实战</span>
+            <a href="39.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="37.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="39.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员理解 `CompositeCacheManager` 的链式查找：</span>
+                    “向学员做解构说明：在 Spring Boot 中实现二级缓存，可以通过注册 `CompositeCacheManager`，传入 `caffeineCacheManager`（L1）和 `redisCacheManager`（L2）。Spring 会按照传入列表的顺序优先去 L1 查找；如果 L1 没查到，再去 L2 查找，实现优雅的二级缓存穿透查找。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 L1 Caffeine 短 TTL 与 L2 Redis 长 TTL：</span>
+                    “请学员注意右侧代码中的 TTL 设置：L1 本地 Caffeine 设置为 10 秒短过期，避免 JVM 进程间长期保存旧值导致数据漂移；而 L2 Redis 设置为 30 分钟长过期，作为数据库前的核心防护罩。下一个 Slide 39 将进行第 8 讲的全讲课程总结与知识图谱展示。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '39.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '37.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

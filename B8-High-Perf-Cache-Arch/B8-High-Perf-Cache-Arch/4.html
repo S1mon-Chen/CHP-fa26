@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata and external dependencies... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 04 - 四大核心缓存模式 (Four Core Cache Design Patterns)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-cyan-600"></i>
+                <span>Part 01 · 缓存架构基础与缓存模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                四大核心缓存设计模式 (Four Core Cache Patterns)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Cache-Aside, Read-Through, Write-Through &amp; Write-Behind Architecture Patterns
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring main patterns comparison grid... -->
+        <!-- Content Grid: 4 Core Design Patterns -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Pattern 1: Cache-Aside Pattern (Standard) -->
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-split-up-and-left text-cyan-600"></i>
+                            <span>1. Cache-Aside Pattern (旁路缓存模式 - 工业标准)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Most Popular</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10px] text-slate-600 leading-relaxed">
+                            应用代码同时直接操控 <strong>Cache</strong> 与 <strong>Database</strong>，将缓存视为独立于数据库之外的旁路辅助存储。
+                        </p>
+
+                        <!-- Read Flow -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <span class="font-bold text-slate-900 text-[10.5px] block flex items-center gap-1.5">
+                                <i class="fa-solid fa-download text-cyan-600"></i>
+                                读请求流程 (Read Pipeline)
+                            </span>
+                            <div class="p-1 rounded bg-slate-900 text-slate-200 font-mono text-[8.5px] space-y-0.5">
+                                <div>Client ──1. Query──► Cache ──[Hit?]──► Return Data</div>
+                                <div class="text-cyan-300">                          └──[Miss?]──► Read DB ──► Write Cache ──► Return</div>
+                            </div>
+                        </div>
+
+                        <!-- Write Flow -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <span class="font-bold text-slate-900 text-[10.5px] block flex items-center gap-1.5">
+                                <i class="fa-solid fa-upload text-rose-600"></i>
+                                写请求流程 (Write Pipeline)
+                            </span>
+                            <div class="p-1 rounded bg-slate-900 text-slate-200 font-mono text-[8.5px] space-y-0.5">
+                                <div>Client ──1. Update DB──► Database</div>
+                                <div class="text-rose-400">       └──2. Delete/Invalidate Cache──► Cache (失效而非更新)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>为什么淘汰缓存优先于更新缓存？防并发乱序写导致脏数据覆盖</span>
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+            </div>
+
+            <!-- Pattern 2: Read-Through & Write-Through -->
+            <div class="rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-right-left text-teal-600"></i>
+                            <span>2. Read-Through / Write-Through Pattern (读写穿透模式)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Proxy Layer</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10px] text-slate-600 leading-relaxed">
+                            应用系统将缓存层当作<strong>唯一的主数据源 (Main Data Store)</strong>，所有对 DB 的读写均由 Cache Provider 统一代理。
+                        </p>
+
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-100 space-y-1.5 text-[10px]">
+                            <div class="p-1.5 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">Read-Through (读穿透)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    应用查 Cache，未命中时由 Cache 服务组件透明地负责从 DB 加载数据并填入 Cache，再返回给应用。
+                                </p>
+                            </div>
+
+                            <div class="p-1.5 rounded bg-teal-50/50 border border-teal-100">
+                                <span class="font-bold text-teal-950 font-mono">Write-Through (写穿透)</span>
+                                <p class="text-[9px] text-slate-600 mt-0.5">
+                                    应用更新 Cache，由 Cache 组件**同步**将新数据写入底层 DB。写操作完成后才返回成功。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>特点：应用层代码与 DB 彻底解耦，但需要专门的 Cache Provider 插件支持</span>
+                    <i class="fa-solid fa-cube"></i>
+                </div>
+            </div>
+
+            <!-- Pattern 3: Write-Behind / Write-Back (Asynchronous) -->
+            <div class="rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-indigo-600"></i>
+                            <span>3. Write-Behind / Write-Back Pattern (异步写回模式)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Ultra-High Throughput</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <p class="text-[10px] text-slate-600 leading-relaxed">
+                            写请求直接更新内存 Cache 并立刻返回。后台独立线程**异步、批量**将脏页 (Dirty Pages) 刷新写入 DB。
+                        </p>
+
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800">
+                            <div class="text-indigo-300 font-bold">1. Client ──Write──► Cache (Mark Dirty) ──► Return Immediately! (极大低延时)</div>
+                            <div class="text-slate-400">2. Background Thread ──Async Batch Flush (每 5 秒 / 1000 条)──► DB</div>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 text-[9.5px]">
+                            <span class="font-bold text-indigo-950 font-mono block mb-0.5">权衡与适用场景 (Trade-offs)</span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                优点：写入吞吐量极高，大幅减少 DB 磁盘 I/O。缺点：若内存 Cache 突然宕机，未刷盘的脏数据将<strong>永久丢失</strong>。适用于点赞数、浏览量统计等允许轻微丢失的场景。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：牺牲部分持久性换取极致的写性能，常配合 WAL 日志弥补</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Pattern 4: Write-Around & Summary Comparison -->
+            <div class="rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-table-cells text-amber-600"></i>
+                            <span>4. 4 大缓存模式综合选型矩阵 (Pattern Comparison Matrix)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Decision Guide</span>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div class="rounded-xl border border-amber-100 bg-white p-2 space-y-1 overflow-x-auto">
+                        <table class="w-full text-left border-collapse font-sans text-[9px]">
+                            <thead>
+                                <tr class="border-b border-amber-100 bg-slate-50 font-mono text-[8.5px] text-slate-700">
+                                    <th class="py-1 px-1.5 font-bold">模式类型</th>
+                                    <th class="py-1 px-1.5 font-bold text-cyan-900">读延迟</th>
+                                    <th class="py-1 px-1.5 font-bold text-teal-900">写吞吐</th>
+                                    <th class="py-1 px-1.5 font-bold text-amber-900">数据丢失风险</th>
+                                    <th class="py-1 px-1.5 font-bold text-indigo-900">典型适用场景</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8.5px]">
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-cyan-900">Cache-Aside</td>
+                                    <td class="py-1 px-1.5 text-slate-700">低 (Hit 时)</td>
+                                    <td class="py-1 px-1.5 text-slate-700">一般 (受限于 DB)</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">无 (DB 事务保证)</td>
+                                    <td class="py-1 px-1.5 text-slate-700">绝大多数读多写少互联网业务</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-teal-900">Read-Through</td>
+                                    <td class="py-1 px-1.5 text-slate-700">极低</td>
+                                    <td class="py-1 px-1.5 text-slate-700">受限于 DB</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">无</td>
+                                    <td class="py-1 px-1.5 text-slate-700">带有专门 Cache 中间件的服务</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-teal-900">Write-Through</td>
+                                    <td class="py-1 px-1.5 text-slate-700">极低</td>
+                                    <td class="py-1 px-1.5 text-slate-700">受限于 DB 同步写</td>
+                                    <td class="py-1 px-1.5 text-emerald-700 font-bold">无</td>
+                                    <td class="py-1 px-1.5 text-slate-700">要求缓存与 DB 强同步更新</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 px-1.5 font-mono font-bold text-indigo-900">Write-Behind</td>
+                                    <td class="py-1 px-1.5 text-slate-700">极低</td>
+                                    <td class="py-1 px-1.5 text-indigo-700 font-bold">极致 (内存直接写)</td>
+                                    <td class="py-1 px-1.5 text-rose-600 font-bold">有 (宕机丢未刷脏数据)</td>
+                                    <td class="py-1 px-1.5 text-slate-700">高频计数器、点赞数、文章浏览量</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 5 · Memcached 架构与 Slab 内存分配机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启示 (Caching Pattern Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        在分布式服务端开发中，<strong>Cache-Aside 旁路缓存模式</strong>是应用最为广泛的工业标准。处理写请求时，请务必记住**“先更新数据库，再失效删除缓存”**，这是保障数据一致性的黄金法则。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 4 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">04</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[10.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">四大核心缓存设计模式 (Four Core Cache Patterns)</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 Cache-Aside 模式的读写时序：</span>
+                    “向学员解构说明：Cache-Aside 是最常用的缓存旁路模式。读请求先查缓存，Miss 则查 DB 并回写缓存；写请求先更新 DB，再**删除/失效**缓存。请特别提醒学员：为什么是删除缓存而不是更新缓存？因为高并发下更新缓存极易因线程并发乱序导致脏数据写入缓存！”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 Write-Behind ( Write-Back ) 的极致性能与风险：</span>
+                    “请学员关注左下角的 Write-Behind 模式：写请求直接更新内存缓存并立刻返回，后台线程异步批量将脏页刷回数据库。这种方式写吞吐量极大，非常适合点赞数、浏览量等场景，但缺点是若服务器突然断电，未刷盘的数据会永久丢失。下一个 Slide 5 我们将深入剖析经典的分布式内存缓存 Memcached 及其 Slab 内存预分配机制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

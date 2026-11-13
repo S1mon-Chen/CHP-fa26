@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata and external dependencies... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 05 - Memcached 架构与 Slab 内存分配 (Memcached Architecture &amp; Slab Allocation)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-microchip text-cyan-600"></i>
+                <span>Part 01 · 缓存架构基础与缓存模式</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Memcached 架构与 Slab 内存分配 (Memcached &amp; Slab Allocation)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Key-Value Storage, Slab Allocation Mechanics, Chunk Pre-allocation &amp; CAS Race Condition Control
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring Slab Class Allocation and Commands grid... -->
+        <!-- Content Grid: Left (Slab Allocation Mechanics) vs Right (Memcached Commands & CAS) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Slab Allocation Memory Management (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-memory text-cyan-600"></i>
+                            <span>1. Slab Allocation 预分配机制（避免内存碎片）</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">No Fragmentation</span>
+                    </div>
+
+                    <p class="text-[10px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        传统 OS <code class="font-mono text-cyan-900 font-bold">malloc/free</code> 频繁分配变长内存会导致严重的内存碎片与频繁 GC 卡顿。Memcached 采用 **Slab Allocation** 预分配机制，按固定尺寸切分内存：
+                    </p>
+
+                    <!-- Slab Allocation Visual Diagram -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[9px] space-y-1.5 border border-slate-800">
+                        <div class="flex items-center justify-between text-cyan-300 font-bold pb-1 border-b border-slate-800">
+                            <span>Slab Class 分组（增长因子 Growth Factor，默认 1.25）</span>
+                            <span class="text-[8.5px] text-teal-400">Page Size = 1 MB</span>
+                        </div>
+
+                        <!-- Class 1 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                            <span class="text-teal-300 font-bold">Slab Class 1 (Chunk Size: 88 Bytes)</span>
+                            <div class="flex items-center gap-1 text-[8px] text-slate-400">
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Chunk 88B</span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Chunk 88B</span>
+                                <span>...</span>
+                            </div>
+                        </div>
+
+                        <!-- Class 2 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                            <span class="text-teal-300 font-bold">Slab Class 2 (Chunk Size: 112 Bytes)</span>
+                            <div class="flex items-center gap-1 text-[8px] text-slate-400">
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Chunk 112B</span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Chunk 112B</span>
+                                <span>...</span>
+                            </div>
+                        </div>
+
+                        <!-- Class 3 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                            <span class="text-teal-300 font-bold">Slab Class 3 (Chunk Size: 144 Bytes)</span>
+                            <div class="flex items-center gap-1 text-[8px] text-slate-400">
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Chunk 144B</span>
+                                <span>...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Matching Callout -->
+                    <div class="mt-2 p-2 rounded-xl bg-white border border-cyan-100 text-[9.5px]">
+                        <span class="font-bold text-cyan-950 block mb-0.5">精准尺寸匹配分配 (Best-Fit Chunk Routing)</span>
+                        <p class="text-[9px] text-slate-600 leading-tight">
+                            例如向 Memcached 存入一个 **100 Bytes** 的数据 Item 时，系统自动遍历 Slab Class，选择最接近且大于 100B 的 **Slab Class 2 (112 Bytes Chunk)** 进行存放，极大消除了外部内存碎片。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>本质：牺牲少量内部碎片（Slab 内部空间闲置），换取绝对的零外部碎片与物理高效</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Memcached Commands & CAS Protocol (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-terminal text-teal-600"></i>
+                            <span>2. 核心命令集与 CAS 并发控制</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Command Set &amp; CAS</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <!-- Commands Grid -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                            <div class="grid grid-cols-2 gap-1.5 font-mono text-[9px]">
+                                <div class="p-1 rounded bg-teal-50/60 border border-teal-100">
+                                    <span class="font-bold text-teal-950 block">set / add / replace</span>
+                                    <span class="text-[8px] font-sans text-slate-500">无条件覆盖 / 仅不存在时存 / 仅存在时存</span>
+                                </div>
+                                <div class="p-1 rounded bg-teal-50/60 border border-teal-100">
+                                    <span class="font-bold text-teal-950 block">append / prepend</span>
+                                    <span class="text-[8px] font-sans text-slate-500">在现有 Item 末尾/头部追加数据</span>
+                                </div>
+                                <div class="p-1 rounded bg-teal-50/60 border border-teal-100">
+                                    <span class="font-bold text-teal-950 block">get / delete</span>
+                                    <span class="text-[8px] font-sans text-slate-500">读取数据项 / 删除指定的缓存键</span>
+                                </div>
+                                <div class="p-1 rounded bg-teal-50/60 border border-teal-100">
+                                    <span class="font-bold text-teal-950 block">incr / decr</span>
+                                    <span class="text-[8px] font-sans text-slate-500">对 64位整数执行原子加减递增</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CAS Protocol Detail -->
+                        <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[9px] space-y-1 border border-slate-800">
+                            <span class="text-teal-300 font-bold block">CAS (Check-And-Set / Compare-And-Swap) 原子更新</span>
+                            <p class="text-[8.5px] font-sans text-slate-300 leading-tight">
+                                解决多客户端并发更新缓存时的竞态条件 (Race Condition)：
+                            </p>
+                            <div class="p-1 rounded bg-slate-950 text-[8px] text-slate-300 space-y-0.5">
+                                <div>1. Client A: <code class="text-amber-300">gets key</code> ──► 返回 Value 与 64位唯一的 **CAS token**</div>
+                                <div>2. Client A: <code class="text-amber-300">cas key val token</code> ──► 仅当 CAS token 未变时写入成功！</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 6 · 一致性 Hash 算法 (Consistent Hashing) 与虚拟节点</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启示 (Memcached Memory Philosophy)</h4>
+                    <p class="text-xs text-slate-700">
+                        Memcached 是纯粹的 Key-Value 内存缓存标杆。其通过 **Slab Class** 预分配机制彻底解决了内存碎片与操作系统垃圾回收卡顿问题，并通过 **CAS (Check-And-Set)** 指令原生支持无锁化的原子并发更新。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 5 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">05</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[12.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (4.html <- 5.html -> 6.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="4.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Memcached 架构与 Slab 内存分配 (Slab Allocation)</span>
+            <a href="6.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="4.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="6.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 Memcached 的 Slab 内存分配物理原理：</span>
+                    “向学员做解构说明：Memcached 为了避免操作系统 `malloc` 和 `free` 产生的内存碎片，在启动时就按固定大小向 OS 申请固定页（Page，1MB），并切割为定长的 Chunk（如 88B, 112B, 144B 等）。当要存 100B 的数据时，直接寻找最贴合的 Slab Class 2 (112B Chunk)，避免了垃圾回收和外部内存碎片问题。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 `gets` 与 `cas` 原子的并发应用：</span>
+                    “请学员关注右侧的 CAS 指令：当多个客户端并发对同一个 key 执行‘读取-修改-写回’时，传统的 `get` 和 `set` 会发生数据覆盖冲突；而通过 `gets` 获取独特的 64 位 CAS token，并在 `cas` 命令中提交，只有在 token 未被其他客户端改变时才能成功写入，实现了无锁化的并发控制。下一个 Slide 6 我们将探讨分布式缓存节点选择的核心算法：一致性 Hash。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '6.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '4.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

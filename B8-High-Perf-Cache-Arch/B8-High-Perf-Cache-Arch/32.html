@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - Spring Cache 核心注解：@Cacheable, @CachePut 与 @CacheEvict (Spring Cache Annotations)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-tags text-emerald-600"></i>
+                <span>Part 05 · Spring Boot 缓存声明式实战与消息机制</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Cache 核心注解：`@Cacheable`, `@CachePut` 与 `@CacheEvict`
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Method Interception Lifecycle, SpEL Key Generator, Condition &amp; Unless Filtering, Complex `@Caching`
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Core Annotations & Mechanics) vs Right Card (SpEL & Java Code Practical) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Core Annotations & Lifecycle (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-emerald-600"></i>
+                            <span>1. 声明式缓存三大核心注解功能与生命周期</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Spring Annotations</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- @Cacheable -->
+                        <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-emerald-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-download text-emerald-600"></i>
+                                    `@Cacheable` (只读/拦截查询)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono text-[8.5px] font-bold">Query Optimization</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                先检查指定 Cache 容器中是否存在 Key：若 **Hit (命中)** 直接返回缓存对象，**不执行方法体**；若 **Miss (未命中)** 则执行方法，并自动将返回值存入 Cache。
+                            </p>
+                        </div>
+
+                        <!-- @CachePut -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-pen-to-square text-teal-600"></i>
+                                    `@CachePut` (写/强制更新)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px] font-bold">Update Flush</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                **必定强制执行方法体**（通常用于数据库更新 UPDATE 操作），方法执行完毕后，自动将最新的返回值覆盖刷入 Cache 容器。
+                            </p>
+                        </div>
+
+                        <!-- @CacheEvict -->
+                        <div class="p-2 rounded-xl bg-white border border-rose-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-rose-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-trash-can text-rose-600"></i>
+                                    `@CacheEvict` (擦除/清理缓存)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px] font-bold">Delete Purge</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                用于数据库 DELETE 操作。根据 Key 从 Cache 中清除条目。<br/>
+                                • <code class="font-mono text-rose-800">allEntries = true</code>：清空整个命名 Cache 空间的所有项。<br/>
+                                • <code class="font-mono text-rose-800">beforeInvocation = true</code>：在方法执行前提前清空，防止方法异常导致脏缓存留存。
+                            </p>
+                        </div>
+
+                        <!-- @Caching -->
+                        <div class="p-1.5 rounded-lg bg-slate-100 border border-slate-200 text-[8.5px] text-slate-600 font-sans flex items-center justify-between">
+                            <span class="font-mono font-bold text-slate-800">`@Caching` 组合注解：</span>
+                            <span>支持在一方法上聚合多个 `@Cacheable`, `@CachePut` 或 `@CacheEvict` 复杂组合法则。</span>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>核心原则：查询用 @Cacheable，更新用 @CachePut，删除用 @CacheEvict</span>
+                    <i class="fa-solid fa-arrows-spin"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: SpEL Key Expression & Code Practical (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-teal-600"></i>
+                            <span>2. SpEL 表达式生成 Key 与 Service 层完整代码实战</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">SpEL &amp; Service</span>
+                    </div>
+
+                    <!-- SpEL Expression Syntax Box -->
+                    <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 mb-1.5 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-teal-900 font-mono">SpEL (Spring Expression Language) 常用 Key 规则</span>
+                            <span class="text-[8.5px] font-mono text-teal-700 font-bold">Dynamic Key</span>
+                        </span>
+                        <div class="grid grid-cols-2 gap-1 font-mono text-[8px] text-slate-700">
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong class="text-emerald-800">#id / #p0</strong> 入参名为 id 的变量或第 0 个参数
+                            </div>
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong class="text-emerald-800">#user.id</strong> 读取入参 DTO 对象内部属性
+                            </div>
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong class="text-amber-800">condition</strong> 执行前过滤 (如 `#id &gt; 0`)
+                            </div>
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong class="text-amber-800">unless</strong> 执行后过滤 (如 `#result == null`)
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Full Java Code Practical -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-1 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// PersonServiceImpl.java 声明式缓存实战</div>
+                        <div class="text-indigo-300">@Service</div>
+                        <div class="text-slate-300">public class PersonServiceImpl implements PersonService {</div>
+                        
+                        <div class="pl-2 text-slate-400">// 1. 查询：Miss 时自动写缓存，排除 null 返回值</div>
+                        <div class="pl-2 text-emerald-300 font-bold">@Cacheable(value = "persons", key = "#id", unless = "#result == null")</div>
+                        <div class="pl-2 text-slate-300">public Person findById(Integer id) { return personRepo.findById(id).orElse(null); }</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 2. 更新：每次都执行数据库更新，并更新缓存</div>
+                        <div class="pl-2 text-teal-300 font-bold">@CachePut(value = "persons", key = "#person.id")</div>
+                        <div class="pl-2 text-slate-300">public Person update(Person person) { return personRepo.save(person); }</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 3. 删除：删除 DB 并将 Redis 中该 Key 擦除</div>
+                        <div class="pl-2 text-rose-300 font-bold">@CacheEvict(value = "persons", key = "#id")</div>
+                        <div class="pl-2 text-slate-300">public void delete(Integer id) { personRepo.deleteById(id); }</div>
+                        <div class="text-slate-300">}</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 33 · Spring Boot 整合 Redis (`RedisTemplate` 序列化与配置)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Declarative Cache Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Spring Cache 注解彻底将业务逻辑从繁琐的“防穿透、查询、写入、序列化”样板代码中解放出来。结合 **SpEL 动态 Key 表达式** 与 **`unless = "#result == null"`** 过滤条件，可以用零侵入的方式构筑安全、高效的缓存访问控制层。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 32 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[80.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Cache 核心注解：@Cacheable, @CachePut 与 @CacheEvict</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 引导学员透视三大缓存注解的区别：</span>
+                    “向学员做解构说明：很多人搞混 `@Cacheable` 和 `@CachePut`。记住：`@Cacheable` 包含**拦截机制**，如果 Cache 里有就根本不会去调底层数据库；而 `@CachePut` **必定强制调用数据库更新方法**，然后把结果刷新回 Cache；`@CacheEvict` 则是在删除记录时同步清空 Cache。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 强调 SpEL 表达式与 `unless` 防空值缓存：</span>
+                    “请学员特别关注右侧代码中的 `unless = "#result == null"`：如果在数据库里没查到该用户返回了 null，加了 `unless` 就不把 null 写进缓存，防止将数据库查空的对象乱刷进 Redis。下一个 Slide 33 将讲解 **Spring Boot 整合 Redis (`RedisTemplate` 序列化与配置)**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

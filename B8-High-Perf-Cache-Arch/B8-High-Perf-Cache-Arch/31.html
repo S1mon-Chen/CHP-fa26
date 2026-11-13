@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 31 - Spring Cache 声明式缓存抽象与 @EnableCaching 机制 (Spring Cache Abstraction)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-emerald-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-emerald-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-leaf text-emerald-600"></i>
+                <span>Part 05 · Spring Boot 缓存声明式实战与消息机制</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Cache 声明式缓存抽象与 `@EnableCaching` 机制
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Spring Cache Abstraction, Unified `CacheManager` SPI, Spring AOP Aspect &amp; Zero Code Invasion
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Spring Cache SPI Architecture) vs Right Card (CacheManager Implementations & Maven Integration) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Spring Cache SPI Architecture & AOP Interception (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-emerald-200 bg-emerald-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-emerald-200">
+                        <h3 class="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-emerald-600"></i>
+                            <span>1. Spring Cache 解耦哲学与 AOP 切面代理体系</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold">Cache SPI</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        Spring Cache 并不直接实现具体的缓存存储，而是提供了一套高度抽象的 **SPI 接口 (Service Provider Interface)**，通过 Spring AOP 动态代理将业务代码与具体缓存实现完全解耦：
+                    </p>
+
+                    <!-- AOP Interception Flow Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-emerald-400 font-bold">// Spring Cache 声明式切面拦截管线</div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            1. 启动类标注: <span class="text-amber-300 font-bold">@EnableCaching</span> <span class="text-slate-500">// 激活 CacheAspectSupport</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            2. 业务方法标注: <span class="text-teal-300 font-bold">@Cacheable("users")</span> <span class="text-slate-500">// 声明缓存切点</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            3. AOP 代理拦截: <span class="text-cyan-300">CacheInterceptor.invoke()</span> <span class="text-slate-500">// 拦截目标方法</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            4. 路由 CacheManager: <span class="text-emerald-300 font-bold">CacheManager.getCache("users") ──► Redis / Caffeine</span>
+                        </div>
+                    </div>
+
+                    <!-- Core Interfaces Box -->
+                    <div class="p-2 rounded-xl bg-white border border-emerald-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-emerald-900 font-mono">核心接口双雄 (Cache Core SPI)</span>
+                            <span class="text-[8.5px] font-mono text-emerald-700 font-bold">Cache &amp; CacheManager</span>
+                        </span>
+                        <ul class="text-[9px] text-slate-600 space-y-0.5 font-sans leading-tight">
+                            <li>• **`CacheManager`**：缓存管理器接口，负责管理与生命周期控制多个命名的 `Cache` 容器。</li>
+                            <li>• **`Cache`**：底层缓存操作接口，统一封装了 `get(key)`, `put(key, val)`, `evict(key)` 等原子读写。</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-emerald-200 text-[9.5px] font-mono text-emerald-800 flex items-center justify-between">
+                    <span>特点：修改底层缓存（如 Caffeine 升级 Redis）只需替换 Bean，业务代码零改动</span>
+                    <i class="fa-solid fa-code"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: CacheManager Implementations & Spring Boot Maven Setup (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gears text-teal-600"></i>
+                            <span>2. 常见 `CacheManager` 实现类与 Maven 依赖集成</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Cache Providers</span>
+                    </div>
+
+                    <!-- CacheManager Implementations Table -->
+                    <div class="rounded-xl border border-teal-100 bg-white p-1.5 space-y-1 overflow-x-auto mb-1.5">
+                        <table class="w-full text-left border-collapse font-sans text-[8.5px]">
+                            <thead>
+                                <tr class="border-b border-teal-100 bg-slate-50 font-mono text-[8px] text-slate-700">
+                                    <th class="py-0.5 px-1 font-bold">实现类 (CacheManager)</th>
+                                    <th class="py-0.5 px-1 font-bold text-teal-900">存储介质类型</th>
+                                    <th class="py-0.5 px-1 font-bold text-slate-700">典型适用场景</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-[8px]">
+                                <tr>
+                                    <td class="py-0.5 px-1 font-mono font-bold text-emerald-800">RedisCacheManager</td>
+                                    <td class="py-0.5 px-1 text-slate-700">Redis 集中式内存集群</td>
+                                    <td class="py-0.5 px-1 text-emerald-800 font-bold">分布式微服务集群（生产首选）</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-0.5 px-1 font-mono text-slate-800">CaffeineCacheManager</td>
+                                    <td class="py-0.5 px-1 text-slate-700">JVM 进程内本地内存</td>
+                                    <td class="py-0.5 px-1 text-slate-600">单体高并发、纳秒级本地 L1 缓存</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-0.5 px-1 font-mono text-slate-800">CompositeCacheManager</td>
+                                    <td class="py-0.5 px-1 text-slate-700">组合多级缓存链</td>
+                                    <td class="py-0.5 px-1 text-indigo-700 font-bold">Caffeine (L1) + Redis (L2) 级联</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-0.5 px-1 font-mono text-slate-500">ConcurrentMapCacheManager</td>
+                                    <td class="py-0.5 px-1 text-slate-500">JVM ConcurrentHashMap</td>
+                                    <td class="py-0.5 px-1 text-slate-500">快速单元测试 / 本地 Demo</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Maven Dependency Code Preview -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// Spring Boot 启动依赖配置 (`pom.xml`)</div>
+                        <div class="text-slate-300">&lt;<span class="text-amber-300">dependency</span>&gt;</div>
+                        <div class="pl-3 text-slate-300">&lt;<span class="text-teal-300">groupId</span>&gt;org.springframework.boot&lt;/<span class="text-teal-300">groupId</span>&gt;</div>
+                        <div class="pl-3 text-slate-300">&lt;<span class="text-teal-300">artifactId</span>&gt;<span class="text-emerald-300 font-bold">spring-boot-starter-cache</span>&lt;/<span class="text-teal-300">artifactId</span>&gt;</div>
+                        <div class="text-slate-300">&lt;/<span class="text-amber-300">dependency</span>&gt;</div>
+                        <div class="text-slate-300">&lt;<span class="text-amber-300">dependency</span>&gt;</div>
+                        <div class="pl-3 text-slate-300">&lt;<span class="text-teal-300">groupId</span>&gt;org.springframework.boot&lt;/<span class="text-teal-300">groupId</span>&gt;</div>
+                        <div class="pl-3 text-slate-300">&lt;<span class="text-teal-300">artifactId</span>&gt;<span class="text-emerald-300 font-bold">spring-boot-starter-data-redis</span>&lt;/<span class="text-teal-300">artifactId</span>&gt;</div>
+                        <div class="text-slate-300">&lt;/<span class="text-amber-300">dependency</span>&gt;</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 32 · Spring Cache 核心注解：`@Cacheable`, `@CachePut` 与 `@CacheEvict`</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-emerald-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-emerald-900">核心架构启发 (Spring Cache Abstraction Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Spring Cache 展现了极其高超的设计模式运用：通过 **AOP 切面拦截** 屏蔽了繁琐的缓存判定代码，通过 **统一 `CacheManager` SPI 接口** 抹平了底层 Caffeine 与 Redis 的技术差异，使得项目能够以极低成本进行缓存技术的架构升级。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-emerald-200 text-emerald-800 font-bold">Slide 31 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">31</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-emerald-600 h-full w-[77.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (30.html <- 31.html -> 32.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="30.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Cache 声明式缓存抽象与 @EnableCaching 机制</span>
+            <a href="32.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="30.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="32.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-emerald-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <span class="font-bold text-emerald-900 block mb-1">🎯 开启 Part 05：引导学员透视 Spring Cache 的抽象设计：</span>
+                    “向学员做解构说明：从这页 Slide 31 开始，我们开启 Part 05 的 Spring Boot 声明式缓存实战。Spring Cache 的精髓在于统一的抽象接口——`CacheManager` 和 `Cache`。通过给启动类标注 `@EnableCaching`，Spring AOP 切面会自动拦截带缓存注解的方法，屏蔽底层的物理存储差异。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析主流 `CacheManager` 的选型适用场景：</span>
+                    “请学员重点关注右侧卡片：单体高并发场景可以用 `CaffeineCacheManager`（纳秒级）；分布式微服务推荐 `RedisCacheManager`；而在多级缓存架构中，我们可以使用 `CompositeCacheManager` 将 Caffeine 与 Redis 组合。下一个 Slide 32 将讲解 `@Cacheable`, `@CachePut` 与 `@CacheEvict` 三大核心注解的用法。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '32.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '30.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

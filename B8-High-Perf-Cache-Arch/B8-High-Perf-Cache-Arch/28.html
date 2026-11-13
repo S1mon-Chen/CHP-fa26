@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 28 - 双写一致性解决方案：延迟双删与 Canal Binlog 异步解耦 (Dual-Write Solutions)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-rotate text-teal-600"></i>
+                <span>Part 04 · 缓存异常治理与数据一致性</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                双写一致性落地解决方案：延迟双删与 Canal Binlog 异步解耦 (Dual-Write Solutions)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Delayed Double Delete Protocol, Canal MySQL Slave Replication, Async MQ Eviction &amp; Non-Intrusive Decoupling
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Delayed Double Delete) vs Right Card (Canal + Binlog + MQ) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Delayed Double Delete Strategy (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-clock-rotate-left text-amber-600"></i>
+                            <span>1. 方案一：延迟双删机制 (Delayed Double Delete)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Legacy Workaround</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        当项目存在历史包袱，被迫采用**“先删除缓存，再更新数据库”**策略时，为了消除并发读线程写回的旧脏数据，引入**延迟第二次删除**：
+                    </p>
+
+                    <!-- Pipeline Code Preview -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-amber-400 font-bold">// 延迟双删四步管线</div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            1. redis.delete(key); <span class="text-slate-500">// 1. 第一次先删缓存</span>
+                            <div class="text-emerald-300">2. db.update(data); // 2. 更新数据库</div>
+                            <div class="text-cyan-300">3. Thread.sleep(N); // 3. 休眠 N 毫秒（确保读请求完成写缓存）</div>
+                            <div class="text-rose-400 font-bold">4. redis.delete(key); // 4. 第二次强行再次删除缓存！</div>
+                        </div>
+                    </div>
+
+                    <!-- Sleep Time Formula Box -->
+                    <div class="p-2 rounded-xl bg-white border border-amber-200 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-amber-900 font-mono">休眠时间 $N$ 的估算法则与局限性</span>
+                            <span class="text-[8.5px] font-mono text-amber-700 font-bold">$N > \text{Read Time} + \text{Network Jitter}$</span>
+                        </span>
+                        <p class="text-[9px] text-slate-600 leading-relaxed font-sans">
+                            • **估算原则**：休眠时间 $N$ 必须大于“并发读线程读取旧 DB + 写入旧 Cache 的总耗时”加上网络抖动缓冲。<br/>
+                            • **工程缺点**：硬编码 <code class="font-mono text-amber-900">Thread.sleep(N)</code> 会**卡死主线程**下降吞吐量；若第二次删除由于网络异常失败，仍需额外接入 MQ 重试。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>特点：补救折中方案，牺牲了部分写响应耗时，侵入业务代码</span>
+                    <i class="fa-solid fa-scale-balanced"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Canal + Binlog + MQ Async Decoupling (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-teal-600"></i>
+                            <span>2. 方案二：Canal 监听 Binlog 异步无侵入清理 (Canal + MQ)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Production Standard</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        **生产环境推荐的标准解耦架构**！利用阿里巴巴 **Canal**（或 Debezium）伪装成 MySQL Slave 订阅 Binlog 变动，完全剥离业务代码中的缓存清理逻辑：
+                    </p>
+
+                    <!-- Canal Architecture Pipeline Diagram -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-cyan-400 font-bold">// Canal 异步无侵入清理流管线</div>
+                        
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            1. 应用只更新数据库: <span class="text-emerald-300 font-bold">App ──► Update DB (MySQL Master)</span>
+                        </div>
+
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            2. Canal 伪装 Slave 订阅 Binlog: <span class="text-amber-300">MySQL Binlog ──► Canal Server</span>
+                        </div>
+
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            3. 发送事件至 MQ 重试消费: <span class="text-teal-300">Canal ──► MQ (RocketMQ / Kafka) ──► Consumer</span>
+                        </div>
+
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            4. 异步擦除 Redis/Caffeine 缓存: <span class="text-rose-400 font-bold">Consumer ──► redis.del(key)</span>
+                        </div>
+                    </div>
+
+                    <!-- Advantages Box -->
+                    <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-teal-900 font-mono">Canal 异步架构的三大核心优势</span>
+                            <span class="text-[8.5px] font-mono text-teal-700 font-bold">Zero Code Invasion</span>
+                        </span>
+                        <ul class="text-[9px] text-slate-600 space-y-0.5 font-sans leading-tight">
+                            <li>• **零业务代码侵入 (Zero Invasion)**：业务业务应用只需操作 MySQL，无需关心任何 Redis 操作。</li>
+                            <li>• **100% 最终一致性 guarantee**：数据库事务成功提交后才会产生 Binlog；结合 MQ 幂等重试机制，彻底防止删缓存丢失。</li>
+                            <li>• **天然支持多级缓存清理**：MQ 消费者可以广播给集群中所有的 JVM 节点，同步清空 Caffeine 本地 L1 缓存。</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 29 · Redisson 分布式锁与看门狗 (Watchdog) 自动续期机制</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Dual-Write Consistency Solution Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        延迟双删是牺牲响应时间的补救折中；而 **`Canal + Binlog + MQ` 异步解耦** 是现代微服务高并发架构的标准姿势。通过将数据库事务日志 (Binlog) 转化为缓存擦除事件，实现了业务代码零侵入与最终一致性的完美平衡。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-800 font-bold">Slide 28 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">28</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[70.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (27.html <- 28.html -> 29.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="27.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">双写一致性落地解决方案：延迟双删与 Canal Binlog 异步解耦</span>
+            <a href="29.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="27.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="29.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学员比较“延迟双删”与“Canal 异步清理”：</span>
+                    “向学员解构说明：上一页 Slide 27 证明了 Cache-Aside 模式（先更新 DB，再删 Cache）是最好的。但如果项目必须‘先删 Cache 再写 DB’，就必须用‘延迟双删’：先删缓存，更新 DB，休眠 N 毫秒后再删一次缓存（清掉并发读请求灌入的旧脏值）。不过休眠 N 毫秒会阻塞主线程，影响吞吐量。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析 Canal + MQ 异步无侵入解耦的优势：</span>
+                    “请学员重点关注右侧的生产级解耦方案：通过阿里巴巴 Canal 组件伪装成 MySQL Slave 订阅 Binlog，当 DB 事务成功提交并产生 Binlog 后，由 Canal 捕获发送到 RocketMQ/Kafka，消费者异步清理 Redis/Caffeine 缓存。业务代码完全不用写任何删缓存逻辑，实现了极高吞吐与最终一致性！下一个 Slide 29 将探讨 Redisson 分布式锁与看门狗自动续期机制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '29.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '27.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

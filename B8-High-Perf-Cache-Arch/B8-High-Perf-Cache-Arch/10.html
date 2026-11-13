@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - Redis 核心数据结构 1：String 与 SDS 物理内核 (SDS Simple Dynamic String)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 8 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-code text-teal-600"></i>
+                <span>Part 02 · Redis 内部内核与核心数据结构</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Redis 数据结构 1：String 与 SDS 物理内核 (Simple Dynamic String)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                C String Limitations vs. SDS Header (`sdshdr8`), $O(1)$ Length, Binary Safety &amp; Buffer Allocation
+            </p>
+        </div>
+
+        <!-- Content Grid: Left (C String vs SDS Structure) vs Right (Three Core Advantages) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: SDS C-Struct Physical Memory Layout (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-code text-teal-600"></i>
+                            <span>1. C 语言原生字符串缺陷与 SDS 结构体</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">SDS C-Struct</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        C 语言原生字符串以 <code class="font-mono text-teal-900 font-bold">'\0'</code> 标记结尾，获取长度需遍历数组 ($O(N)$)，且数据中不能包含 <code class="font-mono text-teal-900 font-bold">'\0'</code>。Redis 自研了 **SDS (Simple Dynamic String)** 结构：
+                    </p>
+
+                    <!-- SDS C Struct Source Code -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-teal-400 font-bold">// Redis 内部 SDS 报头结构体 (sdshdr8 样例)</div>
+                        <div class="text-slate-300"><span class="text-indigo-400">struct</span> <span class="text-amber-300">__attribute__</span> ((__packed__)) <span class="text-teal-300">sdshdr8</span> {</div>
+                        <div class="pl-4 text-slate-300">uint8_t <span class="text-cyan-300">len</span>;        <span class="text-slate-500">// 1. 已使用字节长度 (O(1) 获取长度)</span></div>
+                        <div class="pl-4 text-slate-300">uint8_t <span class="text-cyan-300">alloc</span>;      <span class="text-slate-500">// 2. 预分配总字节长度 (不含 header 和 '\0')</span></div>
+                        <div class="pl-4 text-slate-300">unsigned char <span class="text-cyan-300">flags</span>; <span class="text-slate-500">// 3. SDS 类型标志 (sdshdr5/8/16/32/64)</span></div>
+                        <div class="pl-4 text-teal-300 font-bold">char <span class="text-cyan-300">buf[]</span>;         <span class="text-slate-500">// 4. 柔性字节数组 (二进制安全字节流)</span></div>
+                        <div class="text-slate-300">};</div>
+                    </div>
+
+                    <div class="mt-2 p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="text-teal-900">内存紧凑优化 (`__attribute__ ((__packed__))`)</span>
+                            <span class="text-[8.5px] font-mono text-teal-700 font-bold">Zero Alignment Padding</span>
+                        </span>
+                        <p class="text-[9px] text-slate-600 leading-tight">
+                            结构体禁止编译器字节对齐填充，直接通过 <code class="font-mono text-teal-900">buf - 1</code> 快速定位 <code class="font-mono text-teal-900">flags</code> 字段，节省内存并提高 CPU 缓存命中率。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>本质：将定长字符数组升级为自带长度元数据的动态字节缓冲区</span>
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Three Core Physical Advantages (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt text-cyan-600"></i>
+                            <span>2. SDS 的三大物理设计优势 (Core Advantages)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">SDS Superiority</span>
+                    </div>
+
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        <!-- Advantage 1: O(1) Length -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <span class="font-bold text-slate-900 text-[10.5px] block flex items-center justify-between">
+                                <span class="flex items-center gap-1 text-teal-900">
+                                    <i class="fa-solid fa-stopwatch text-teal-600"></i>
+                                    1. 常数复杂度 $O(1)$ 获取字符串长度
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px] font-bold">$O(1)$ Time</span>
+                            </span>
+                            <p class="text-[9.5px] text-slate-600 leading-relaxed">
+                                C 字符串执行 `strlen` 必须从头遍历到结尾 ($O(N)$)。SDS 直接读取结构体头部的 <code class="font-mono text-teal-900 font-bold">len</code> 字段，时间复杂度恒为 **$O(1)$**。
+                            </p>
+                        </div>
+
+                        <!-- Advantage 2: Binary Safe -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <span class="font-bold text-slate-900 text-[10.5px] block flex items-center justify-between">
+                                <span class="flex items-center gap-1 text-teal-900">
+                                    <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                                    2. 真正的二进制安全 (Binary Safe)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px] font-bold">Raw Byte Stream</span>
+                            </span>
+                            <p class="text-[9.5px] text-slate-600 leading-relaxed">
+                                不以 <code class="font-mono text-teal-900 font-bold">'\0'</code> 字符判定文本截断，而是依赖 `len` 判定长度。可以安全地存储图片、压缩字节流、Protobuf 或序列化 JSON 对象。
+                            </p>
+                        </div>
+
+                        <!-- Advantage 3: Space Allocation -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-1">
+                            <span class="font-bold text-slate-900 text-[10.5px] block flex items-center justify-between">
+                                <span class="flex items-center gap-1 text-teal-900">
+                                    <i class="fa-solid fa-expand text-teal-600"></i>
+                                    3. 空间预分配与惰性释放 (Prevent Buffer Overflow)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px] font-bold">Lazy Allocation</span>
+                            </span>
+                            <p class="text-[9.5px] text-slate-600 leading-relaxed">
+                                字符串拼接修改时，自动检查并分配额外的冗余空间（$< 1\text{MB}$ 时扩容为 2 倍），大幅减少内存重分配 (`realloc`) 系统调用，杜绝缓冲区溢出。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 11 · Hash 对象底层双重编码 ziplist/listpack 与 dict 渐进式 Rehash</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心数据结构启发 (SDS Design Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Redis 的 SDS 结构体现了极致的 C 语言性能优化思维：通过在字符数组前增加包含 **`len` 与 `alloc`** 的 Header 报头，用极小的空间开销（几字节），换取了字符串 $O(1)$ 长度获取、二进制安全与防止缓冲区溢出的三大物理能力。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-800 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Redis 数据结构 1：String 与 SDS 物理内核</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-teal-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学员透视 SDS 的 C 语言底层结构：</span>
+                    “向学员做源码解构：C 语言原生字符串有两个致命缺陷：一是获取长度必须从头扫描到结尾 ($O(N)$)，二是遇到 `\0` 就会被判定结束（非二进制安全）。Redis 专门设计了 SDS（简单动态字符串），在字节数组前面带上 `sdshdr` Header 报头，记录了已用字节 `len` 和已分配字节 `alloc`。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析二进制安全与预分配策略：</span>
+                    “请学员重点关注右侧卡片的三大优势：1. $O(1)$ 读长度；2. 依靠 `len` 判定结束，因此可以存储包含任意 `\0` 的图片或压缩二进制文件；3. 空间预分配降低了 `realloc` 调用的开销。下一个 Slide 11 将探讨 Redis Hash 对象的物理结构——ziplist/listpack 与 dict 渐进式 Rehash。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
