@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作业 7 · 图书详情并发压测</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#142333;font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}main{max-width:1150px;margin:36px auto;padding:0 26px}header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}h1{font-size:29px;line-height:1.35;margin:6px 0}h2{font-size:18px;margin:0 0 16px}.eyebrow{font-size:12px;letter-spacing:2px;color:#587187}.identity{color:#64748b;font-size:14px}.badge{background:#dfede7;color:#186249;padding:7px 14px;border-radius:20px;font-size:13px}.panel{background:white;border:1px solid #dde3e9;border-radius:14px;padding:22px 24px;margin-bottom:18px}.bar{display:flex;align-items:center;justify-content:space-between;gap:20px}.sub{color:#64748b;font-size:14px}code{font-family:ui-monospace,Menlo,monospace;font-size:13px}button{border:0;background:#176d5b;color:white;padding:12px 22px;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;white-space:nowrap}button:disabled{opacity:.5;cursor:wait}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.metric{background:#fff;border:1px solid #dde3e9;border-radius:12px;padding:16px 20px}.metric strong{display:block;font-size:32px;line-height:1.2;margin-top:8px}.metric span{color:#64748b;font-size:13px}.ok{color:#176d5b}.reject{color:#a94329}.columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.columns .panel{margin:0}pre{background:#f3f5f7;border-radius:8px;margin:12px 0 0;padding:14px;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;min-height:164px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#64748b;font-weight:500}td,th{padding:8px;border-bottom:1px solid #edf0f3}.request-list{max-height:230px;overflow:auto}#result{font-size:14px;color:#526479;margin-top:12px}#status{margin:14px 0;font-weight:500}.foot{color:#64748b;font-size:12px;margin-top:16px}@media(max-width:760px){.metrics{grid-template-columns:1fr 1fr}.columns{grid-template-columns:1fr}.bar,header{display:block}button{margin-top:14px}}
+</style>
+<main>
+  <header><div><div class="eyebrow">应用系统体系架构 / ASSIGNMENT 07</div><h1>图书详情缓存与并发限流</h1><div class="identity">陈熹朗 · 524031910668</div></div><span class="badge" id="health">正在检查服务</span></header>
+  <section class="panel"><div class="bar"><div><h2>真实 HTTP 并发压测</h2><code id="endpoint"></code><div class="sub">Redis Cache-Aside · 空对象 TTL 30 秒 · Sentinel 全接口共享 5 QPS</div></div><button id="run">发起 50 个并发请求</button></div><div id="status">点击按钮执行压测，结果来自浏览器实际收到的 HTTP 响应。</div><div id="result">压测前预热图书缓存，并等待 1.3 秒释放限流额度。</div></section>
+  <div class="metrics"><div class="metric"><span>请求总数</span><strong id="total">—</strong></div><div class="metric"><span>HTTP 200</span><strong class="ok" id="ok">—</strong></div><div class="metric"><span>HTTP 429</span><strong class="reject" id="blocked">—</strong></div><div class="metric"><span>数据库查询增量</span><strong id="db">—</strong></div></div>
+  <div class="columns"><section class="panel"><h2>限流响应原文</h2><div class="sub">包含实际状态码、响应头与 JSON 错误信息</div><pre id="response">等待压测</pre></section><section class="panel"><h2>服务端计数与生效规则</h2><div class="sub">压测前后读取服务端观测接口并计算增量</div><pre id="stats">等待压测</pre></section></div>
+  <section class="panel" style="margin-top:18px"><h2>逐请求结果</h2><div class="request-list"><table><thead><tr><th>序号</th><th>HTTP 状态码</th><th>耗时 ms</th><th>缓存来源</th></tr></thead><tbody id="rows"><tr><td colspan="4">尚未发出请求</td></tr></tbody></table></div></section>
+  <div class="foot">本页是作业附带的并发压测工具。程序化 50 线程压测及完整断言见 scripts/loadtest.py 与 scripts/verify.py。</div>
+</main>
+<script>
+const el=id=>document.getElementById(id), pause=ms=>new Promise(r=>setTimeout(r,ms));
+el('endpoint').textContent='GET '+location.origin+'/api/books/1';
+async function json(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error(url+' HTTP '+r.status);return r.json()}
+json('/demo/health').then(()=>el('health').textContent='MySQL 与 Redis 已连接').catch(e=>el('health').textContent=e.message);
+el('run').onclick=async()=>{
+  el('run').disabled=true;el('status').textContent='正在预热缓存并等待限流窗口恢复…';
+  try{
+    await pause(1300);const warm=await fetch('/api/books/1');if(!warm.ok)throw new Error('缓存预热失败 HTTP '+warm.status);await warm.text();await pause(1300);
+    const before=await json('/demo/stats');const start=performance.now();
+    el('status').textContent='正在并发发送 50 个请求…';
+    const results=await Promise.all(Array.from({length:50},async(_,i)=>{
+      const t=performance.now();const r=await fetch('/api/books/1',{cache:'no-store'});const body=await r.json();
+      return {index:i+1,status:r.status,elapsedMs:+(performance.now()-t).toFixed(2),cache:r.headers.get('X-Cache'),retryAfter:r.headers.get('Retry-After'),resource:r.headers.get('X-RateLimit-Resource'),body};
+    }));
+    const elapsed=+(performance.now()-start).toFixed(2);const after=await json('/demo/stats');
+    const delta=Object.fromEntries(Object.entries(before.metrics).map(([k,v])=>[k,after.metrics[k]-v]));
+    const counts=results.reduce((a,r)=>(a[r.status]=(a[r.status]||0)+1,a),{});const rejected=results.find(r=>r.status===429);
+    el('total').textContent=results.length;el('ok').textContent=counts[200]||0;el('blocked').textContent=counts[429]||0;el('db').textContent=delta.dbReads;
+    el('status').textContent=rejected?'已观察到 HTTP 429，Sentinel 限流生效':'未观察到 HTTP 429，请检查规则或请求持续时间';
+    el('result').textContent=`完成时间 ${new Date().toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})}（北京时间） · 50 个并发请求 · 总耗时 ${elapsed} ms`;
+    el('response').textContent=rejected?`HTTP ${rejected.status} Too Many Requests\nRetry-After: ${rejected.retryAfter}\nX-RateLimit-Resource: ${rejected.resource}\n\n${JSON.stringify(rejected.body,null,2)}`:'无 429 响应';
+    el('stats').textContent=JSON.stringify({resource:after.rules[0].resource,qps:after.rules[0].count,metricDelta:delta},null,2);
+    el('rows').replaceChildren(...results.map(r=>{const tr=document.createElement('tr');for(const v of [r.index,r.status,r.elapsedMs,r.cache||'未进入缓存层']){const td=document.createElement('td');td.textContent=v;tr.append(td)}return tr}));
+    window.lastRun={time:new Date().toISOString(),url:location.origin+'/api/books/1',elapsedMs:elapsed,statusCounts:counts,before,after,metricDelta:delta,responses:results};
+  }catch(e){el('status').textContent='压测失败：'+e.message;throw e}finally{el('run').disabled=false}
+};
+</script>
+</html>

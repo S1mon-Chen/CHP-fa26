@@ -1,0 +1,29 @@
+name: bookstore-assignment7
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: assignment7-local-root
+      MYSQL_DATABASE: bookstore_cache
+      MYSQL_USER: bookstore
+      MYSQL_PASSWORD: assignment7-local
+    ports: ["127.0.0.1:13307:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infra/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u bookstore bookstore_cache -e 'SELECT 1 FROM books LIMIT 1'"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["127.0.0.1:16379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  mysql-data:
