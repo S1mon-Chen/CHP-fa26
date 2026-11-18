@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 31 - RRF 重排算法与 Reranker (Reciprocal Rank Fusion &amp; Reranking)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrow-down-short-wide text-indigo-600"></i>
+                <span>Part 03 · 向量检索与 AI 时代 Vector DB</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                RRF 倒数排名融合算法与 Cross-Encoder 重排 (RRF &amp; Reranking)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Reciprocal Rank Fusion (RRF), Dimensionless Rank Fusion &amp; Two-Stage Bi-Encoder Recall + Cross-Encoder Rerank
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (RRF Math Formula & Calculation Example) vs Right Card (Two-Stage Bi-Encoder & Cross-Encoder Pipeline) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: RRF Math Formula & Calculation Example (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-calculator text-indigo-600"></i>
+                            <span>1. RRF (Reciprocal Rank Fusion) 倒数排名融合公式</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Rank Fusion</span>
+                    </div>
+
+                    <!-- Problem Explanation -->
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        BM25 得分（如 $14.2$）与向量余弦得分（如 $0.85$）量纲不同无法直接相加。**RRF 抹平具体分值，完全根据名次 (Rank) 进行无量纲平滑融合**：
+                    </p>
+
+                    <!-- RRF Math Formula Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 text-center space-y-1 mb-1.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold text-cyan-300 block">RRF 倒数排名得分计算公式</span>
+                        <div class="text-xs font-mono text-teal-300 font-bold py-1 overflow-x-auto">
+                            $$\text{RRF\_Score}(d \in D) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
+                        </div>
+                        <p class="text-[8.5px] text-slate-400 font-sans leading-tight">
+                            $M$: 检索通道集合 (如 BM25 与 Vector)；$r_m(d)$: 文档 $d$ 在通道 $m$ 中的名次排名；$k$: 平滑常数 ($k=60$)。
+                        </p>
+                    </div>
+
+                    <!-- Concrete Numerical Example Box -->
+                    <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="font-mono text-indigo-900 font-bold">RRF 实算演练 ($k=60$)</span>
+                            <span class="text-[8.5px] font-mono text-indigo-700 font-bold">Numerical Example</span>
+                        </span>
+                        <div class="space-y-1 text-[8.5px] font-mono">
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong>Doc A:</strong> BM25 排第 1 名，向量排第 3 名：<br/>
+                                $\text{RRF}(A) = \frac{1}{60 + 1} + \frac{1}{60 + 3} = 0.01639 + 0.01587 = \mathbf{0.03226}$
+                            </div>
+                            <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                <strong>Doc B:</strong> BM25 排第 2 名，向量排第 2 名：<br/>
+                                $\text{RRF}(B) = \frac{1}{60 + 2} + \frac{1}{60 + 2} = 0.01613 + 0.01613 = \mathbf{0.03226}$
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>特点：不受数值量纲漂移影响，高名次文档获得极高权重加成</span>
+                    <i class="fa-solid fa-square-check"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Two-Stage Pipeline & Cross-Encoder Reranker (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-filter text-indigo-600"></i>
+                            <span>2. 两阶段检索：Bi-Encoder 召回 + Cross-Encoder 精排</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Two-Stage RAG</span>
+                    </div>
+
+                    <!-- Architecture Pipeline Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// 生产级两阶段混合检索精排管线</div>
+                        
+                        <!-- Stage 1 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-amber-300 font-bold flex items-center justify-between">
+                                <span>阶段 1: 粗粒度混合召回 (Bi-Encoder Hybrid Recall)</span>
+                                <span class="text-slate-400 text-[8px]">Top 50 - 100 Candidate Chunks</span>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-300">
+                                独立计算 Query 与 Doc 的向量点积（Bi-Encoder 向量预建），结合 BM25 快速筛选前 50–100 个粗召回候选集。
+                            </p>
+                        </div>
+
+                        <!-- Stage 2 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-emerald-300 font-bold flex items-center justify-between">
+                                <span>阶段 2: 深度重排 (Cross-Encoder Reranker)</span>
+                                <span class="text-teal-300 font-bold text-[8px]">Top 3 - 5 for LLM Context</span>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-300">
+                                使用深度重排模型 (如 <code class="text-cyan-300 font-mono">BGE-Reranker-Large</code>) 拼接 <code class="text-amber-300">[Query, Candidate_Doc]</code>。通过交叉注意力机制计算深层语义对齐分，截取 Top 3–5 交付大模型！
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Encoder Comparison Box -->
+                    <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="font-mono text-indigo-900 font-bold">Bi-Encoder vs. Cross-Encoder</span>
+                            <span class="text-[8.5px] font-mono text-indigo-700 font-bold">Model Comparison</span>
+                        </span>
+                        <ul class="text-[8.5px] text-slate-600 space-y-0.5 font-sans leading-tight">
+                            <li>• **Bi-Encoder**：向量提前算好离线存入 Vector DB，检索极快（毫秒级），但缺失交叉注意力。</li>
+                            <li>• **Cross-Encoder**：现场计算 Query 与 Doc 的全注意力交互，精度极高，适合小范围候选集精排。</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 32 · 检索增强生成 (RAG) 系统架构全景链路</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">核心重排架构启发 (RRF &amp; Reranker Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        **RRF 算法**是两路或多路检索融合的最佳桥梁，用无量纲倒数排名解决了分值不互通的尴尬；而在召回候选集后接入 **Cross-Encoder Reranker 重排模型**，能在大模型上下文窗口长度有限的前提下，将最高质量的相关 Chunk 递交给 LLM，极大提升 RAG 的回答准确率。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 31 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">31</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[77.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (30.html <- 31.html -> 32.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="30.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">RRF 重排算法与 Reranker (RRF &amp; Reranking)</span>
+            <a href="32.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="30.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="32.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 RRF 算法解决数值量纲漂移的智慧：</span>
+                    “向学员做解构说明：上一页我们讲了双路混合检索。但拿到 BM25 得分（如 14.2）和向量得分（如 0.85）时，这两个数值不能直接相加。RRF 算法把重点放在**名次 (Rank)** 上，公式为 $\frac{1}{60 + r_m(d)}$。第一名的得分就是 $\frac{1}{61}$，名次越靠前，获得的 RRF 倒数分越突出！”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 剖析两阶段架构（Recall 粗召回 + Cross-Encoder 精排）：</span>
+                    “请学员重点关注右侧卡片：在第一阶段，使用 Bi-Encoder（向量预计算）和 BM25 快速召回 Top 50–100 的候选文档；在第二阶段，使用 Cross-Encoder（重排模型，如 BGE-Reranker）对这 50 个候选文档计算全注意力交互，精选出前 3 到 5 个高质量 Chunk。下一个 Slide 32 将呈现在线与离线 **RAG (检索增强生成) 全景系统架构**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '32.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '30.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 35 - 分片规划法则与 ILM 索引生命周期管理 (Sharding Strategy &amp; ILM)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-layer-group text-amber-600"></i>
+                <span>Part 04 · 海量检索治理与生产实战</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                分片规划法则与 ILM 索引生命周期管理 (Sharding Strategy &amp; ILM)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Optimal Shard Sizing (10GB–50GB), Heap Ratio Cap &amp; ILM 4 Phases (Hot, Warm, Cold, Delete)
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Sharding Planning Rules) vs Right Card (ILM 4-Phase Lifecycle Pipeline) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Sharding Sizing & Capacity Planning (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-calculator text-amber-600"></i>
+                            <span>1. 分片 (Shard) 数量与容量规划两大铁律</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Capacity Planning</span>
+                    </div>
+
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- Rule 1: Single Shard Capacity -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 space-y-1 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-amber-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-weight-hanging text-amber-600"></i>
+                                    ① 单 Shard 物理容量黄金区间 (10GB ~ 50GB)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">Shard Size</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                • **日志/时序数据**：控制在 **30 GB ~ 50 GB**；<br/>
+                                • **精准搜索/搜索业务**：控制在 **10 GB ~ 30 GB**；<br/>
+                                • **物理上限**：单 Shard 文档数不得突破 Lucene 物理极限（21.4 亿个文档），避免 Shard 迁移卡死。
+                            </p>
+                        </div>
+
+                        <!-- Rule 2: Node Shard Count Cap -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 space-y-1 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-microchip text-indigo-600"></i>
+                                    ② 节点 Shard 数量上限 ($\le \text{JVM Heap} \times 20$)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 font-mono text-[8.5px]">Heap Ratio</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                每一个物理 Shard 在节点内存中都会消耗一定量的句柄与元数据。
+                            </p>
+                            <div class="p-1 rounded bg-slate-900 text-teal-300 font-mono text-[8.5px] text-center border border-slate-800">
+                                $$\text{Node Shards Limit} \le \text{JVM Heap (GB)} \times 20$$
+                            </div>
+                            <p class="text-[8.5px] text-slate-500 leading-tight">
+                                例：32GB 堆内存 Data 节点，挂载的分片总数应控制在 **600 个以内**。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>警告：碎片化严重（小分片过多）会导致集群 Master 节点 GC 频繁触发爆内存</span>
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: ILM 4 Phases Pipeline (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-timeline text-amber-600"></i>
+                            <span>2. ILM 索引生命周期管理四大阶段 (Hot, Warm, Cold, Delete)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">ILM Pipeline</span>
+                    </div>
+
+                    <!-- ILM 4 Phases Grid -->
+                    <div class="grid grid-cols-2 gap-1.5 text-xs text-slate-700 font-sans mb-1">
+                        
+                        <!-- Phase 1: Hot -->
+                        <div class="p-2 rounded-xl bg-white border border-rose-200 space-y-0.5 text-[9px]">
+                            <span class="font-bold text-rose-950 block flex items-center justify-between">
+                                <span class="font-mono text-rose-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-fire text-rose-600"></i>
+                                    Hot 阶段 (热数据)
+                                </span>
+                                <span class="px-1 py-0.2 rounded bg-rose-50 text-rose-700 font-mono text-[8px]">NVMe SSD</span>
+                            </span>
+                            <p class="text-slate-600 text-[8.5px] leading-tight">
+                                高频读写，配置极速 NVMe SSD；达到 50GB 或 30 天自动触发 **Rollover** 生成新写入索引。
+                            </p>
+                        </div>
+
+                        <!-- Phase 2: Warm -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-200 space-y-0.5 text-[9px]">
+                            <span class="font-bold text-amber-950 block flex items-center justify-between">
+                                <span class="font-mono text-amber-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-sun text-amber-600"></i>
+                                    Warm 阶段 (温数据)
+                                </span>
+                                <span class="px-1 py-0.2 rounded bg-amber-50 text-amber-700 font-mono text-[8px]">ForceMerge 1</span>
+                            </span>
+                            <p class="text-slate-600 text-[8.5px] leading-tight">
+                                索引变为只读；执行 **Shrink** 缩减分片数，并触发 **ForceMerge** 将 Segment 强制压缩合并为 1 个小段。
+                            </p>
+                        </div>
+
+                        <!-- Phase 3: Cold -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-200 space-y-0.5 text-[9px]">
+                            <span class="font-bold text-indigo-950 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-snowflake text-indigo-600"></i>
+                                    Cold 阶段 (冷数据)
+                                </span>
+                                <span class="px-1 py-0.2 rounded bg-indigo-50 text-indigo-800 font-mono text-[8px]">HDD / S3</span>
+                            </span>
+                            <p class="text-slate-600 text-[8.5px] leading-tight">
+                                移至大容量廉价 HDD 节点，甚至采用 Searchable Snapshots 挂载至 S3 / MinIO 对象存储。
+                            </p>
+                        </div>
+
+                        <!-- Phase 4: Delete -->
+                        <div class="p-2 rounded-xl bg-white border border-slate-300 space-y-0.5 text-[9px]">
+                            <span class="font-bold text-slate-950 block flex items-center justify-between">
+                                <span class="font-mono text-slate-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-trash-can text-slate-600"></i>
+                                    Delete 阶段 (销毁)
+                                </span>
+                                <span class="px-1 py-0.2 rounded bg-slate-100 text-slate-800 font-mono text-[8px]">TTL Expire</span>
+                            </span>
+                            <p class="text-slate-600 text-[8.5px] leading-tight">
+                                达到设定保留期限（如 180 天），由 ILM 自动安全删除物理索引，彻底释放存储空间。
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <!-- ILM Policy DSL Box -->
+                    <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-0.5 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// PUT /_ilm/policy/logs_policy (ILM 策略 DSL)</div>
+                        <div class="text-slate-300">{ <span class="text-indigo-300">"policy"</span>: { <span class="text-indigo-300">"phases"</span>: {</div>
+                        <div class="pl-2 text-slate-300"><span class="text-indigo-300">"hot"</span>: { <span class="text-indigo-300">"actions"</span>: { <span class="text-indigo-300">"rollover"</span>: { <span class="text-indigo-300">"max_primary_shard_size"</span>: <span class="text-emerald-300">"50gb"</span> } } },</div>
+                        <div class="pl-2 text-slate-300"><span class="text-indigo-300">"warm"</span>: { <span class="text-indigo-300">"min_age"</span>: <span class="text-emerald-300">"30d"</span>, <span class="text-indigo-300">"actions"</span>: { <span class="text-indigo-300">"forcemerge"</span>: { <span class="text-indigo-300">"max_num_segments"</span>: <span class="text-amber-300">1</span> } } },</div>
+                        <div class="pl-2 text-slate-300"><span class="text-indigo-300">"delete"</span>: { <span class="text-indigo-300">"min_age"</span>: <span class="text-emerald-300">"180d"</span>, <span class="text-indigo-300">"actions"</span>: { <span class="text-indigo-300">"delete"</span>: {} } }</div>
+                        <div class="text-slate-300">} } }</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 36 · 冷热分离架构拓扑与生产无损滚动更新 (Rolling Restart)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">核心架构启发 (ILM &amp; Sharding Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        **ILM (索引生命周期管理)** 是海量日志与时序检索系统的定海神针。通过“Hot 阶段高性能写入 $\to$ Warm 阶段 ForceMerge 段合并压缩 $\to$ Cold 阶段沉淀至对象存储/廉价 HDD $\to$ Delete 阶段自动清理”，实现了在性能、存储成本与运维自动化上的完美平衡。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-800 font-bold">Slide 35 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">35</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-amber-600 h-full w-[87.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (34.html <- 35.html -> 36.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="34.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">分片规划法则与 ILM 索引生命周期管理 (Sharding Strategy &amp; ILM)</span>
+            <a href="36.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="34.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="36.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <span class="font-bold text-amber-900 block mb-1">🎯 引导学员理解分片规划与 ILM 的搭配：</span>
+                    “向学员做解构说明：很多工程师建索引时随意指定分片数（比如建了 10 个 Primary，结果每个 Shard 只有 200MB），导致集群诞生成千上万小分片，吃光了 JVM 堆内存。<br/>
+                    请引导学员参阅左侧规则：单 Shard 尺寸建议控制在 **10GB ~ 50GB**，单节点 Shard 数量不要超过 `JVM Heap * 20`。<br/>
+                    同时结合右侧的 ILM (索引生命周期管理) 4 阶段：Hot 写入 $\to$ Warm 合并 $\to$ Cold 搬迁 $\to$ Delete 销毁，让数据流动自动化。”
+                </div>
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">💡 预告下一个 Slide 36：</span>
+                    “下一个 Slide 36 将讲解 **Hot-Warm-Cold 冷热分离物理节点拓扑** 与 **生产环境滚动更新 (Rolling Restart)** 维护技巧。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '36.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '34.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

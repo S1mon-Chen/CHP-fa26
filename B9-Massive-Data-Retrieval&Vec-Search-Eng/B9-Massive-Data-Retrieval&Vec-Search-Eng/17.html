@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 17 - 分布式写入流程与一致性 (ES Distributed Write Flow &amp; Consistency)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-arrows-spin text-teal-600"></i>
+                <span>Part 02 · Elasticsearch 分布式搜索引擎架构</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                分布式写入流程与一致性 (Distributed Write Flow &amp; Consistency)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                3-Phase Write Pipeline (Coordinating $\to$ Primary $\to$ Replicas), `wait_for_active_shards` Quorum &amp; Failure Recovery
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (3-Phase Write Pipeline Diagram) vs Right Card (Quorum & Failure Handling) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: 3-Phase Distributed Write Flow Pipeline (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-teal-600"></i>
+                            <span>1. 分布式写请求执行三步曲 (3-Phase Distributed Write)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Write Pipeline</span>
+                    </div>
+
+                    <!-- Pipeline ASCII Diagram Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// 客户端发起 POST /orders/_doc/1001 写入流</div>
+                        
+                        <!-- Phase 1 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-amber-300 font-bold flex items-center justify-between">
+                                <span>1. 路由阶段 (Routing Phase)</span>
+                                <span class="text-slate-400 text-[8px]">Client $\to$ Coordinating Node</span>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-300">
+                                客户端请求随机接入节点（即 **Coordinating Node**）。根据公式 $\text{MurmurHash3}(\text{"1001"}) \pmod 3 = 0$，计算出目标位于 **Primary Shard 0**，将请求转发至 Node 1。
+                            </p>
+                        </div>
+
+                        <!-- Phase 2 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-teal-300 font-bold flex items-center justify-between">
+                                <span>2. 主分片写入 (Primary Execution)</span>
+                                <span class="text-slate-400 text-[8px]">Node 1 (Primary Shard 0)</span>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-300">
+                                Node 1 校验 Mapping 类型，校验通过后将文档写入本地 Index Buffer 和 **Translog 日志**，生成递增序列号 (`_seq_no`)。
+                            </p>
+                        </div>
+
+                        <!-- Phase 3 -->
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-emerald-300 font-bold flex items-center justify-between">
+                                <span>3. 副本并行同步 (Parallel Replica Replication)</span>
+                                <span class="text-slate-400 text-[8px]">Primary $\to$ Replicas</span>
+                            </div>
+                            <p class="text-[8.5px] font-sans text-slate-300">
+                                Primary Shard 0 **并行分发**写请求至 Replica 所在节点 (Node 3)。所有副本节点写入本地完成后，向 Primary 返回 ACK，Primary 再向 Coordinating 节点返回 ACK 告知 Client 写入成功。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>关键：写请求必须先在 Primary 成功执行后，才能并行分发给各个 Replicas</span>
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Quorum & Failure Recovery (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                            <span>2. 写入一致性控制与异常恢复 (Consistency &amp; Recovery)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Consistency Rules</span>
+                    </div>
+
+                    <!-- Quorum Parameter Box -->
+                    <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 mb-1.5 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-sliders text-teal-600"></i>
+                                活跃分片门槛 (`wait_for_active_shards`)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px] font-bold">Default = 1</span>
+                        </span>
+                        <p class="text-[9px] text-slate-600 leading-tight">
+                            控制在开始处理写请求前必须处于活跃状态的分片副本数。
+                            <br/>
+                            • 默认值 `1`：只要 Primary 活跃即允许写入；
+                            <br/>
+                            • 设为 `all` 或强一致阈值 $N$：必须等待所有 Replica 活跃才允许写入，提升高可用防护。
+                        </p>
+                    </div>
+
+                    <!-- Replica Failure Recovery Box -->
+                    <div class="p-2 rounded-xl bg-white border border-rose-200 space-y-1 mb-1.5 text-[9.5px]">
+                        <span class="font-bold text-rose-950 block flex items-center justify-between">
+                            <span class="font-mono text-rose-900 font-bold flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                                副本同步失败处理流程 (Replica Failover)
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Auto Unhealthy Mark</span>
+                        </span>
+                        <p class="text-[9px] text-slate-600 leading-tight">
+                            若 Primary 分发写请求至 Replica 节点时某个 Replica 抛出异常或超时未响应：
+                            <br/>
+                            1. Primary 向 Master 节点上报故障事件；
+                            <br/>
+                            2. Master 自动在集群状态中将该问题 Replica 移除并标记为不健康；
+                            <br/>
+                            3. 其它正常写请求不受影响继续完成响应。
+                        </p>
+                    </div>
+
+                    <!-- Sequence Number Consistency Note -->
+                    <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800">
+                        <div class="text-cyan-400 font-bold">// 序列号与乐观锁控制 (_seq_no &amp; _primary_term)</div>
+                        <div class="text-slate-300">
+                            Primary 节点为每个写操作分配严格递增的 <code class="text-amber-300">_seq_no</code> 与 <code class="text-amber-300">_primary_term</code>，即使副本因网络无序收包，也能按序列号严格按顺序重放日志，消除写冲突！
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 18 · 近实时 (NRT) 搜索物理机制：Buffer、Translog、Refresh 与 Flush</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">核心架构启发 (Distributed Write Flow Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Elasticsearch 分布式写入采用了**主从并行副本同步架构 (Primary-Centric Replication)**。写请求严格先落地 Primary Shard 并生成 `_seq_no` 顺序号，而后向所有 Replicas 并行分发，既保证了数据顺序重放一致性，又极大减少了写响应的整体阻塞延迟。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-800 font-bold">Slide 17 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">17</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-teal-600 h-full w-[42.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (16.html <- 17.html -> 18.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="16.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">分布式写入流程与一致性 (Distributed Write Flow &amp; Consistency)</span>
+            <a href="18.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-teal-50 hover:text-teal-600 hover:border-teal-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="16.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="18.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-teal-50 border border-teal-200">
+                    <span class="font-bold text-teal-900 block mb-1">🎯 引导学员拆解 ES 分布式写入三步曲：</span>
+                    “向学员做解构说明：ES 的分布式写请求可以发送给集群中任意节点（Coordinating Node）。三步曲如下：<br/>
+                    1. **路由阶段**：Coordinating Node 算 Hash 找到目标的 Primary Shard 所在节点；<br/>
+                    2. **Primary 写入**：Primary Shard 先写本地 Index Buffer 和 Translog，生成递增 `_seq_no`；<br/>
+                    3. **并行副本同步**：Primary 并行把请求发给所有 Replicas，都 ACK 后再向 Client 返回成功。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告下一个 Slide 18 核心机制：</span>
+                    “写完 Primary 和 Replicas 后，数据为什么过 1 秒后就能被查到了？下一个 Slide 18 将深入解剖 ES 著名的近实时 (NRT) 搜索内核：Buffer、PageCache、Refresh 与 Translog Flush 机制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '18.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '16.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

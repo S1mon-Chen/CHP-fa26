@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 10 - Lucene 高级 Query 表达式 (Lucene Advanced Query Types)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-diagram-project text-cyan-600"></i>
+                <span>Part 01 · 全文检索原理与 Apache Lucene 物理内核</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Lucene 高级 Query 表达式 (Lucene Advanced Query Types)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Query Family Hierarchy: TermQuery, PhraseQuery, BooleanQuery Clauses &amp; PointRangeQuery
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Query Family Classification) vs Right Card (BooleanQuery & Builder Code) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Query Family Hierarchy (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-sitemap text-cyan-600"></i>
+                            <span>1. Lucene Query 家族三大核心类别 (Query Family)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Query Hierarchy</span>
+                    </div>
+
+                    <!-- Query Subclasses Stack -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- 1. Term Queries -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-cyan-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-font text-cyan-600"></i>
+                                    基础词项与短语查询 (Term &amp; Phrase Queries)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 font-mono text-[8.5px]">Positional Search</span>
+                            </span>
+                            <ul class="text-[9px] text-slate-600 space-y-0.5 leading-tight">
+                                <li>• <code class="font-mono text-cyan-900 font-bold">TermQuery</code>：精准搜索单一词项（如 `category:tech`）。</li>
+                                <li>• <code class="font-mono text-cyan-900 font-bold">PhraseQuery</code>：短语邻近搜索，允许指定 slop 位置间隔。</li>
+                                <li>• <code class="font-mono text-cyan-900 font-bold">MultiPhraseQuery</code>：支持多词项同义词扩展的短语查询。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 2. Boolean Queries -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-200 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-layer-group text-teal-600"></i>
+                                    组合与布尔查询 (Boolean Queries)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-100 text-teal-900 font-mono text-[8.5px] font-bold">BooleanClause</span>
+                            </span>
+                            <div class="grid grid-cols-2 gap-1 text-[8.5px] font-mono text-slate-700 pt-0.5">
+                                <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                    <strong class="text-teal-900 block">MUST (+)</strong> 必须匹配且参与 BM25 得分
+                                </div>
+                                <div class="p-1 rounded bg-slate-50 border border-slate-200">
+                                    <strong class="text-teal-900 block">SHOULD</strong> 可选匹配，匹配增加 Boost 提分
+                                </div>
+                                <div class="p-1 rounded bg-emerald-50 border border-emerald-200">
+                                    <strong class="text-emerald-900 block">FILTER</strong> 必须匹配但**不打分 (Fast BitSet)**
+                                </div>
+                                <div class="p-1 rounded bg-rose-50 border border-rose-200">
+                                    <strong class="text-rose-900 block">MUST_NOT (-)</strong> 强行排除包含该词项的文档
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Advanced Range & Fuzzy -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-filter text-indigo-600"></i>
+                                    数值范围与模糊匹配 (Range &amp; Fuzzy Queries)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 font-mono text-[8.5px]">PointRange &amp; Edit Distance</span>
+                            </span>
+                            <ul class="text-[9px] text-slate-600 space-y-0.5 leading-tight">
+                                <li>• <code class="font-mono text-indigo-900 font-bold">PointRangeQuery</code>：利用 B-Tree 1D 点索引做数值/时间范围过滤。</li>
+                                <li>• <code class="font-mono text-indigo-900 font-bold">PrefixQuery / WildcardQuery / RegexpQuery</code>：前缀、通配符与正则。</li>
+                                <li>• <code class="font-mono text-indigo-900 font-bold">FuzzyQuery</code>：基于 Levenshtein 编辑距离防范拼写错误。</li>
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>提示：用 FILTER 子句替换 MUST，不仅能跳过 BM25 复杂计算，还能激活节点级 BitSet 缓存</span>
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: BooleanQuery.Builder Code Example (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-cyan-600"></i>
+                            <span>2. 强类型 `BooleanQuery.Builder` 组装实战</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">BooleanQuery Builder</span>
+                    </div>
+
+                    <!-- Custom Java Source Code snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-0.5 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// 组合逻辑查询构建代码</div>
+                        <div><span class="text-indigo-300 font-bold">public</span> Query <span class="text-teal-300 font-bold">buildComplexQuery</span>() {</div>
+                        <div class="pl-2 text-slate-400">// 1. 构建布尔组合器</div>
+                        <div class="pl-2">BooleanQuery.Builder builder = <span class="text-indigo-300">new</span> BooleanQuery.Builder();</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 2. MUST: 必须包含分类 "tech" (参与打分)</div>
+                        <div class="pl-2">builder.add(</div>
+                        <div class="pl-4"><span class="text-indigo-300">new</span> TermQuery(<span class="text-indigo-300">new</span> Term(<span class="text-emerald-300">"category"</span>, <span class="text-emerald-300">"tech"</span>)), </div>
+                        <div class="pl-4">BooleanClause.Occur.MUST</div>
+                        <div class="pl-2">);</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 3. FILTER: 价格在 10.0 到 100.0 之间 (不打分，激活 BitSet 缓存)</div>
+                        <div class="pl-2">builder.add(</div>
+                        <div class="pl-4">DoublePoint.newRangeQuery(<span class="text-emerald-300">"price"</span>, <span class="text-amber-300">10.0</span>, <span class="text-amber-300">100.0</span>), </div>
+                        <div class="pl-4">BooleanClause.Occur.FILTER</div>
+                        <div class="pl-2">);</div>
+
+                        <div class="pl-2 text-slate-400 pt-0.5">// 4. SHOULD: 标题包含 "lucene"，匹配则额外提分</div>
+                        <div class="pl-2">builder.add(</div>
+                        <div class="pl-4"><span class="text-indigo-300">new</span> TermQuery(<span class="text-indigo-300">new</span> Term(<span class="text-emerald-300">"title"</span>, <span class="text-emerald-300">"lucene"</span>)), </div>
+                        <div class="pl-4">BooleanClause.Occur.SHOULD</div>
+                        <div class="pl-2">);</div>
+
+                        <div class="pl-2"><span class="text-amber-300">return</span> builder.build();</div>
+                        <div>}</div>
+                    </div>
+
+                    <!-- Clause Explanation Box -->
+                    <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-1 text-[9.5px]">
+                        <span class="font-bold text-slate-900 block flex items-center justify-between">
+                            <span class="font-mono text-teal-900 font-bold">BooleanClause.Occur 子句行为特征</span>
+                            <span class="text-[8.5px] font-mono text-teal-700 font-bold">Clause Behavior</span>
+                        </span>
+                        <p class="text-[8.5px] text-slate-600 leading-tight">
+                            • **`MUST`**：文档必须匹配该查询，且该查询计算出的相关性得分会相加累入最终 `_score`。<br/>
+                            • **`FILTER`**：文档必须匹配该查询，但**得分恒定位 0**，性能极高且便于搜索引擎在节点级缓存结果。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 11 · 打分模型演进：从传统 TF-IDF 到 Okapi BM25 公式物理剖析</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心代码启发 (Advanced Query Types Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        灵活组合 Lucene 的 Query 家族是构筑复杂检索系统的核心。生产环境优化金律：**对于状态过滤、价格区间、时间范围等无需计算相关性得分的条件，强制声明为 `BooleanClause.Occur.FILTER`**，这样不仅省去了 BM25 得分计算，还能完美激活 Lucene 节点级 BitSet 缓存。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 10 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">10</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[25.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (9.html <- 10.html -> 11.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="9.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Lucene 高级 Query 表达式 (Lucene Advanced Query Types)</span>
+            <a href="11.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="9.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="11.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 Lucene 的 Query 家族体系：</span>
+                    “向学员做解构说明：Lucene 提供了丰富的 Query 子类。最常用的是 `BooleanQuery`。在构建 `BooleanQuery` 时，四个 Occur 子句非常重要：`MUST (+)` 和 `SHOULD` 负责搜索和打分提分；`MUST_NOT (-)` 负责排除；而最关键的是 **`FILTER`**——必须匹配但不计算 BM25 得分，能够在节点级形成物理 BitSet 缓存，性能极高！”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告下一个 Slide 11：</span>
+                    “下一个 Slide 11 将剖析打分模型的演进：从传统的 TF-IDF 模型演进到 Lucene 默认的 Okapi BM25 打分公式及其词频饱和度与文档长度归一化机制。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '11.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '9.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

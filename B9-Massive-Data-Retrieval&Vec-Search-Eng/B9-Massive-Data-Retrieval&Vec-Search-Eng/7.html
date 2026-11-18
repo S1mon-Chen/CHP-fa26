@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and KaTeX engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 07 - 段的不变性与合并 (Segment Immutability &amp; Segment Merge)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-lock text-cyan-600"></i>
+                <span>Part 01 · 全文检索原理与 Apache Lucene 物理内核</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                段的不变性与合并 (Segment Immutability &amp; Segment Merge)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Lock-Free Search, Logical Deletion (.liv BitSet) &amp; Tiered Segment Merge Mechanics
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for Segment immutability and merge policy... -->
+        <!-- Content Grid: Left Card (Immutability & Logical Deletion) vs Right Card (Segment Merge Pipeline) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Immutability Principle & CRUD Mechanics (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-halved text-cyan-600"></i>
+                            <span>1. Segment 物理不可变原则 (Immutability Principle)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Immutable Segments</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        Lucene 中的 Segment 一旦创建并写入磁盘，**绝对物理不可变 (Immutable)**！这一核心原则赋予了系统极致的并发检索性能：
+                    </p>
+
+                    <!-- Advantages Stack -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-cyan-950 block flex items-center justify-between">
+                                <span class="flex items-center gap-1"><i class="fa-solid fa-bolt text-teal-600"></i>① 零锁竞争 (Lock-Free Search)</span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px]">Zero Lock Contention</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                读写彻底解耦！并发检索无需施加任何读写排他锁，多个查询线程可并发无锁压榨 CPU 多核性能。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-cyan-950 block flex items-center justify-between">
+                                <span class="flex items-center gap-1"><i class="fa-solid fa-memory text-cyan-600"></i>② OS PageCache 极度友好</span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 font-mono text-[8.5px]">Cached Forever</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                索引文件一旦加载到操作系统 PageCache 后长期有效，不会因为数据写入而导致缓存频繁失效或脏页重刷新。
+                            </p>
+                        </div>
+
+                        <!-- Logical Delete & Update ASCII Box -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1 border border-slate-800">
+                            <div class="text-amber-300 font-bold">// 面对 Segment 不变性，新增/修改/删除如何处理？</div>
+                            <div class="text-slate-300">
+                                • <strong class="text-rose-300">删除 (Delete)</strong>：不修改原 Segment，而是在 <code class="text-amber-300">.liv</code> (Live BitSet) 中将 DocID 标记为 <code class="text-rose-400">0 (已删除)</code>，检索时过滤。
+                            </div>
+                            <div class="text-slate-300">
+                                • <strong class="text-teal-300">更新 (Update)</strong>：先在旧 Segment 中标记逻辑删除，再将新版本的文档追加写入全新的 Segment 中。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>代价：旧数据逻辑删除会遗留无效空间，需依靠后台段合并 (Segment Merge) 回收</span>
+                    <i class="fa-solid fa-arrows-spin"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Segment Merge Pipeline & Deletion Purge (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-compress text-cyan-600"></i>
+                            <span>2. 后台段合并机制 (Segment Merge)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">TieredMergePolicy</span>
+                    </div>
+
+                    <!-- Merge Visual ASCII Pipeline -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// IndexWriter 自动触发段合并过程</div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 text-slate-300 space-y-1">
+                            <div>Segment 1 (包含 3 个未删除, 2 个已删除)</div>
+                            <div>Segment 2 (包含 4 个未删除, 1 个已删除)</div>
+                            <div>Segment 3 (包含 5 个未删除, 0 个已删除)</div>
+                        </div>
+                        <div class="text-center text-amber-300 font-bold">↓ TieredMergePolicy (后台异步合并)</div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-emerald-700 text-emerald-300 font-bold">
+                            Segment 4 (合并后大段：物理剔除 3 个已删除文档，仅存 12 个有效文档!)
+                        </div>
+                    </div>
+
+                    <!-- Merge Benefits Stack -->
+                    <div class="mt-1.5 space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-cyan-900 font-bold">物理磁盘空间真正回收</span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono text-[8.5px]">Purge Deleted Docs</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                在段合并过程中，逻辑删除标记为 `0` 的文档将被真正物理剔除，解决物理空间膨胀。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-cyan-900 font-bold">保持检索性能与控制句柄数</span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 font-mono text-[8.5px]">FD Count Reduction</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                避免小 Segment 过多导致检索时遍历文件数过大、控制操作系统 Open File Descriptors 句柄开销。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 8 · Lucene 核心索引 API 与 IndexWriter / IndexSearcher 实战</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding bottom callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启发 (Segment Immutability &amp; Merge Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Lucene 的 **Segment 不变性** 展现了现代存储引擎“无锁并发”的设计之美；而 **段合并 (Segment Merge)** 则通过牺牲一部分后台磁盘写 I/O，换取了检索时小段数量的压缩与逻辑删除文档的物理空间回收。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 7 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">07</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[17.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (6.html <- 7.html -> 8.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="6.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">段的不变性与合并 (Segment Immutability &amp; Merge)</span>
+            <a href="8.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="6.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="8.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员理解 Segment 的物理不可变原则：</span>
+                    “向学员做解构说明：Lucene 的 Segment 一旦写入闭合后就是绝对不可变的。不可变带来巨大的好处：读写完全解耦无锁，多线程并发检索零互斥锁消耗！删除操作并不是修改文件，而是在 `.liv` BitSet 中写标志位；更新则是‘逻辑删除 + 新追加 Segment’。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 剖析段合并 (Segment Merge) 的工程作用：</span>
+                    “请学员关注右侧的 Merge 过程：由于不断写和更新会产生很多小 Segment 以及逻辑删除的碎片。后台 `IndexWriter` 自动触发 `TieredMergePolicy`，把多个小 Segment 合并成一个大 Segment，同时**物理剔除已经被逻辑删除的旧文档**，真正回收磁盘空间，降低操作系统打开文件句柄数。下一个 Slide 8 将进行 Lucene `IndexWriter` 与 `IndexSearcher` 现代 Java API 实战。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '8.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '6.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

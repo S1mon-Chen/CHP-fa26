@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and Katex engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 04 - Lucene 核心数据模型 (Lucene Data Model &amp; Core Abstractions)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-cyan-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 9 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-cyan-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-2">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-cubes text-cyan-600"></i>
+                <span>Part 01 · 全文检索原理与 Apache Lucene 物理内核</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Lucene 核心数据模型 (Lucene Data Model &amp; Core Abstractions)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Physical Hierarchy: Index $\to$ Document $\to$ Field $\to$ Term Tuple
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for Lucene abstractions and visual hierarchy... -->
+        <!-- Content Grid: Left Card (Index -> Document -> Field -> Term Visual Hierarchy) vs Right Card (4 Pillars Detail) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Visual Hierarchy ASCII Container Diagram (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-cyan-600"></i>
+                            <span>1. Lucene 数据模型物理包含关系 (Model Container)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Physical Hierarchy</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        Apache Lucene 对全文检索建立了极其严密的层级抽象（从宏观索引容器到最小检索单元 Term）：
+                    </p>
+
+                    <!-- Visual Container Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto">
+                        <div class="text-cyan-400 font-bold">// Index (逻辑索引：包含多个 Segment 段)</div>
+                        <div class="p-2 rounded bg-slate-950 border border-slate-800 space-y-1.5">
+                            <div class="text-teal-300 font-bold">├── Document 1001 (检索与存储的物理基本单位)</div>
+                            <div class="pl-3 space-y-1 text-slate-300">
+                                <div class="flex items-center justify-between p-1 rounded bg-slate-900 border border-slate-800">
+                                    <span>Field <span class="text-amber-300 font-bold">"id"</span></span>
+                                    <span class="text-slate-400">StringField("1001") [Verbatim]</span>
+                                </div>
+                                <div class="flex items-center justify-between p-1 rounded bg-slate-900 border border-slate-800">
+                                    <span>Field <span class="text-amber-300 font-bold">"title"</span></span>
+                                    <span class="text-slate-400">TextField("Lucene in Action") [Analyzed]</span>
+                                </div>
+                                <div class="flex items-center justify-between p-1 rounded bg-slate-900 border border-slate-800">
+                                    <span>Field <span class="text-amber-300 font-bold">"price"</span></span>
+                                    <span class="text-slate-400">DoublePoint(39.99) [1D B-Tree]</span>
+                                </div>
+                                <div class="flex items-center justify-between p-1 rounded bg-slate-900 border border-slate-800">
+                                    <span>Field <span class="text-amber-300 font-bold">"vector"</span></span>
+                                    <span class="text-slate-400">KnnFloatVectorField([0.12, -0.45, ...])</span>
+                                </div>
+                            </div>
+
+                            <div class="text-slate-500 font-bold pt-1">├── Document 1002 ...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>特点：无 Schema 强约束（非 Schema-less，但不同 Document 的 Field 可动态变化）</span>
+                    <i class="fa-solid fa-shapes"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: 4 Core Abstractions Detailed Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-cyan-200 bg-cyan-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-cyan-200">
+                        <h3 class="text-xs font-mono font-bold text-cyan-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-cyan-600"></i>
+                            <span>2. 四大核心抽象对象与物理职责 (4 Core Abstractions)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 font-mono text-[9px] font-bold">Core Abstractions</span>
+                    </div>
+
+                    <!-- Abstraction Stack -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- 1. Index -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-cyan-900 font-bold flex items-center gap-1">
+                                    <span class="w-4 h-4 rounded-full bg-cyan-700 text-white font-mono text-[9px] flex items-center justify-center shrink-0">1</span>
+                                    Index (索引)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 font-mono text-[8.5px]">Logical Container</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                包含一系列 Document 的逻辑容器。物理上由一个或多个不可变的**段 (Segment)** 组合而成。
+                            </p>
+                        </div>
+
+                        <!-- 2. Document -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <span class="w-4 h-4 rounded-full bg-teal-700 text-white font-mono text-[9px] flex items-center justify-center shrink-0">2</span>
+                                    Document (文档)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px]">Unit of Retrieval</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                检索与结果返回的物理基本单位（相当于数据库中的一行）。包含一组命名的 Field。
+                            </p>
+                        </div>
+
+                        <!-- 3. Field -->
+                        <div class="p-2 rounded-xl bg-white border border-cyan-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <span class="w-4 h-4 rounded-full bg-indigo-700 text-white font-mono text-[9px] flex items-center justify-center shrink-0">3</span>
+                                    Field (字段)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 font-mono text-[8.5px]">Key-Value &amp; Type</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                字段名、数据类型与字段值的集合。支持文本 (`TextField`)、精准词 (`StringField`)、数值点 (`LongPoint`)、DocValues 以及高维向量 (`KnnFloatVectorField`)。
+                            </p>
+                        </div>
+
+                        <!-- 4. Term -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-200 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-amber-900 font-bold flex items-center gap-1">
+                                    <span class="w-4 h-4 rounded-full bg-amber-700 text-white font-mono text-[9px] flex items-center justify-center shrink-0">4</span>
+                                    Term (词项)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-mono text-[8.5px] font-bold">Atomic Search Unit</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                倒排索引中的最小检索单元，物理表达为 <code class="font-mono text-amber-900 font-bold">(FieldName, BytesValue)</code> 二元组。即使字节流相同，不同 Field 里的词项物理上亦完全隔离。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-cyan-200 text-[9.5px] font-mono text-cyan-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 5 · Analysis 分词管线 (Tokenizer &amp; TokenFilter 拆解)</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding bottom callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-cyan-200 bg-cyan-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-cyan-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-cyan-900">核心架构启发 (Lucene Data Abstraction Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Lucene 的层级模型将复杂非结构化数据解构为 **Index $\to$ Document $\to$ Field $\to$ Term**。注意 **Term 是二元组 `(FieldName, BytesValue)`**：搜索 <code class="font-mono text-cyan-900 font-bold">title:lucene</code> 与 <code class="font-mono text-cyan-900 font-bold">content:lucene</code> 命中的是倒排索引中两个物理上独立的 Term！
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-cyan-200 text-cyan-800 font-bold">Slide 4 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">04</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-cyan-600 h-full w-[10.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (3.html <- 4.html -> 5.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="3.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Lucene 核心数据模型 (Lucene Data Model &amp; Core Abstractions)</span>
+            <a href="5.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-cyan-50 hover:text-cyan-600 hover:border-cyan-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="3.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="5.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-cyan-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-cyan-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-cyan-50 border border-cyan-200">
+                    <span class="font-bold text-cyan-900 block mb-1">🎯 引导学员透视 Lucene 的 4 层核心数据模型：</span>
+                    “向学员做解构说明：Lucene 定义了四个极其关键的抽象：<br/>
+                    1. **Index**：包含了多个 Segment 段的整体索引容器；<br/>
+                    2. **Document**：检索的物理单元（类似于数据库中的一行）；<br/>
+                    3. **Field**：键值对（支持文本、只存储值、数值点区间、向量字段）；<br/>
+                    4. **Term**：倒排索引中的最小检索单元。必须强调 **Term 是二元组 `(FieldName, BytesValue)`**，不同 Field 里的相同字符串是两个独立的 Term。”
+                </div>
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">💡 预告下一个 Slide 5：</span>
+                    “下一个 Slide 5 将讲解文本在存入 Field 并变成 Term 之前，如何经过 Analysis 文本分词管线（Character Filter $\to$ Tokenizer $\to$ TokenFilter）的处理。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '5.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '3.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
