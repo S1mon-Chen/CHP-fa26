@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and KaTeX engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 25 - 全链路 JWT 网关路由测试与鉴权流程 (End-to-End Gateway Test &amp; JWT Flow)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header bar controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-teal-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 10 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-teal-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-teal-600"></i>
+                <span>Part 03 · 网关路由与容错熔断</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                全链路 JWT 网关路由测试与鉴权流程 (End-to-End Gateway Test &amp; JWT Flow)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Client Token Request, Gateway Filter Decoding, Header Mutation &amp; Downstream Microservice Dispatch
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for end-to-end request sequence and test validation cards... -->
+        <!-- Content Grid: Left Card (Sequence Pipeline Diagram) vs Right Card (3-Step Postman Verification) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Sequence Pipeline Diagram Box (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-teal-600"></i>
+                            <span>1. 全链路 JWT 授权与路由演练序列 (JWT Routing Sequence)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">Flow Sequence</span>
+                    </div>
+
+                    <!-- Sequence Box Diagram -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// 1. 登录获取 JWT 令牌 (Login Request)</div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-amber-300 font-bold flex items-center justify-between">
+                                <span>POST /user/Login (username=reins, password=123)</span>
+                                <span class="text-slate-400 font-normal">Port 8080</span>
+                            </div>
+                            <div class="text-slate-400 text-[7.5px]">网关剥离 `/user` 转发至 `USER-AUTH` 服务 (11230)，签发 JWT `token` 返回客户端</div>
+                        </div>
+
+                        <div class="text-cyan-400 font-bold pt-1">// 2. 带 Token 访问受保护接口 (Protected Request)</div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-emerald-300 font-bold flex items-center justify-between">
+                                <span>POST /book/buyBook (Header: token)</span>
+                                <span class="text-slate-400 font-normal">Port 8080</span>
+                            </div>
+                            <div class="text-slate-400 text-[7.5px]">网关 `JwtCheckFilter` 拦截解包，校验合法后重写 Request Header 注入 `userName: reins`</div>
+                        </div>
+
+                        <div class="text-cyan-400 font-bold pt-1">// 3. 动态寻址路由与最终响应 (Target Dispatch)</div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-indigo-300 font-bold flex items-center justify-between">
+                                <span>LB Route: `lb://BOOK-SERVICE`</span>
+                                <span class="text-slate-400 font-normal">Port 11130</span>
+                            </div>
+                            <div class="text-slate-400 text-[7.5px]">送达 `BOOK-SERVICE` 获取注入的 `userName`，返回 `{ "code": 20000, "data": "userName: reins..." }`</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>成就：客户端仅需感知网关 8080 单一端口，内部鉴权与路由完全透明解耦</span>
+                    <i class="fa-solid fa-circle-check text-teal-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: 3-Step Postman Verification (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-teal-200">
+                        <h3 class="text-xs font-mono font-bold text-teal-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check text-teal-600"></i>
+                            <span>2. 接口测试三步校验与拦截结果 (Postman Verification)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 font-mono text-[9px] font-bold">API Test Suite</span>
+                    </div>
+
+                    <!-- 3 Step Verification Stack -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- Step 1 -->
+                        <div class="p-2 rounded-xl bg-white border border-teal-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-key text-teal-600"></i>
+                                    ① 步骤 1：获取 JWT 令牌
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px]">HTTP 200 OK</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                向 `http://localhost:8080/user/Login` 提交登录数据，获取响应 JSON 中的 `token`（形如 `eyJhbGciOiJIUzI1NiJ9...`）。
+                            </p>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="p-2 rounded-xl bg-white border border-rose-200 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-rose-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-ban text-rose-600"></i>
+                                    ② 步骤 2：无 Token 访问被网关阻断 (502 Error)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">HTTP 502 BAD GATEWAY</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                不传 `token` 请求 `http://localhost:8080/book/buyBook`，网关 `JwtCheckFilter` 抛出异常，拦截并返回 `{"status": 502, "message": "Jwt decode error"}`。
+                            </p>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="p-2 rounded-xl bg-white border border-emerald-200 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-emerald-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                    ③ 步骤 3：合法 Token 成功透传 (200 OK)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-mono text-[8.5px]">HTTP 200 OK</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                带着 Header `token` 重新访问，网关解包校验通过并注入 `userName` Header，`BOOK-SERVICE` 成功处理并返回业务 JSON。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-teal-200 text-[9.5px] font-mono text-teal-800 flex items-center justify-between">
+                    <span>结束 Part 03，开启 Part 04：Slide 26 · Serverless、FaaS 与事件函数物理概念</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-teal-200 bg-teal-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-teal-900">网关路由与安全终局启发 (Gateway Security Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        全链路演练完美展示了网关作为**边缘安全防护罩与动态路由枢纽**的威力：它将认证、鉴权、路由重写与负载均衡统一收口，让内网后端微服务能够专注于纯粹的业务逻辑。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-teal-200 text-teal-800 font-bold">Slide 25 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">25</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[62.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (24.html <- 25.html -> 26.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="24.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">全链路 JWT 网关路由测试与鉴权流程 (End-to-End Gateway Test)</span>
+            <a href="26.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="24.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="26.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员贯通全链路 JWT 网关测试：</span>
+                    “向学员做解构说明：本页展示了讲义中完整的 Postman 接口测试流程：<br/>
+                    1. 向网关请求 `/user/Login` 登录获取包含签名的 JWT token；<br/>
+                    2. 若不传 token 访问 `/book/buyBook`，网关层立即拦截并返回 502 错误；<br/>
+                    3. 带着 token 再次访问，网关解包校验通过并注入 `userName` 请求头，`BOOK-SERVICE` 成功处理并返回 200。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 总结 Part 03 开启 Part 04 Serverless：</span>
+                    “至此 **Part 03 网关路由与容错熔断** 圆满收官！下一个 Slide 26（Part 04）将进入 **Serverless、FaaS 与事件函数** 模块。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '26.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '24.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

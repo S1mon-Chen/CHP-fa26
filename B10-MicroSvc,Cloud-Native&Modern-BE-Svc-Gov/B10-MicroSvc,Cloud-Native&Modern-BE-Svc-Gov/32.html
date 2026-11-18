@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 32 - Istio 控制面与 Envoy 数据面双层架构 (Istio &amp; Envoy Architecture)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-amber-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 10 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-amber-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-cubes text-amber-600"></i>
+                <span>Part 05 · 云原生 Service Mesh 与全维可观测性</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Istio 控制面与 Envoy 数据面双层架构 (Istio &amp; Envoy Architecture)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Istiod Control Plane, xDS API Configuration Push, Envoy C++ Data Plane &amp; mTLS Workload Identity
+            </p>
+        </div>
+
+        <!-- Content Grid: Left Card (Istio Dual-Plane Architecture Diagram) vs Right Card (Control Plane vs Data Plane Breakdown) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Istio Architecture Diagram Box (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-amber-600"></i>
+                            <span>1. Istio 服务网格控制面与数据面解耦拓扑 (Istio Architecture)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Control &amp; Data Plane</span>
+                    </div>
+
+                    <!-- Istio Architecture Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// Control Plane 控制面 (Istiod 单体服务)</div>
+                        <div class="p-1.5 rounded bg-slate-950 border border-indigo-700 text-slate-300 space-y-1">
+                            <div class="text-indigo-300 font-bold text-center border-b border-slate-800 pb-0.5">[ Istiod Control Plane ]</div>
+                            <div class="grid grid-cols-3 gap-1 text-[7px] text-center font-bold">
+                                <div class="p-0.5 rounded bg-indigo-950/80 text-teal-300 border border-indigo-800">Pilot (路由下发)</div>
+                                <div class="p-0.5 rounded bg-indigo-950/80 text-purple-300 border border-indigo-800">Citadel (证书CA)</div>
+                                <div class="p-0.5 rounded bg-indigo-950/80 text-amber-300 border border-indigo-800">Galley (配置校验)</div>
+                            </div>
+                        </div>
+
+                        <!-- Inter-plane xDS gRPC Protocol Push -->
+                        <div class="text-center text-amber-400 font-bold text-[8px] py-0.5">
+                            ▲ xDS Dynamic Configuration Protocol (gRPC: LDS, RDS, CDS, EDS) ▼
+                        </div>
+
+                        <div class="text-cyan-400 font-bold">// Data Plane 数据面 (Envoy Sidecar Proxies)</div>
+                        <div class="grid grid-cols-2 gap-2 text-[7.5px]">
+                            <!-- Pod A -->
+                            <div class="p-1.5 rounded bg-slate-950 border border-teal-700 space-y-0.5 text-center">
+                                <div class="text-teal-300 font-bold">[ Pod A: Service A ]</div>
+                                <div class="p-1 rounded bg-slate-900 font-bold text-slate-200">App Container</div>
+                                <div class="p-1 rounded bg-teal-950 text-teal-300 font-bold border border-teal-700">Envoy Sidecar Proxy</div>
+                            </div>
+
+                            <!-- Pod B -->
+                            <div class="p-1.5 rounded bg-slate-950 border border-purple-700 space-y-0.5 text-center">
+                                <div class="text-purple-300 font-bold">[ Pod B: Service B ]</div>
+                                <div class="p-1 rounded bg-slate-900 font-bold text-slate-200">App Container</div>
+                                <div class="p-1 rounded bg-purple-950 text-purple-300 font-bold border border-purple-700">Envoy Sidecar Proxy</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>关键解耦：控制面不经过任何业务数据包，仅通过 xDS 接口动态推送配置</span>
+                    <i class="fa-solid fa-circle-check text-amber-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Control Plane vs Data Plane Breakdown (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-amber-200">
+                        <h3 class="text-xs font-mono font-bold text-amber-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-amber-600"></i>
+                            <span>2. 双层架构职能明细解构 (Plane Responsibilities)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-mono text-[9px] font-bold">Istiod &amp; Envoy</span>
+                    </div>
+
+                    <!-- 2 Planes Stack -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        
+                        <!-- Control Plane (Istiod) -->
+                        <div class="p-2 rounded-xl bg-white border border-amber-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-amber-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-sliders text-amber-600"></i>
+                                    控制面：Istiod (Control Plane)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">xDS Config Push</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                • **CRD 翻译**：解析 K8s 的 `VirtualService`、`DestinationRule` 等对象，将其翻译为 Envoy 理解的 xDS 配置。<br/>
+                                • **安全与身份认证**：作为内置 CA，颁发并定期轮换 SPIFFE/SPIRE 格式的 mTLS 工作负载证书。<br/>
+                                • **不介入数据流**：控制面宕机不会影响已建立连接的 Envoy 间 RPC 数据传输。
+                            </p>
+                        </div>
+
+                        <!-- Data Plane (Envoy) -->
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-cube text-indigo-600"></i>
+                                    数据面：Envoy 边车代理 (Data Plane)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 font-mono text-[8.5px]">C++ L4/L7 Proxy</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                • **流量物理拦截**：基于 `iptables` / `eBPF` 强行拦截 Pod 进出网络流量。<br/>
+                                • **治理逻辑执行**：在应用感知不到的情况下完成动态负载均衡、灰度切流、超时重试与 mTLS 加解密。<br/>
+                                • **可观测性报文**：实时采集并向 Prometheus / OpenTelemetry 暴露请求 Metrics 与 Traces。
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-amber-200 text-[9.5px] font-mono text-amber-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 33 · 多语言分布式运行时：Dapr 边车与中间件能力解耦</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-amber-200 bg-amber-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-amber-900">控制面与数据面分离启发 (Istio &amp; Envoy Architecture Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        Istio 展现了真正的云原生解耦设计：**控制面 (Istiod)** 专注于声明式策略管理与规则下发，**数据面 (Envoy)** 专注于极致性能的流量拦截与数据包处理。这种“控制与数据物理分离”的架构极大地保障了整个网格系统的稳定性与横向扩展能力。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-amber-200 text-amber-800 font-bold">Slide 32 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">32</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[80.0%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (31.html <- 32.html -> 33.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="31.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Istio 控制面与 Envoy 数据面双层架构 (Istio &amp; Envoy)</span>
+            <a href="33.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="31.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="33.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解 Istio 双层架构：</span>
+                    “向学员做解构说明：Istio 服务网格划分为控制面和数据面：<br/>
+                    1. **控制面 (Istiod)**：负责策略解析、证书颁发与配置下发。它不处理任何业务数据包，即使控制面临时挂掉，已运行的数据面依然能正常转发请求；<br/>
+                    2. **数据面 (Envoy Proxy)**：高性能 C++ 代理，注入在每个 Pod 中，利用 xDS 协议从控制面接收最新路由与安全规则，并执行真正的流量拦截、mTLS 加密和指标收集。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Slide 33 Dapr 分布式运行时：</span>
+                    “下一个 Slide 33 将讲解将分布式能力（状态存储、Pub/Sub 消息、秘钥管理）进一步抽象为 Sidecar API 的 **Dapr 运行时架构**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '33.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '31.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

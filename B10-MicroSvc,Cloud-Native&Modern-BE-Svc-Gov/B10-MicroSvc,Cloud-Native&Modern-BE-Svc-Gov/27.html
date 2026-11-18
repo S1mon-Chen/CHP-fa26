@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and KaTeX engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 27 - Serverless 核心特征：事件驱动与 Scale-to-Zero (Serverless Characteristics)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header bar controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 10 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-bolt text-purple-600"></i>
+                <span>Part 04 · Serverless、FaaS 与事件函数</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Serverless 核心特征：事件驱动与 Scale-to-Zero
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                4 Primary Serverless Characteristics: Event Triggers, Zero-Idle Cost, Automated Elasticity &amp; Statelessness
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for 4 primary Serverless characteristics... -->
+        <!-- Content Grid: 4 Core Characteristics Grid (12 cols) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-3.5 my-1">
+            
+            <!-- Pillar 1: Event-Driven Code Execution -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-bolt-lightning text-purple-600"></i>
+                            <span>1. 事件驱动代码执行 (Event-Driven Triggers)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Event Triggers</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        函数的生命周期由外部事件（Event Triggers）驱动。函数无需像传统守护进程那样 7x24 小时死循环等待，无事件触发时代码静止不占用任何 CPU/内存资源：
+                    </p>
+
+                    <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9px] font-mono">
+                        <div class="p-1 rounded bg-slate-50 border border-slate-200 flex items-center justify-between">
+                            <span class="text-indigo-900 font-bold">HTTP / REST Event:</span>
+                            <span class="text-slate-600">API Gateway 路由请求</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-50 border border-slate-200 flex items-center justify-between">
+                            <span class="text-teal-900 font-bold">Object Storage Event:</span>
+                            <span class="text-slate-600">S3 上传图片触发自动缩略图函数</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-50 border border-slate-200 flex items-center justify-between">
+                            <span class="text-purple-900 font-bold">MQ Message Event:</span>
+                            <span class="text-slate-600">Kafka / SQS 产生消息被拉起消费</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>特点：由明确的物理事件源触发唤醒，处理完即刻休眠</span>
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </div>
+            </div>
+
+            <!-- Pillar 2: Scale-to-Zero -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-leaf text-purple-600"></i>
+                            <span>2. 缩容至零 (Scale-to-Zero) 与空闲零成本</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Zero-Idle Cost</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        打破传统服务器“即便零流量也必须常驻付月费”的成本模式。在无流量接入的空闲时段，FaaS 平台自动将物理容器和实例彻底销毁：
+                    </p>
+
+                    <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-1.5 border border-slate-800">
+                        <div class="text-cyan-400 font-bold">// 传统服务器 vs Serverless 成本对比</div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                            <span class="text-rose-400">Legacy Server:</span>
+                            <span class="text-slate-300">24/7 常驻 100% 物理租用费</span>
+                        </div>
+                        <div class="p-1 rounded bg-slate-950 border border-slate-800 flex items-center justify-between">
+                            <span class="text-emerald-400 font-bold">Serverless:</span>
+                            <span class="text-emerald-300 font-bold">流量为零 $\implies$ 费用为 0 元！</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>特点：将云资源闲置成本降至绝对物理零点，适合长尾/低频接口</span>
+                    <i class="fa-solid fa-piggy-bank"></i>
+                </div>
+            </div>
+
+            <!-- Pillar 3: Automated Scaling -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-gauge-high text-purple-600"></i>
+                            <span>3. 毫秒级极速自动扩缩容 (Automated Elasticity)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Milliseconds Scaling</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        当突发流量冲入时（如突发新闻或大促秒杀），FaaS 平台调度器根据并发请求数，在毫秒级内自动创建数百上千个函数实例分担压力：
+                    </p>
+
+                    <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9px]">
+                        <div class="p-1 rounded bg-purple-50/50 border border-purple-100 flex items-center justify-between font-mono">
+                            <span class="font-bold text-purple-900">Traffic Peak: 10 QPS $\to$ 100,000 QPS</span>
+                            <span class="text-emerald-700 font-bold">Auto Scale in &lt;100ms</span>
+                        </div>
+                        <p class="text-[8.5px] text-slate-600 font-sans leading-tight">
+                            无需工程师提前设置复杂的多指标 HPA (Horizontal Pod Autoscaler) 规则，扩容动作完全对开发者透明。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>特点：应对极致突发峰值流量，免去预先容量规划风险</span>
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+            </div>
+
+            <!-- Pillar 4: Statelessness -->
+            <div class="rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-database text-purple-600"></i>
+                            <span>4. 函数物理无状态性 (Statelessness)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">State Externalized</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        为了保障任意实例可被随时销毁或弹性拉起，Serverless 函数本身**严格物理无状态 (Stateless)**：
+                    </p>
+
+                    <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-1 text-[9px]">
+                        <p class="text-[8.5px] text-slate-600 font-sans leading-tight">
+                            • **禁止内存局保存 Session/State**：函数内部变量生命周期随着单次执行完成而结束。<br/>
+                            • **持久状态外置 (Externalized State)**：用户的登录 Token、订单临时状态必须外置沉淀至 Redis Cluster、DynamoDB 或对象存储中。
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 28 · Spring Cloud Function 统一函数模型与 FaaS 多云适配</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding bottom callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">Serverless 核心特征启发 (Serverless Characteristics Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        **事件驱动 + Scale-to-Zero + 自动扩缩容 + 无状态性** 构成了 Serverless 架构的四维支柱。它们共同锁定了无缝弹性与极致成本控制，将后端工程师从繁重的容量规划与节点维护中彻底解脱出来。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 27 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- STREAMING_CHUNK:Rendering footer navigation... -->
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">27</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[67.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (26.html <- 27.html -> 28.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="26.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Serverless 核心特征：事件驱动与 Scale-to-Zero</span>
+            <a href="28.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="26.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="28.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员透视 Serverless 的四维核心特征：</span>
+                    “向学员做解构说明：讲完概念后，本页解构 Serverless 的 4 大核心特征：<br/>
+                    1. **事件驱动**：基于 HTTP、MQ 消息、对象存储文件上传等事件激活唤醒；<br/>
+                    2. **Scale-to-Zero**：空闲时缩容至 0 实例，费用为 0 元；<br/>
+                    3. **自动毫秒级扩缩容**：峰值流量来临时自动拉起成百上千实例；<br/>
+                    4. **无状态性**：将 Session 或订单状态外置存储。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Slide 28 Spring Cloud Function 函数模型：</span>
+                    “下一个 Slide 28 将引入 Java 生态对 Serverless 的回应——**Spring Cloud Function 统一函数抽象与多云适配**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '28.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '26.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

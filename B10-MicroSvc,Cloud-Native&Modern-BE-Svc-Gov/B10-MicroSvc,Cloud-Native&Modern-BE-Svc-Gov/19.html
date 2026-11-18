@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and KaTeX engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 19 - API 网关演进：Netflix Zuul 到 Spring Cloud Gateway (Gateway Evolution)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-indigo-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 10 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-indigo-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-teal-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-shield-halved text-indigo-600"></i>
+                <span>Part 03 · 网关路由与容错熔断</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                API 网关演进：Netflix Zuul 到 Spring Cloud Gateway
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                API Gateway Pattern, Blocking Servlet vs. Non-blocking Netty Reactive Model &amp; Performance Shift
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for Gateway responsibilities and Zuul vs Spring Cloud Gateway comparison... -->
+        <!-- Content Grid: Left Card (Why API Gateway?) vs Right Card (Zuul vs Spring Cloud Gateway Evolution) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Why API Gateway? Core Responsibilities (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-route text-indigo-600"></i>
+                            <span>1. 为什么需要 API 网关模式？(Core Responsibilities)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Unified Entry</span>
+                    </div>
+
+                    <p class="text-[9.5px] text-slate-600 font-sans leading-relaxed mb-1.5">
+                        在微服务集群中，若客户端（移动端/Web/小程序）直接连接几十个微服务，会导致地址分散、重复鉴权以及跨域乱象。**API 网关是系统的统一反向代理入口**：
+                    </p>
+
+                    <!-- Responsibilities Grid -->
+                    <div class="space-y-1.5 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-indigo-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-location-arrow text-indigo-600"></i>
+                                    ① 统一路由转发 (Smart Routing)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 font-mono text-[8.5px]">Path / Host Matching</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                根据请求的 Path、Header 或 Parameter，隐藏内部微服务物理拓扑，将流量精确重写分发至目标后端。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-lock text-teal-600"></i>
+                                    ② 统一安全鉴权 (Centralized Auth &amp; CORS)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px]">JWT &amp; CORS Global</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                在边界统一拦截并解包 JWT Token，防止非法请求切入内部网络；全局统一配置 CORS 跨域请求头。
+                            </p>
+                        </div>
+
+                        <div class="p-2 rounded-xl bg-white border border-indigo-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-amber-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-gauge-high text-amber-600"></i>
+                                    ③ 流量限流与容错降级 (Rate Limiting &amp; Resiliency)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-mono text-[8.5px]">Redis Token Bucket</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                挂载 Redis 令牌桶算法实施全局/用户级限流，配合断路器在后端异常时快速返回 Fallback 托底响应。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>本质：将横切面关口（鉴权/限流/日志/跨域）抽离到网关层，释放后端微服务业务专注度</span>
+                    <i class="fa-solid fa-circle-check text-indigo-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Zuul 1.x vs Spring Cloud Gateway Evolution (6 cols) -->
+            <div class="lg:col-span-6 rounded-2xl border border-indigo-200 bg-indigo-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-indigo-200">
+                        <h3 class="text-xs font-mono font-bold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate text-indigo-600"></i>
+                            <span>2. 网关技术架构演进：Zuul 1.x 对比 Spring Cloud Gateway</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono text-[9px] font-bold">Evolution Shift</span>
+                    </div>
+
+                    <!-- Tech Evolution Stack -->
+                    <div class="space-y-2 text-xs text-slate-700 font-sans">
+                        
+                        <!-- Netflix Zuul 1.x -->
+                        <div class="p-2.5 rounded-xl bg-white border border-rose-200 space-y-1 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-rose-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-xmark text-rose-600"></i>
+                                    Netflix Zuul 1.x (淘汰/停更)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-mono text-[8.5px]">Blocking Servlet I/O</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                基于传统 Servlet 2.x 阻塞式 I/O 架构，采用 **Thread-per-Request** 模型。在高并发或后端 RPC 慢响应时，网关工作线程池会被迅速挂起耗尽，导致网关瘫痪。
+                            </p>
+                        </div>
+
+                        <!-- Spring Cloud Gateway -->
+                        <div class="p-2.5 rounded-xl bg-white border border-teal-200 space-y-1 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-teal-900 font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-circle-check text-teal-600"></i>
+                                    Spring Cloud Gateway (现代标准)
+                                </span>
+                                <span class="px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 font-mono text-[8.5px]">Netty + Project Reactor</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                基于 Spring 5、Spring Boot 2+、Netty 与 Project Reactor。采用**完全非阻塞响应式事件循环 (Reactive Non-blocking Event Loops)** 模型，少量线程即可支撑海量并发，吞吐量提升 300%+！
+                            </p>
+                        </div>
+
+                        <!-- Thread Model Comparison Diagram Box -->
+                        <div class="p-2 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-1 border border-slate-800">
+                            <div class="text-cyan-400 font-bold">// 线程模型对比 (Thread Model Comparison)</div>
+                            <div class="text-slate-300">Zuul 1.x:   Request ──► [ Dedicated Thread ] ──► (Wait RPC) ──► Blocked!</div>
+                            <div class="text-emerald-400 font-bold">SC Gateway: Request ──► [ Netty Event Loop ] ──► Async Mono/Flux ──► Non-blocking!</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-indigo-200 text-[9.5px] font-mono text-indigo-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 20 · Spring Cloud Gateway `RouteLocatorBuilder` 代码实战</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding bottom callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-indigo-200 bg-indigo-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-indigo-900">网关架构演进启发 (Gateway Evolution Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        从 Zuul 1.x 到 Spring Cloud Gateway 的跨越，代表了服务端架构从 **阻塞式线程池模式** 向 **基于 Netty 的非阻塞响应式事件流模式** 的物理进化。非阻塞网关能以极少的系统线程轻松应对数万 QPS 并发流量。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-bold">Slide 19 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- STREAMING_CHUNK:Rendering footer navigation... -->
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">19</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[47.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (18.html <- 19.html -> 20.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="18.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">API 网关演进：Netflix Zuul 到 Spring Cloud Gateway</span>
+            <a href="20.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="18.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="20.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 开启 Part 03：API 网关演进与核心职责：</span>
+                    “向学员做解构说明：进入 Part 03，我们探讨微服务接入层的反向代理网关。网关负责统一路由、JWT 安全鉴权、全局 CORS 跨域配置以及 Redis 令牌桶限流。<br/>
+                    重点对比 Zuul 1.x 和 Spring Cloud Gateway 的线程模型：Zuul 1.x 基于 Servlet 阻塞 I/O（Thread-per-Request）；而 SC Gateway 基于 Netty 和 Project Reactor 响应式事件循环，极大地释放了高并发下的 CPU 与内存水位。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Slide 20 编程式路由实战：</span>
+                    “下一个 Slide 20 将讲解 **Spring Cloud Gateway `RouteLocatorBuilder` 编程式动态路由与 Filter 链挂载**。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '20.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '18.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full light">
+<head>
+    <!-- STREAMING_CHUNK:Configuring metadata, Tailwind CSS and KaTeX engine... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide 29 - Spring Cloud Function 响应式代码实战 (Function<Flux<T>, Flux<R>> 代码)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            100: '#cffafe',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            700: '#0e7490',
+                            900: '#164e63',
+                        },
+                        accent: {
+                            cyan: '#0891b2',
+                            emerald: '#059669',
+                            purple: '#7c3aed',
+                            amber: '#d97706',
+                            rose: '#e11d48',
+                            indigo: '#4f46e5',
+                            teal: '#0d9488',
+                            sky: '#0284c7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true},{left: '$', right: '$', display: false}]});"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;800&display=swap');
+        
+        .bg-grid-pattern {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+        }
+        .soft-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden select-none">
+
+    <!-- STREAMING_CHUNK:Rendering header bar controls... -->
+    <!-- Header Bar -->
+    <header class="h-16 border-b border-slate-200 bg-white/90 backdrop-blur-md px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="w-3 h-3 rounded-full bg-purple-600 animate-pulse"></div>
+            <h1 class="text-sm md:text-base font-semibold text-slate-800 tracking-tight">
+                服务端开发 (Server-Side Development) · 第二单元 第 10 讲
+            </h1>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="toggleNotesBtn" onclick="toggleSpeakerNotes()" class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition flex items-center gap-2">
+                <i class="fa-solid fa-note-sticky text-purple-600"></i>
+                <span>演讲备注</span>
+            </button>
+            <button id="fullscreenBtn" onclick="toggleFullscreen()" class="p-2 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition">
+                <i class="fa-solid fa-expand text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- STREAMING_CHUNK:Building title block and slide headers... -->
+    <!-- Main Content Area -->
+    <main class="flex-1 relative flex flex-col justify-between p-6 md:p-8 lg:p-10 bg-white bg-grid-pattern overflow-y-auto">
+        <div class="absolute top-10 left-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute bottom-10 right-1/4 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Title Block -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full mb-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 font-mono text-xs font-semibold tracking-wider uppercase mb-1">
+                <i class="fa-solid fa-code text-purple-600"></i>
+                <span>Part 04 · Serverless、FaaS 与事件函数</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Spring Cloud Function 响应式代码实战 (`Function<Flux<T>, Flux<R>>` 代码)
+            </h1>
+            <p class="text-xs md:text-sm font-mono text-slate-500 mt-0.5">
+                Project Reactor Flux Pipeline, Composition &amp; Functional Bean Declarations
+            </p>
+        </div>
+
+        <!-- STREAMING_CHUNK:Structuring layout grid for Java FunctionsampleApplication code and reactive composition analysis... -->
+        <!-- Content Grid: Left Card (Java Functional Class Code) vs Right Card (Composition & Reactor Execution Analysis) -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-3.5 my-1">
+            
+            <!-- Left Card: Java FunctionsampleApplication Code (7 cols) -->
+            <div class="lg:col-span-7 rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-laptop-code text-purple-600"></i>
+                            <span>1. 响应式函数声明主类 (`FunctionsampleApplication.java`)</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Project Reactor Flux</span>
+                    </div>
+
+                    <!-- Java Function Code Snippet -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8px] space-y-1 border border-slate-800 leading-relaxed overflow-x-auto mb-1">
+                        <div class="text-cyan-400 font-bold">// Spring Cloud Function 主类与响应式 Bean 声明</div>
+                        <div><span class="text-indigo-300 font-bold">@SpringBootApplication</span></div>
+                        <div><span class="text-indigo-300 font-bold">public class</span> <span class="text-teal-300 font-bold">FunctionsampleApplication</span> {</div>
+
+                        <div class="pl-4 pt-0.5"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-4"><span class="text-indigo-300 font-bold">public</span> Function&lt;Flux&lt;String&gt;, Flux&lt;String&gt;&gt; <span class="text-teal-300">uppercase</span>() {</div>
+                        <div class="pl-8"><span class="text-amber-300">return</span> flux -&gt; flux.<span class="text-amber-300">map</span>(value -&gt; value.<span class="text-amber-300">toUpperCase</span>());</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 pt-0.5"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-4"><span class="text-indigo-300 font-bold">public</span> Function&lt;Flux&lt;Integer&gt;, Flux&lt;Integer&gt;&gt; <span class="text-teal-300">name</span>() {</div>
+                        <div class="pl-8"><span class="text-amber-300">return</span> e -&gt; e.<span class="text-amber-300">map</span>(value -&gt; value * <span class="text-amber-300">2</span>);</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 pt-0.5"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-4"><span class="text-indigo-300 font-bold">public</span> Function&lt;Flux&lt;Integer&gt;, Flux&lt;Integer&gt;&gt; <span class="text-teal-300">square</span>() {</div>
+                        <div class="pl-8"><span class="text-amber-300">return</span> e -&gt; e.<span class="text-amber-300">map</span>(value -&gt; value * value);</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 pt-0.5"><span class="text-indigo-300 font-bold">@Bean</span></div>
+                        <div class="pl-4"><span class="text-indigo-300 font-bold">public</span> Function&lt;Flux&lt;Integer&gt;, Flux&lt;Integer&gt;&gt; <span class="text-teal-300">compose</span>() {</div>
+                        <div class="pl-8"><span class="text-amber-300">return</span> e -&gt; name().<span class="text-amber-300">compose</span>(square()).<span class="text-amber-300">apply</span>(e);</div>
+                        <div class="pl-4">}</div>
+
+                        <div class="pl-4 pt-0.5"><span class="text-indigo-300 font-bold">public static void</span> <span class="text-teal-300">main</span>(String[] args) {</div>
+                        <div class="pl-8">SpringApplication.<span class="text-amber-300">run</span>(FunctionsampleApplication.<span class="text-indigo-300">class</span>, args);</div>
+                        <div class="pl-4">}</div>
+                        <div>}</div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>特点：通过 `@Bean` 显式导出标准 Java 函数，底层自动装配，零 Web 显式代码</span>
+                    <i class="fa-solid fa-circle-check text-purple-600"></i>
+                </div>
+            </div>
+
+            <!-- Right Card: Reactive Composition & Stream Mechanics (5 cols) -->
+            <div class="lg:col-span-5 rounded-2xl border border-purple-200 bg-purple-50/20 p-3.5 soft-shadow flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-purple-200">
+                        <h3 class="text-xs font-mono font-bold text-purple-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-diagram-project text-purple-600"></i>
+                            <span>2. 函数组合 (Composition) 与 Flux 流管道</span>
+                        </h3>
+                        <span class="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-mono text-[9px] font-bold">Stream Composition</span>
+                    </div>
+
+                    <!-- Composition Pipeline Box -->
+                    <div class="p-2.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-[8.5px] space-y-2 border border-slate-800 leading-relaxed overflow-x-auto mb-1.5">
+                        <div class="text-cyan-400 font-bold">// compose() 组合逻辑演算 ($f(g(x))$)</div>
+                        
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-indigo-300 font-bold text-[8px] flex items-center justify-between">
+                                <span>1. 输入流 (Input Flux: [3])</span>
+                                <span class="text-slate-500 font-normal">Flux.just(3)</span>
+                            </div>
+                            <p class="text-[7.5px] font-sans text-slate-400">数字 3 接入响应式事件管道。</p>
+                        </div>
+
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                            <div class="text-teal-300 font-bold text-[8px] flex items-center justify-between">
+                                <span>2. square() 阶段 (先平方向)</span>
+                                <span class="text-emerald-300 font-bold text-[8px]">$3^2 = 9$</span>
+                            </div>
+                            <p class="text-[7.5px] font-sans text-slate-400">执行 `square()`：$3 \times 3 = 9$。</p>
+                        </div>
+
+                        <div class="p-1.5 rounded bg-slate-950 border border-purple-800 space-y-0.5">
+                            <div class="text-emerald-300 font-bold text-[8px] flex items-center justify-between">
+                                <span>3. name() 阶段 (后乘二向)</span>
+                                <span class="text-purple-300 font-bold text-[8px]">$9 \times 2 = 18$</span>
+                            </div>
+                            <p class="text-[7.5px] font-sans text-slate-300">执行 `name()`：$9 \times 2 = 18$，输出最终 Flux：`[18]`。</p>
+                        </div>
+                    </div>
+
+                    <!-- Key Takeaways Box -->
+                    <div class="space-y-1 text-xs text-slate-700 font-sans">
+                        <div class="p-2 rounded-xl bg-white border border-purple-100 space-y-0.5 text-[9.5px]">
+                            <span class="font-bold text-slate-900 block flex items-center justify-between">
+                                <span class="font-mono text-purple-900 font-bold">响应式 Project Reactor 优势</span>
+                                <span class="text-[8.5px] font-mono text-purple-700 font-bold">Non-blocking Flux</span>
+                            </span>
+                            <p class="text-[9px] text-slate-600 leading-tight">
+                                使用 `Flux<T>` 作为输入与输出类型，使函数天然具备**非阻塞 Backpressure 响应式流处理能力**，极其适合高吞吐量事件流（Kafka / HTTP Streaming）。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-1 border-t border-purple-200 text-[9.5px] font-mono text-purple-800 flex items-center justify-between">
+                    <span>开启下一个核心：Slide 30 · Spring Cloud Function Web 端点与 FaaS 平台部署映射</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- STREAMING_CHUNK:Adding bottom callout and footer controls... -->
+        <!-- Bottom Callout Banner -->
+        <div class="relative z-10 max-w-6xl mx-auto w-full rounded-xl border border-purple-200 bg-purple-50/60 p-2.5 flex items-center justify-between gap-4 mt-1">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-purple-700 flex items-center justify-center text-white shrink-0 text-xs font-bold">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <div>
+                    <h4 class="text-xs font-mono font-bold text-purple-900">响应式函数编程启发 (Reactive Function Insight)</h4>
+                    <p class="text-xs text-slate-700">
+                        利用 Project Reactor 的 **`Flux<T>` 响应式流** 与 Java 8 `Function` 接口相结合，Spring Cloud Function 让开发者可以通过 `.compose()` 或 `.andThen()` 自由拼装与重用业务函数，极大地提升了事件驱动微服务与 Serverless 代码的模块化程度。
+                    </p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-2 font-mono text-[11px]">
+                <span class="px-2.5 py-1 rounded bg-white border border-purple-200 text-purple-800 font-bold">Slide 29 / 40</span>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- STREAMING_CHUNK:Rendering footer navigation... -->
+    <!-- Footer Controls -->
+    <footer class="h-16 border-t border-slate-200 bg-white px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-4">
+            <div class="text-xs font-mono text-slate-500">
+                <span id="currentSlideNum" class="text-slate-900 font-bold">29</span> / <span id="totalSlidesNum">40</span> Slides
+            </div>
+            <div class="w-32 md:w-48 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
+                <div class="bg-indigo-600 h-full w-[72.5%] transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Slide Controls (28.html <- 29.html -> 30.html) -->
+        <div class="flex items-center space-x-3">
+            <a href="28.html" title="上一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </a>
+            <span class="text-xs font-mono text-slate-600 hidden md:inline">Spring Cloud Function 响应式代码实战 (`Function<Flux<T>, Flux<R>>`)</span>
+            <a href="30.html" title="下一页" class="p-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition flex items-center justify-center">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </a>
+        </div>
+
+        <div class="hidden lg:flex items-center gap-3 text-xs text-slate-500 font-mono">
+            <span class="flex items-center gap-1">
+                <a href="28.html" title="上一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                </a>
+                <a href="30.html" title="下一页" class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 hover:bg-indigo-600 hover:text-white transition flex items-center justify-center">
+                    <i class="fa-solid fa-arrow-right text-[11px]"></i>
+                </a>
+                <span class="ml-1 text-slate-500">翻页</span>
+            </span>
+            <span><kbd onclick="toggleFullscreen()" class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 cursor-pointer hover:bg-slate-200">F</kbd> 全屏</span>
+        </div>
+    </footer>
+
+    <!-- STREAMING_CHUNK:Rendering speaker notes drawer... -->
+    <!-- Speaker Notes Drawer -->
+    <div id="speakerNotesDrawer" class="hidden fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l border-slate-200 z-50 p-6 flex flex-col justify-between shadow-2xl transition-transform duration-300">
+        <div>
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm">
+                    <i class="fa-solid fa-sticky-note"></i>
+                    <span>Speaker Notes / 讲师讲稿</span>
+                </div>
+                <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-xs md:text-sm text-slate-700 leading-relaxed overflow-y-auto max-h-[calc(100vh-160px)] pr-2">
+                <div class="p-3 rounded-lg bg-indigo-50 border border-indigo-200">
+                    <span class="font-bold text-indigo-900 block mb-1">🎯 引导学员理解响应式 Flux 函数的编排代码：</span>
+                    “向学员做解构说明：本页展示了讲义中的真实 Spring Cloud Function 源码：<br/>
+                    1. 通过 `@Bean` 导出 `uppercase()` 方法，对 Flux<String> 执行大写转换；<br/>
+                    2. `name()` 将数字乘 2，`square()` 计算平方；<br/>
+                    3. `compose()` 方法展示了函数组合能力：`name().compose(square()).apply(e)` 代表对输入 $x$ 先平方再乘 2（输入 3 得到 18）。”
+                </div>
+                <div class="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <span class="font-bold text-purple-900 block mb-1">💡 预告 Slide 30 HTTP 端点映射：</span>
+                    “下一个 Slide 30 将讲解引入 `spring-cloud-function-web` 后，这些 `@Bean` 函数是如何自动被映射为 HTTP 端点并部署到多云平台的。”
+                </div>
+            </div>
+        </div>
+        <div class="text-xs font-mono text-slate-400 pt-4 border-t border-slate-200">
+            Press ESC or click X to close
+        </div>
+    </div>
+
+    <!-- STREAMING_CHUNK:Attaching keyboard and window event listeners... -->
+    <!-- JavaScript Controls -->
+    <script>
+        function toggleSpeakerNotes() {
+            document.getElementById('speakerNotesDrawer').classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight') {
+                window.location.href = '30.html';
+            } else if (e.key === 'ArrowLeft') {
+                window.location.href = '28.html';
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.key === 'n' || e.key === 'N') {
+                toggleSpeakerNotes();
+            } else if (e.key === 'Escape') {
+                document.getElementById('speakerNotesDrawer').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
